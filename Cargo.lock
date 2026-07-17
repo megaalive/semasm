@@ -184,6 +184,7 @@ dependencies = [
  "semasm-contract",
  "semasm-core",
  "semasm-target",
+ "serde",
  "serde_json",
 ]
 

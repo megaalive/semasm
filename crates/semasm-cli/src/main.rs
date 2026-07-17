@@ -13,6 +13,8 @@ use semasm_contract::{
     check_file, explain_code, format_diagnostics_terminal, CheckReportJson, ContractCode,
 };
 use semasm_core::SEMASM_VERSION;
+use semasm_target::tools;
+use semasm_target::TargetIdentity;
 
 /// Semantic infrastructure for assembly programs (build-time tooling only).
 #[derive(Debug, Parser)]
@@ -45,10 +47,27 @@ enum Commands {
         /// Code such as `CTR003`.
         code: String,
     },
+    /// Target-kit commands.
+    Target {
+        #[command(subcommand)]
+        action: TargetCmd,
+    },
     /// Contract commands.
     Contract {
         #[command(subcommand)]
         action: ContractCmd,
+    },
+}
+
+#[derive(Debug, Subcommand)]
+enum TargetCmd {
+    /// Probe the host toolchain for a given target and report status.
+    Doctor {
+        /// Target triple (e.g. `x86_64-unknown-linux-gnu`).
+        target: String,
+        /// Output format.
+        #[arg(long, value_enum, default_value_t = OutputFormat::Terminal)]
+        format: OutputFormat,
     },
 }
 
@@ -95,6 +114,9 @@ fn main() -> ExitCode {
             ExitCode::SUCCESS
         }
         Some(Commands::Explain { code }) => do_explain(&code),
+        Some(Commands::Target { action }) => match action {
+            TargetCmd::Doctor { target, format } => do_target_doctor(&target, format),
+        },
         Some(Commands::Contract { action }) => match action {
             ContractCmd::Check { path, format } => do_contract_check(&path, format),
         },
@@ -112,6 +134,133 @@ fn do_explain(code: &str) -> ExitCode {
             eprintln!("  {}", c.as_str());
         }
         ExitCode::from(2)
+    }
+}
+
+fn do_target_doctor(target_str: &str, format: OutputFormat) -> ExitCode {
+    let identity = match TargetIdentity::parse_known(target_str) {
+        Ok(id) => id,
+        Err(e) => {
+            eprintln!("error: {e}");
+            return ExitCode::from(2);
+        }
+    };
+
+    let report = tools::doctor(&identity);
+
+    match format {
+        OutputFormat::Terminal => {
+            let sep = "─".repeat(56);
+            println!("Toolchain report for {}", report.target);
+            println!("{sep}");
+            println!();
+
+            for slot in &report.slots {
+                for probe in &slot.probes {
+                    let label = format!("{} ({})", slot.role, probe.kind);
+                    if probe.found {
+                        let ver = probe.version.as_deref().unwrap_or("<version unknown>");
+                        println!("  {label:40} ✓  {ver}");
+                    } else {
+                        println!("  {label:40} ✗  not found");
+                        for hint in probe.kind.install_hint() {
+                            println!("  → install: {hint}");
+                        }
+                    }
+                }
+                println!();
+            }
+
+            let found = report.found_count();
+            let total = report.total_count();
+            if report.all_found() {
+                println!("Result: {found}/{total} — all tool roles resolved ✓");
+                println!("  target kit: ready");
+            } else {
+                println!("Result: {found}/{total} tool roles resolved");
+                println!(
+                    "  target kit: ⚠ {}/{} tool roles MISSING",
+                    total - found,
+                    total
+                );
+            }
+        }
+        OutputFormat::Json => {
+            let json = DoctorReportJson::from_report(&report);
+            match serde_json::to_string_pretty(&json) {
+                Ok(s) => println!("{s}"),
+                Err(e) => {
+                    eprintln!("failed to serialize JSON report: {e}");
+                    return ExitCode::from(1);
+                }
+            }
+        }
+    }
+
+    if report.all_found() {
+        ExitCode::SUCCESS
+    } else {
+        ExitCode::from(1)
+    }
+}
+
+#[derive(serde::Serialize)]
+struct DoctorReportJson {
+    target: String,
+    all_found: bool,
+    found_count: usize,
+    total_count: usize,
+    tools: Vec<ToolSlotJson>,
+}
+
+#[derive(serde::Serialize)]
+struct ToolSlotJson {
+    role: String,
+    resolved: Option<String>,
+    candidates: Vec<ToolProbeJson>,
+}
+
+#[derive(serde::Serialize)]
+struct ToolProbeJson {
+    tool: String,
+    found: bool,
+    version: Option<String>,
+    install_hints: Vec<String>,
+}
+
+impl DoctorReportJson {
+    fn from_report(report: &tools::DoctorReport) -> Self {
+        Self {
+            target: report.target.clone(),
+            all_found: report.all_found(),
+            found_count: report.found_count(),
+            total_count: report.total_count(),
+            tools: report
+                .slots
+                .iter()
+                .map(|slot| ToolSlotJson {
+                    role: slot.role.to_string(),
+                    resolved: slot
+                        .resolved
+                        .map(|i| slot.candidates[i].label().to_string()),
+                    candidates: slot
+                        .probes
+                        .iter()
+                        .map(|p| ToolProbeJson {
+                            tool: p.kind.label().to_string(),
+                            found: p.found,
+                            version: p.version.clone(),
+                            install_hints: p
+                                .kind
+                                .install_hint()
+                                .into_iter()
+                                .map(ToString::to_string)
+                                .collect(),
+                        })
+                        .collect(),
+                })
+                .collect(),
+        }
     }
 }
 

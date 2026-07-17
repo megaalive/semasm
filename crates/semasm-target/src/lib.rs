@@ -6,6 +6,8 @@
 
 #![forbid(unsafe_code)]
 
+pub mod tools;
+
 use std::fmt;
 
 use semasm_core::{Error, Result};
