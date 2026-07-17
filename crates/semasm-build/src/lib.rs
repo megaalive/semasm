@@ -24,7 +24,9 @@
 pub mod exec;
 pub mod pipeline;
 pub mod record;
+pub mod report;
 
 pub use exec::{exec, BuildError, CommandOutput, CommandSpec};
 pub use pipeline::Pipeline;
 pub use record::CommandRecord;
+pub use report::ArtifactReport;
