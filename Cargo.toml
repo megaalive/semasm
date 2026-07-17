@@ -11,6 +11,7 @@ members = [
     "crates/semasm-obj",
     "crates/semasm-decode",
     "crates/semasm-cfg",
+    "crates/semasm-x86",
 ]
 default-members = ["crates/semasm-cli"]
 
@@ -36,6 +37,7 @@ semasm-agent = { path = "crates/semasm-agent", version = "0.1.0" }
 semasm-obj = { path = "crates/semasm-obj", version = "0.1.0" }
 semasm-decode = { path = "crates/semasm-decode", version = "0.1.0" }
 semasm-cfg = { path = "crates/semasm-cfg", version = "0.1.0" }
+semasm-x86 = { path = "crates/semasm-x86", version = "0.1.0" }
 clap = { version = "4.5", features = ["derive"] }
 serde = { version = "1.0", features = ["derive"] }
 serde_json = { version = "1.0", default-features = false, features = ["std"] }
