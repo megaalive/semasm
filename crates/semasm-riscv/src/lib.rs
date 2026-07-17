@@ -427,4 +427,3 @@ mod tests {
         assert_eq!(return_register(), Gpr::A0.full());
     }
 }
-
