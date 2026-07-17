@@ -1,8 +1,13 @@
-//! Safe process execution wrapper for SemASM build pipelines.
+//! Safe process execution and build pipeline for SemASM.
 //!
-//! This crate provides a single responsibility: running external tools
-//! (assemblers, linkers, disassemblers, emulators) with safety constraints
-//! that make build pipelines auditable and reproducible.
+//! Two layers:
+//!
+//! * **`exec`** — low-level wrapper that runs a single external tool
+//!   (assembler, linker, emulator) with timeout, output capture, and
+//!   environment control.
+//! * **`pipeline`** — higher-level orchestration that assembles, links,
+//!   verifies, and runs a fixture for a given target identity.
+//! * **`record`** — serialisable [`CommandRecord`] for artifact reports.
 //!
 //! ## Design constraints
 //!
@@ -17,7 +22,9 @@
 #![deny(missing_docs)]
 
 pub mod exec;
+pub mod pipeline;
 pub mod record;
 
 pub use exec::{exec, BuildError, CommandOutput, CommandSpec};
+pub use pipeline::Pipeline;
 pub use record::CommandRecord;

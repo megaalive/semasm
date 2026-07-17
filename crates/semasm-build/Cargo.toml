@@ -14,6 +14,7 @@ keywords.workspace = true
 [dependencies]
 serde = { workspace = true }
 semasm-core = { workspace = true }
+semasm-target = { workspace = true }
 
 [dev-dependencies]
 serde_json = { workspace = true }
