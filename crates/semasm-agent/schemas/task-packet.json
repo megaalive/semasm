@@ -332,11 +332,16 @@
         "ty": {
           "description": "Parsed type.",
           "$ref": "#/$defs/SemType"
+        },
+        "type_source": {
+          "description": "Original type string as written in the contract (e.g. `ptr<const u8>`).",
+          "type": "string"
         }
       },
       "required": [
         "name",
-        "ty"
+        "ty",
+        "type_source"
       ]
     },
     "CheckedReturn": {
@@ -350,11 +355,16 @@
         "ty": {
           "description": "Parsed type.",
           "$ref": "#/$defs/SemType"
+        },
+        "type_source": {
+          "description": "Original type string as written in the contract.",
+          "type": "string"
         }
       },
       "required": [
         "name",
-        "ty"
+        "ty",
+        "type_source"
       ]
     },
     "ConstraintsSchema": {

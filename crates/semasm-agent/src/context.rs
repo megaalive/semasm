@@ -149,7 +149,7 @@ fn build_abi_params(
             ABIParameter {
                 name: p.name.clone(),
                 register,
-                type_name: format!("{:?}", p.ty),
+                type_name: p.type_source.clone(),
             }
         })
         .collect()
@@ -160,7 +160,7 @@ fn build_abi_return(contract: &CheckedContract, regs: Option<&ABIRegisterMap>) -
     let type_name = contract
         .returns
         .first()
-        .map_or_else(|| "void".to_string(), |r| format!("{:?}", r.ty));
+        .map_or_else(|| "void".to_string(), |r| r.type_source.clone());
     ABIReturn {
         register,
         type_name,

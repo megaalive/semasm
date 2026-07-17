@@ -49,6 +49,8 @@ pub struct CheckedParam {
     pub name: String,
     /// Parsed type.
     pub ty: SemType,
+    /// Original type string as written in the contract (e.g. `ptr<const u8>`).
+    pub type_source: String,
     /// Role.
     pub role: Option<String>,
 }
@@ -61,6 +63,8 @@ pub struct CheckedReturn {
     pub name: String,
     /// Parsed type.
     pub ty: SemType,
+    /// Original type string as written in the contract.
+    pub type_source: String,
 }
 
 /// Checked condition with AST.
@@ -220,6 +224,7 @@ fn validate_document(doc: &ContractDocument, diagnostics: &mut Diagnostics) -> C
             Ok((ty, _)) => parameters.push(CheckedParam {
                 name: p.name.clone(),
                 ty,
+                type_source: p.ty.clone(),
                 role: p.role.clone(),
             }),
             Err(msg) => push_code(
@@ -237,6 +242,7 @@ fn validate_document(doc: &ContractDocument, diagnostics: &mut Diagnostics) -> C
             Ok((ty, _)) => returns.push(CheckedReturn {
                 name: r.name.clone(),
                 ty,
+                type_source: r.ty.clone(),
             }),
             Err(msg) => push_code(
                 diagnostics,

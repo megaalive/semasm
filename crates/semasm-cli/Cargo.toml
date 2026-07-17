@@ -24,6 +24,7 @@ semasm-contract = { workspace = true }
 semasm-asir = { workspace = true }
 semasm-build = { workspace = true }
 semasm-target = { workspace = true }
+semasm-agent = { workspace = true }
 
 [lints]
 workspace = true
