@@ -597,6 +597,7 @@ impl ArtifactReport {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use semasm_target::TargetIdentity;
 
     #[test]
     fn hash_empty_string() {
@@ -709,5 +710,193 @@ SYMBOL TABLE:
         assert!(terminal.contains("NASM 2.16"));
         assert!(terminal.contains("test"));
         assert!(terminal.contains("1234"));
+    }
+
+    #[test]
+    fn hash_real_file() {
+        let tmp = std::env::temp_dir().join("__semasm_hash_test__");
+        std::fs::write(&tmp, b"hello world").unwrap();
+        let hash = hash_file(&tmp).unwrap();
+        // SHA-256 of "hello world\n" (without newline it's different).
+        let expected = "b94d27b9934d3e08a52e52d7da7dabfac484efe37a5380ee9088f7ace2efcde9";
+        assert_eq!(hash.sha256, expected);
+        let _ = std::fs::remove_file(&tmp);
+    }
+
+    #[test]
+    fn hash_file_not_found() {
+        let err = hash_file(Path::new("__nonexistent__")).unwrap_err();
+        assert!(err.to_string().contains("cannot open"));
+    }
+
+    #[test]
+    fn report_to_json_roundtrip() {
+        let report = ArtifactReport {
+            source: SourceInfo {
+                path: "exit.asm".into(),
+                hash: FileHash { sha256: "aa".repeat(32) },
+            },
+            tool_versions: vec![
+                ToolVersionInfo {
+                    tool: "nasm".into(),
+                    version: "NASM 2.16".into(),
+                },
+            ],
+            command_records: vec![CommandRecordJson {
+                label: "assemble".into(),
+                command: "nasm -f elf64 exit.asm -o exit.o".into(),
+                exit_code: Some(0),
+                stdout: String::new(),
+                stderr: String::new(),
+                duration_secs: 0.123,
+                timed_out: false,
+                success: true,
+            }],
+            object: None,
+            executable: ArtifactFileInfo {
+                path: "exit".into(),
+                hash: FileHash { sha256: "bb".repeat(32) },
+                size: 16384,
+                sections: vec![SectionInfo {
+                    name: ".text".into(),
+                    size: 42,
+                    vma: 0x0040_1000,
+                    flags: "TEXT".into(),
+                }],
+                symbols: vec![SymbolInfo {
+                    name: "_start".into(),
+                    address: 0x0040_1000,
+                    size: 2,
+                    section: ".text".into(),
+                    kind: 'F',
+                }],
+                is_dynamic: false,
+                raw_sections: String::new(),
+                raw_symbols: String::new(),
+                raw_private_headers: String::new(),
+            },
+            execution: Some(ExecutionInfo {
+                exit_code: Some(42),
+                timed_out: false,
+                stdout: String::new(),
+                stderr: String::new(),
+            }),
+        };
+
+        // JSON round-trip
+        let json = report.to_json_pretty().unwrap();
+        assert!(json.contains("exit.asm"));
+        assert!(json.contains("nasm"));
+        assert!(json.contains("42"));
+        assert!(json.contains("_start"));
+
+        // Terminal output
+        let term = report.to_terminal();
+        assert!(term.contains("_start"));
+        assert!(term.contains("42"));
+        assert!(term.contains("SHA-256"));
+    }
+
+    // ------------------------------------------------------------------
+    // Integration tests (gated: require nasm + linker on PATH)
+    // ------------------------------------------------------------------
+
+    fn assemble_and_link(
+        pipe: &Pipeline,
+        source: &Path,
+        obj: &Path,
+        exe: &Path,
+    ) -> Result<(CommandOutput, CommandOutput), BuildError> {
+        let ao = pipe.assemble_reproducible(source, obj, "elf64")?;
+        if !ao.success() {
+            return Err(BuildError::Spawn(
+                "assemble".into(),
+                format!("exit {:?}", ao.exit_code),
+            ));
+        }
+        let lo = pipe.link_reproducible(&[obj], exe)?;
+        if !lo.success() {
+            return Err(BuildError::Spawn(
+                "link".into(),
+                format!("exit {:?}", lo.exit_code),
+            ));
+        }
+        Ok((ao, lo))
+    }
+
+    #[test]
+    #[ignore = "requires nasm + linker on PATH"]
+    fn full_report_from_build() {
+        let target = TargetIdentity::x86_64_linux_gnu();
+        let pipe = Pipeline::discover(&target);
+
+        let source = Path::new("fixtures/asm/exit.asm");
+        let out_dir = std::env::temp_dir().join("semasm-report-test-e2e");
+        let _ = std::fs::create_dir_all(&out_dir);
+        let obj = out_dir.join("exit.o");
+        let exe = out_dir.join("exit");
+
+        let (ao, lo) = assemble_and_link(&pipe, source, &obj, &exe)
+            .expect("assemble+link");
+
+        // Run (if QEMU available)
+        let run_out = pipe.run(&exe).ok();
+
+        // Build command records
+        let records = vec![
+            CommandRecordJson {
+                label: "assemble".into(),
+                command: format!("nasm -f elf64 {} -o {}", source.display(), obj.display()),
+                exit_code: ao.exit_code,
+                stdout: String::from_utf8_lossy(&ao.stdout).into_owned(),
+                stderr: String::from_utf8_lossy(&ao.stderr).into_owned(),
+                duration_secs: ao.duration.as_secs_f64(),
+                timed_out: ao.timed_out,
+                success: ao.success(),
+            },
+            CommandRecordJson {
+                label: "link".into(),
+                command: format!("ld {} -o {}", obj.display(), exe.display()),
+                exit_code: lo.exit_code,
+                stdout: String::from_utf8_lossy(&lo.stdout).into_owned(),
+                stderr: String::from_utf8_lossy(&lo.stderr).into_owned(),
+                duration_secs: lo.duration.as_secs_f64(),
+                timed_out: lo.timed_out,
+                success: lo.success(),
+            },
+        ];
+
+        let report = generate_report(
+            &pipe,
+            source,
+            Some(&obj),
+            &exe,
+            records,
+            run_out.as_ref(),
+        )
+        .expect("generate_report");
+
+        // Verify report structure
+        assert_eq!(report.source.hash.sha256.len(), 64);
+        assert!(report.tool_versions.len() >= 2);
+        assert!(report.object.is_some());
+        assert!(!report.executable.sections.is_empty());
+
+        let obj_info = report.object.as_ref().unwrap();
+        assert!(obj_info.sections.iter().any(|s| s.name == ".text"));
+        assert!(obj_info.symbols.iter().any(|s| s.name == "_start"));
+
+        assert!(report.execution.is_some());
+        if let Some(ref exec) = report.execution {
+            assert_eq!(exec.exit_code, Some(42));
+        }
+
+        // JSON serialisation
+        let json = report.to_json_pretty().unwrap();
+        assert!(json.contains("_start"));
+        assert!(json.contains("elf64"));
+
+        // Clean up
+        let _ = std::fs::remove_dir_all(&out_dir);
     }
 }

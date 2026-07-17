@@ -2,7 +2,7 @@
 
 **SemASM** is multi-architecture semantic infrastructure for software written directly in assembly language. It supplies portable semantic contracts, target kits, analysis (ASIR), and verification so humans and AI agents can produce and check minimal target programs without shipping a high-level language runtime.
 
-> **Status:** early development. VS-00 bootstrap, VS-01 contract checking, TARGET-002 tool discovery (`target doctor`), and BUILD-001/002 build pipeline (`semasm-build`) are in tree. The first fixture (`exit.asm`) can be assembled, linked, verified, and run end-to-end when the host has NASM, an ELF linker, and QEMU user-mode installed. There are **no** production architecture backends or end-to-end assembly demos yet. Do not treat planned targets as supported.
+> **Status:** early development. VS-00 bootstrap, VS-01 contract checking, TARGET-002 tool discovery (`target doctor`), BUILD-001/002 build pipeline, and REPORT-001 artifact reports are in tree. The first fixture (`exit.asm`) can be assembled, linked, verified, and reported end-to-end when the host has NASM, an ELF linker, and QEMU user-mode installed. There are **no** production architecture backends or end-to-end assembly demos yet. Do not treat planned targets as supported.
 
 ## Architecture (build-time only)
 
@@ -75,7 +75,7 @@ Raw assembly states machine operations precisely but often hides intent: contrac
 | `semasm-contract` | Portable semantic contracts (types only for now) |
 | `semasm-asir` | ASIR graph types |
 | `semasm-target` | Target identity, kit shells, tool discovery (`target doctor`) |
-| `semasm-build` | Safe process execution, build pipeline (assemble, link, verify, run) |
+| `semasm-build` | Safe process execution, build pipeline (assemble, link, verify, run), artifact reports |
 | `semasm-cli` | `semasm` binary |
 
 Further crates (analysis, object, agent protocol, arch/ABI backends) appear only when a vertical slice needs a stable boundary.

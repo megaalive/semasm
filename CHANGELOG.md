@@ -23,6 +23,7 @@ once the first release is tagged. Until then, the API is unstable.
 - **BUILD-001:** `semasm-build` crate with safe process execution wrapper (`exec`), serialisable command records (`record`), timeout, environment allowlist, and working-directory control.
 - **BUILD-002:** Build pipeline module (`pipeline`) with `assemble`, `link`, `verify_architecture`, and `run` steps. Auto-discovers toolchain via `semasm target doctor`. Deterministic build flags for reproducible output.
 - Fixture `fixtures/asm/exit.asm` — minimal Linux x86-64 `exit(42)` via `__NR_exit`.
+- **REPORT-001:** Artifact report module (`report`) with SHA-256 hashing, objdump section/symbol/dynamic parsing, tool version probing, and JSON/terminal output. Includes `generate_report()` function and `to_terminal()`/`to_json_pretty()` methods.
 
 ### Notes
 
