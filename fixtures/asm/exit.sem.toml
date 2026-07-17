@@ -1,0 +1,9 @@
+[package]
+name = "exit-demo"
+version = "0.1.0"
+
+[program]
+target = "x86_64-unknown-linux-gnu"
+
+[program.exit]
+code = 42
