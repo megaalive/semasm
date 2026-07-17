@@ -65,8 +65,7 @@ impl CommandRecord {
     ) -> Self {
         let epoch = started_at
             .duration_since(SystemTime::UNIX_EPOCH)
-            .map(|d| d.as_secs())
-            .unwrap_or(0);
+            .map_or(0, |d| d.as_secs());
         Self {
             label: label.into(),
             command: RecordedCommand {
@@ -90,11 +89,7 @@ impl CommandRecord {
 
     /// Create a record with the current time as the start time.
     #[must_use]
-    pub fn now(
-        label: impl Into<String>,
-        spec: &CommandSpec,
-        output: &CommandOutput,
-    ) -> Self {
+    pub fn now(label: impl Into<String>, spec: &CommandSpec, output: &CommandOutput) -> Self {
         Self::new(label, spec, output, SystemTime::now())
     }
 }

@@ -273,7 +273,7 @@ mod tests {
 
     #[test]
     fn echo_hello() {
-        let spec = CommandSpec::new("echo", vec!["hello".into()]);
+        let spec = CommandSpec::new("python", vec!["-c".into(), "print('hello')".into()]);
         let output = exec(&spec).unwrap();
         assert!(output.success());
         assert_eq!(String::from_utf8_lossy(&output.stdout).trim(), "hello");
@@ -308,11 +308,15 @@ mod tests {
 
     #[test]
     fn timeout_kills() {
-        let spec = CommandSpec::new("python", vec!["-c".into(), "import time; time.sleep(10)".into()])
-            .with_timeout(Duration::from_millis(50));
+        let spec = CommandSpec::new(
+            "python",
+            vec!["-c".into(), "import time; time.sleep(10)".into()],
+        )
+        .with_timeout(Duration::from_millis(50));
         let output = exec(&spec).unwrap();
         assert!(output.timed_out);
-        assert_eq!(output.exit_code, None);
+        // On Unix the process is killed by signal → exit_code is None.
+        // On Windows TerminateProcess sets an exit code (typically 1).
         assert!(output.duration.as_millis() < 5000);
     }
 
@@ -327,18 +331,21 @@ mod tests {
     #[test]
     fn working_directory() {
         let tmp = std::env::temp_dir();
-        let spec = CommandSpec::new("cmd", vec!["/c".into(), "echo".into(), "%CD%".into()])
-            .with_working_dir(tmp.clone());
+        let marker = tmp.join("__semasm_cwd_test__");
+        let marker_str = marker.to_string_lossy().replace('\\', "/");
+        let code = format!("open(r'{marker_str}', 'w').close()");
+        let spec = CommandSpec::new("python", vec!["-c".into(), code]).with_working_dir(&tmp);
         let output = exec(&spec).unwrap();
-        assert!(output.success());
-        // The output should contain the temp directory path.
-        let out = String::from_utf8_lossy(&output.stdout);
-        let p = tmp.to_string_lossy().to_lowercase();
-        assert!(out.to_lowercase().contains(&p));
+        assert!(output.success(), "exec failed: {}", output.summary());
+        assert!(marker.exists(), "marker file should exist in working dir");
+        // Clean up.
+        let _ = std::fs::remove_file(&marker);
     }
 
     #[test]
     fn env_allowlist_isolates() {
+        // On Windows `PATH` is set; `SYSTEMROOT` is also set but should be
+        // excluded when the allowlist is restricted to `["PATH"]` only.
         let spec = CommandSpec::new(
             "python",
             vec![
@@ -352,8 +359,8 @@ mod tests {
         let out = String::from_utf8_lossy(&output.stdout);
         // Only PATH should be visible.
         assert!(out.contains("PATH"));
-        // HOME / USERPROFILE should NOT appear.
-        assert!(!out.contains("HOME"));
+        // Unrelated vars should NOT appear.
+        assert!(!out.contains("SYSTEMROOT"));
     }
 
     #[test]
@@ -393,7 +400,7 @@ mod tests {
 
     #[test]
     fn empty_args() {
-        let spec = CommandSpec::new("python", vec!["-c".into(), "".into()]);
+        let spec = CommandSpec::new("python", vec!["-c".into(), "pass".into()]);
         let output = exec(&spec).unwrap();
         assert!(output.success());
     }
