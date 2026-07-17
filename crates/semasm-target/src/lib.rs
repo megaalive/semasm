@@ -6,6 +6,7 @@
 
 #![forbid(unsafe_code)]
 
+pub mod abi;
 pub mod tools;
 
 use std::fmt;

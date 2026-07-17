@@ -7,6 +7,8 @@
 //! Integrity hashes let the agent and audit tools verify that the
 //! contract and target have not been tampered with.
 
+pub mod context;
+
 use semasm_contract::CheckedContract;
 use semasm_core::SEMASM_VERSION;
 use semasm_target::TargetIdentity;
@@ -326,12 +328,12 @@ fn write_canonical(buf: &mut Vec<u8>, value: &serde_json::Value) {
 // ---------------------------------------------------------------------------
 
 #[cfg(test)]
-mod tests {
+pub(crate) mod tests {
     use super::*;
     use semasm_contract::check_str;
     use semasm_target::TargetIdentity;
 
-    fn sample_contract_text() -> &'static str {
+    pub(crate) fn sample_contract_text() -> &'static str {
         r#"
 contract_version = "0.1"
 
@@ -377,17 +379,17 @@ bounded_stack_bytes = 128
         .trim()
     }
 
-    fn sample_check() -> CheckedContract {
+    pub(crate) fn sample_check() -> CheckedContract {
         let result = check_str(sample_contract_text());
         assert!(result.ok(), "sample contract should validate");
         result.contract.unwrap()
     }
 
-    fn sample_target() -> TargetIdentity {
+    pub(crate) fn sample_target() -> TargetIdentity {
         TargetIdentity::x86_64_linux_gnu()
     }
 
-    fn sample_toolchain() -> TargetToolchain {
+    pub(crate) fn sample_toolchain() -> TargetToolchain {
         TargetToolchain {
             assembler: "nasm".into(),
             linker: "ld.lld".into(),
