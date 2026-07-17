@@ -23,8 +23,9 @@ impl ContextBundle {
     /// `existing_source` — content of the `.asm` file the agent should
     /// extend or modify (if any).
     ///
-    /// `test_vectors` — externally supplied test cases (the generator does
-    /// not synthesise them from contract constraints yet; see AGENT-004).
+    /// `test_vectors` — externally supplied test cases.  When this is
+    /// empty, vectors are synthesised from the contract constraints (see
+    /// the `harness` module / AGENT-004).
     ///
     /// `allowed_instructions` — explicit instruction set the agent may use;
     /// an empty vector means all instructions are permitted.
@@ -43,6 +44,12 @@ impl ContextBundle {
         let abi_parameters = build_abi_params(contract, regs.as_ref());
         let abi_return = build_abi_return(contract, regs.as_ref());
         let (preserved, volatile) = registers(regs.as_ref());
+
+        let test_vectors = if test_vectors.is_empty() {
+            crate::harness::synthesize_vectors(contract)
+        } else {
+            test_vectors
+        };
 
         ContextBundle {
             function_name: contract.name.clone(),

@@ -8,6 +8,7 @@
 //! contract and target have not been tampered with.
 
 pub mod context;
+pub mod harness;
 
 use semasm_contract::CheckedContract;
 use semasm_core::SEMASM_VERSION;
