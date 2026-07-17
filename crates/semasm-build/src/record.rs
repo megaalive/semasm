@@ -172,8 +172,7 @@ mod tests {
             duration: Duration::from_millis(50),
             timed_out: false,
         };
-        let rec =
-            CommandRecord::now("fail", &sample_spec(), &output);
+        let rec = CommandRecord::now("fail", &sample_spec(), &output);
         assert!(!rec.output.success);
         assert_eq!(rec.output.exit_code, Some(1));
         assert!(rec.output.stderr.contains("something failed"));
@@ -208,9 +207,6 @@ mod tests {
         let spec = sample_spec().with_working_dir("/tmp/build");
         let output = sample_output();
         let rec = CommandRecord::now("build", &spec, &output);
-        assert_eq!(
-            rec.command.working_dir,
-            Some(PathBuf::from("/tmp/build")),
-        );
+        assert_eq!(rec.command.working_dir, Some(PathBuf::from("/tmp/build")),);
     }
 }

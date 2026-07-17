@@ -176,28 +176,20 @@ fn hash_file(path: &Path) -> Result<FileHash, BuildError> {
 }
 
 fn file_size(path: &Path) -> Result<u64, BuildError> {
-    std::fs::metadata(path)
-        .map(|m| m.len())
-        .map_err(|e| {
-            BuildError::Spawn(
-                "stat".into(),
-                format!("cannot stat {}: {e}", path.display()),
-            )
-        })
+    std::fs::metadata(path).map(|m| m.len()).map_err(|e| {
+        BuildError::Spawn(
+            "stat".into(),
+            format!("cannot stat {}: {e}", path.display()),
+        )
+    })
 }
 
 // ---------------------------------------------------------------------------
 // Objdump parsing
 // ---------------------------------------------------------------------------
 
-fn run_objdump_sections(
-    tool: &str,
-    path: &Path,
-) -> Result<(Vec<SectionInfo>, String), BuildError> {
-    let spec = CommandSpec::new(tool, vec![
-        "-h".into(),
-        path.to_string_lossy().into_owned(),
-    ]);
+fn run_objdump_sections(tool: &str, path: &Path) -> Result<(Vec<SectionInfo>, String), BuildError> {
+    let spec = CommandSpec::new(tool, vec!["-h".into(), path.to_string_lossy().into_owned()]);
     let output = exec::exec(&spec)?;
     let raw = String::from_utf8_lossy(&output.stdout).into_owned();
     let sections = parse_sections(&raw);
@@ -236,20 +228,19 @@ fn parse_sections(text: &str) -> Vec<SectionInfo> {
             let size = u64::from_str_radix(parts[2], 16).unwrap_or(0);
             let vma = u64::from_str_radix(parts[3], 16).unwrap_or(0);
             let flags = parts.get(4).copied().unwrap_or("").to_string();
-            sections.push(SectionInfo { name, size, vma, flags });
+            sections.push(SectionInfo {
+                name,
+                size,
+                vma,
+                flags,
+            });
         }
     }
     sections
 }
 
-fn run_objdump_symbols(
-    tool: &str,
-    path: &Path,
-) -> Result<(Vec<SymbolInfo>, String), BuildError> {
-    let spec = CommandSpec::new(tool, vec![
-        "-t".into(),
-        path.to_string_lossy().into_owned(),
-    ]);
+fn run_objdump_symbols(tool: &str, path: &Path) -> Result<(Vec<SymbolInfo>, String), BuildError> {
+    let spec = CommandSpec::new(tool, vec!["-t".into(), path.to_string_lossy().into_owned()]);
     let output = exec::exec(&spec)?;
     let raw = String::from_utf8_lossy(&output.stdout).into_owned();
     let symbols = parse_symbols(&raw);
@@ -323,14 +314,8 @@ fn parse_symbols(text: &str) -> Vec<SymbolInfo> {
     symbols
 }
 
-fn run_objdump_private_headers(
-    tool: &str,
-    path: &Path,
-) -> Result<String, BuildError> {
-    let spec = CommandSpec::new(tool, vec![
-        "-p".into(),
-        path.to_string_lossy().into_owned(),
-    ]);
+fn run_objdump_private_headers(tool: &str, path: &Path) -> Result<String, BuildError> {
+    let spec = CommandSpec::new(tool, vec!["-p".into(), path.to_string_lossy().into_owned()]);
     let output = exec::exec(&spec)?;
     Ok(String::from_utf8_lossy(&output.stdout).into_owned())
 }
@@ -416,18 +401,11 @@ pub fn generate_report(
         Some(obj) if obj.exists() => {
             let hash = hash_file(obj)?;
             let size = file_size(obj)?;
-            let (sections, raw_sections) = run_objdump_sections(
-                &pipeline.toolchain.disassembler,
-                obj,
-            )?;
-            let (symbols, raw_symbols) = run_objdump_symbols(
-                &pipeline.toolchain.disassembler,
-                obj,
-            )?;
-            let raw_private = run_objdump_private_headers(
-                &pipeline.toolchain.disassembler,
-                obj,
-            )?;
+            let (sections, raw_sections) =
+                run_objdump_sections(&pipeline.toolchain.disassembler, obj)?;
+            let (symbols, raw_symbols) =
+                run_objdump_symbols(&pipeline.toolchain.disassembler, obj)?;
+            let raw_private = run_objdump_private_headers(&pipeline.toolchain.disassembler, obj)?;
             let is_dyn = is_dynamic(&raw_private);
             Some(ArtifactFileInfo {
                 path: obj.to_string_lossy().into_owned(),
@@ -451,8 +429,7 @@ pub fn generate_report(
         run_objdump_sections(&pipeline.toolchain.disassembler, exe_path)?;
     let (exe_symbols, exe_raw_symbols) =
         run_objdump_symbols(&pipeline.toolchain.disassembler, exe_path)?;
-    let exe_raw_private =
-        run_objdump_private_headers(&pipeline.toolchain.disassembler, exe_path)?;
+    let exe_raw_private = run_objdump_private_headers(&pipeline.toolchain.disassembler, exe_path)?;
     let exe_is_dynamic = is_dynamic(&exe_raw_private);
 
     let executable = ArtifactFileInfo {
@@ -488,9 +465,8 @@ pub fn generate_report(
 impl ArtifactReport {
     /// Serialise to pretty-printed JSON.
     pub fn to_json_pretty(&self) -> Result<String, BuildError> {
-        serde_json::to_string_pretty(self).map_err(|e| {
-            BuildError::Spawn("serde".into(), e.to_string())
-        })
+        serde_json::to_string_pretty(self)
+            .map_err(|e| BuildError::Spawn("serde".into(), e.to_string()))
     }
 
     /// Render a human-readable summary (suitable for terminal output).
@@ -681,19 +657,21 @@ SYMBOL TABLE:
         let report = ArtifactReport {
             source: SourceInfo {
                 path: "test.asm".into(),
-                hash: FileHash { sha256: "aa".repeat(32) },
-            },
-            tool_versions: vec![
-                ToolVersionInfo {
-                    tool: "nasm".into(),
-                    version: "NASM 2.16".into(),
+                hash: FileHash {
+                    sha256: "aa".repeat(32),
                 },
-            ],
+            },
+            tool_versions: vec![ToolVersionInfo {
+                tool: "nasm".into(),
+                version: "NASM 2.16".into(),
+            }],
             command_records: vec![],
             object: None,
             executable: ArtifactFileInfo {
                 path: "test".into(),
-                hash: FileHash { sha256: "bb".repeat(32) },
+                hash: FileHash {
+                    sha256: "bb".repeat(32),
+                },
                 size: 1234,
                 sections: vec![],
                 symbols: vec![],
@@ -734,14 +712,14 @@ SYMBOL TABLE:
         let report = ArtifactReport {
             source: SourceInfo {
                 path: "exit.asm".into(),
-                hash: FileHash { sha256: "aa".repeat(32) },
-            },
-            tool_versions: vec![
-                ToolVersionInfo {
-                    tool: "nasm".into(),
-                    version: "NASM 2.16".into(),
+                hash: FileHash {
+                    sha256: "aa".repeat(32),
                 },
-            ],
+            },
+            tool_versions: vec![ToolVersionInfo {
+                tool: "nasm".into(),
+                version: "NASM 2.16".into(),
+            }],
             command_records: vec![CommandRecordJson {
                 label: "assemble".into(),
                 command: "nasm -f elf64 exit.asm -o exit.o".into(),
@@ -755,7 +733,9 @@ SYMBOL TABLE:
             object: None,
             executable: ArtifactFileInfo {
                 path: "exit".into(),
-                hash: FileHash { sha256: "bb".repeat(32) },
+                hash: FileHash {
+                    sha256: "bb".repeat(32),
+                },
                 size: 16384,
                 sections: vec![SectionInfo {
                     name: ".text".into(),
@@ -836,8 +816,7 @@ SYMBOL TABLE:
         let obj = out_dir.join("exit.o");
         let exe = out_dir.join("exit");
 
-        let (ao, lo) = assemble_and_link(&pipe, source, &obj, &exe)
-            .expect("assemble+link");
+        let (ao, lo) = assemble_and_link(&pipe, source, &obj, &exe).expect("assemble+link");
 
         // Run (if QEMU available)
         let run_out = pipe.run(&exe).ok();
@@ -866,15 +845,8 @@ SYMBOL TABLE:
             },
         ];
 
-        let report = generate_report(
-            &pipe,
-            source,
-            Some(&obj),
-            &exe,
-            records,
-            run_out.as_ref(),
-        )
-        .expect("generate_report");
+        let report = generate_report(&pipe, source, Some(&obj), &exe, records, run_out.as_ref())
+            .expect("generate_report");
 
         // Verify report structure
         assert_eq!(report.source.hash.sha256.len(), 64);

@@ -88,7 +88,9 @@ impl Pipeline {
                 || {
                     // No tool found — use the preferred candidate name
                     // so error messages are meaningful.
-                    slot.candidates.first().map_or("?", |k| k.binary())
+                    slot.candidates
+                        .first()
+                        .map_or("?", |k| k.binary())
                         .to_string()
                 },
                 |p| p.kind.binary().to_string(),
@@ -255,15 +257,10 @@ impl Pipeline {
                 .to_string()
         } else {
             // Fallback: extract from format string
-            format
-                .split('-')
-                .nth(1)
-                .unwrap_or("?")
-                .to_string()
+            format.split('-').nth(1).unwrap_or("?").to_string()
         };
 
-        let is_executable =
-            header.contains("EXECUTABLE") || header.contains("executable");
+        let is_executable = header.contains("EXECUTABLE") || header.contains("executable");
 
         Ok(ArchitectureInfo {
             format,
@@ -281,10 +278,8 @@ impl Pipeline {
     pub fn run(&self, executable: &Path) -> Result<CommandOutput, BuildError> {
         match &self.toolchain.runner {
             Some(runner) => {
-                let spec = CommandSpec::new(
-                    runner,
-                    vec![executable.to_string_lossy().into_owned()],
-                );
+                let spec =
+                    CommandSpec::new(runner, vec![executable.to_string_lossy().into_owned()]);
                 exec::exec(&spec)
             }
             None => Err(BuildError::ProgramNotFound(
@@ -331,10 +326,7 @@ impl Pipeline {
             if run.exit_code != Some(expected) {
                 return Err(BuildError::Spawn(
                     "run".into(),
-                    format!(
-                        "expected exit code {expected}, got {:?}",
-                        run.exit_code,
-                    ),
+                    format!("expected exit code {expected}, got {:?}", run.exit_code,),
                 ));
             }
         }
@@ -412,7 +404,9 @@ mod tests {
         let result = pipe.assemble(source, &obj, "elf64");
         assert!(result.is_ok(), "assemble failed: {:?}", result.err());
         let output = result.unwrap();
-        assert!(output.success(), "nasm exited {:?}: {}",
+        assert!(
+            output.success(),
+            "nasm exited {:?}: {}",
             output.exit_code,
             String::from_utf8_lossy(&output.stderr),
         );
@@ -434,31 +428,39 @@ mod tests {
         let exe = out_dir.join("exit");
 
         // Assemble
-        let ao = pipe.assemble_reproducible(source, &obj, "elf64")
+        let ao = pipe
+            .assemble_reproducible(source, &obj, "elf64")
             .expect("assemble");
         assert!(ao.success(), "assemble failed");
         assert!(obj.exists());
 
         // Link
-        let lo = pipe.link_reproducible(&[&obj], &exe)
-            .expect("link");
+        let lo = pipe.link_reproducible(&[&obj], &exe).expect("link");
         assert!(lo.success(), "link failed");
         assert!(exe.exists());
 
         // Verify architecture
-        let arch = pipe.verify_architecture(&exe)
-            .expect("verify");
-        assert!(arch.format.contains("x86-64") || arch.format.contains("x86_64"),
-            "unexpected format: {}", arch.format);
-        assert!(arch.is_executable,
+        let arch = pipe.verify_architecture(&exe).expect("verify");
+        assert!(
+            arch.format.contains("x86-64") || arch.format.contains("x86_64"),
+            "unexpected format: {}",
+            arch.format
+        );
+        assert!(
+            arch.is_executable,
             "linked file should be executable, got format={}, arch={}",
-            arch.format, arch.arch);
+            arch.format, arch.arch
+        );
 
         // Run (only if QEMU available)
         if pipe.toolchain.runner.is_some() {
             let ro = pipe.run(&exe).expect("run");
-            assert_eq!(ro.exit_code, Some(42),
-                "expected exit code 42, got {:?}", ro.exit_code);
+            assert_eq!(
+                ro.exit_code,
+                Some(42),
+                "expected exit code 42, got {:?}",
+                ro.exit_code
+            );
         }
 
         // Clean up
@@ -479,8 +481,7 @@ mod tests {
         pipe.assemble(source, &obj, "elf64").expect("assemble");
 
         let arch = pipe.verify_architecture(&obj).expect("verify");
-        assert!(!arch.is_executable,
-            "object file should NOT be executable");
+        assert!(!arch.is_executable, "object file should NOT be executable");
 
         let _ = std::fs::remove_dir_all(&out_dir);
     }

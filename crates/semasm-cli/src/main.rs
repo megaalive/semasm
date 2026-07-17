@@ -5,10 +5,12 @@
 
 #![forbid(unsafe_code)]
 
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::process::ExitCode;
 
 use clap::{Parser, Subcommand, ValueEnum};
+use semasm_build::report::{self, CommandRecordJson};
+use semasm_build::Pipeline;
 use semasm_contract::{
     check_file, explain_code, format_diagnostics_terminal, CheckReportJson, ContractCode,
 };
@@ -51,6 +53,23 @@ enum Commands {
     Target {
         #[command(subcommand)]
         action: TargetCmd,
+    },
+    /// Assemble, link, verify, and report a source file.
+    Build {
+        /// Path to a `.asm` source file.
+        source: PathBuf,
+        /// Target triple (default: `x86_64-unknown-linux-gnu`).
+        #[arg(long, default_value = "x86_64-unknown-linux-gnu")]
+        target: String,
+        /// Output directory (default: temp dir).
+        #[arg(long)]
+        out_dir: Option<PathBuf>,
+        /// Skip running the built executable under QEMU.
+        #[arg(long)]
+        no_run: bool,
+        /// Output format.
+        #[arg(long, value_enum, default_value_t = OutputFormat::Terminal)]
+        format: OutputFormat,
     },
     /// Contract commands.
     Contract {
@@ -117,6 +136,13 @@ fn main() -> ExitCode {
         Some(Commands::Target { action }) => match action {
             TargetCmd::Doctor { target, format } => do_target_doctor(&target, format),
         },
+        Some(Commands::Build {
+            source,
+            target,
+            out_dir,
+            no_run,
+            format,
+        }) => do_build(&source, &target, out_dir.as_deref(), no_run, format),
         Some(Commands::Contract { action }) => match action {
             ContractCmd::Check { path, format } => do_contract_check(&path, format),
         },
@@ -306,6 +332,183 @@ fn do_contract_check(path: &std::path::Path, format: OutputFormat) -> ExitCode {
     } else {
         ExitCode::from(1)
     }
+}
+
+#[allow(clippy::too_many_lines)]
+fn do_build(
+    source: &Path,
+    target_str: &str,
+    out_dir: Option<&Path>,
+    no_run: bool,
+    format: OutputFormat,
+) -> ExitCode {
+    // Resolve target
+    let identity = match TargetIdentity::parse_known(target_str) {
+        Ok(id) => id,
+        Err(e) => {
+            eprintln!("error: {e}");
+            return ExitCode::from(2);
+        }
+    };
+
+    // Discover toolchain
+    let pipe = Pipeline::discover(&identity);
+    if !pipe.all_tools_found() {
+        eprintln!("warning: not all required tools are available on PATH");
+        eprintln!("  run `semasm target doctor {target_str}` for details");
+    }
+
+    // Prepare output directory
+    let mut tmp_dir = PathBuf::new();
+    let mut created_tmp = false;
+    let out_dir: &Path = if let Some(d) = out_dir {
+        d
+    } else {
+        tmp_dir = std::env::temp_dir().join(format!("semasm-build-{}", std::process::id(),));
+        let _ = std::fs::create_dir_all(&tmp_dir);
+        created_tmp = true;
+        &tmp_dir
+    };
+    if let Err(e) = std::fs::create_dir_all(out_dir) {
+        eprintln!(
+            "error: cannot create output directory `{}`: {e}",
+            out_dir.display()
+        );
+        return ExitCode::from(1);
+    }
+
+    // Step 1: assemble
+    let obj_path = out_dir.join("exit.o");
+    let exe_path = out_dir.join("exit");
+
+    let ao = match pipe.assemble_reproducible(source, &obj_path, "elf64") {
+        Ok(o) => o,
+        Err(e) => {
+            eprintln!("assemble error: {e}");
+            return ExitCode::from(1);
+        }
+    };
+    if !ao.success() {
+        eprintln!(
+            "assemble failed (exit={:?}): {}",
+            ao.exit_code,
+            String::from_utf8_lossy(&ao.stderr),
+        );
+        return ExitCode::from(1);
+    }
+
+    // Step 2: link
+    let lo = match pipe.link_reproducible(&[&obj_path], &exe_path) {
+        Ok(o) => o,
+        Err(e) => {
+            eprintln!("link error: {e}");
+            return ExitCode::from(1);
+        }
+    };
+    if !lo.success() {
+        eprintln!(
+            "link failed (exit={:?}): {}",
+            lo.exit_code,
+            String::from_utf8_lossy(&lo.stderr),
+        );
+        return ExitCode::from(1);
+    }
+
+    // Step 3: verify architecture
+    let arch = match pipe.verify_architecture(&exe_path) {
+        Ok(a) => a,
+        Err(e) => {
+            eprintln!("verify error: {e}");
+            return ExitCode::from(1);
+        }
+    };
+    if !arch.is_executable {
+        eprintln!(
+            "error: linked file is not executable (format={})",
+            arch.format
+        );
+        return ExitCode::from(1);
+    }
+
+    // Step 4: run (optional)
+    let run_output = if no_run {
+        None
+    } else if let Ok(o) = pipe.run(&exe_path) {
+        Some(o)
+    } else {
+        eprintln!("warning: runner not available (install qemu-user for this target)");
+        None
+    };
+
+    // Step 5: generate report
+    let records = vec![
+        CommandRecordJson {
+            label: "assemble".into(),
+            command: format!(
+                "{} -O0 -w+error -f elf64 {} -o {}",
+                pipe.toolchain.assembler,
+                source.display(),
+                obj_path.display(),
+            ),
+            exit_code: ao.exit_code,
+            stdout: String::from_utf8_lossy(&ao.stdout).into_owned(),
+            stderr: String::from_utf8_lossy(&ao.stderr).into_owned(),
+            duration_secs: ao.duration.as_secs_f64(),
+            timed_out: ao.timed_out,
+            success: ao.success(),
+        },
+        CommandRecordJson {
+            label: "link".into(),
+            command: format!(
+                "{} --build-id=none --hash-style=sysv -o {} {}",
+                pipe.toolchain.linker,
+                exe_path.display(),
+                obj_path.display(),
+            ),
+            exit_code: lo.exit_code,
+            stdout: String::from_utf8_lossy(&lo.stdout).into_owned(),
+            stderr: String::from_utf8_lossy(&lo.stderr).into_owned(),
+            duration_secs: lo.duration.as_secs_f64(),
+            timed_out: lo.timed_out,
+            success: lo.success(),
+        },
+    ];
+
+    let artifact = match report::generate_report(
+        &pipe,
+        source,
+        Some(&obj_path),
+        &exe_path,
+        records,
+        run_output.as_ref(),
+    ) {
+        Ok(r) => r,
+        Err(e) => {
+            eprintln!("report generation error: {e}");
+            return ExitCode::from(1);
+        }
+    };
+
+    // Output
+    match format {
+        OutputFormat::Terminal => {
+            print!("{}", artifact.to_terminal());
+        }
+        OutputFormat::Json => match artifact.to_json_pretty() {
+            Ok(j) => println!("{j}"),
+            Err(e) => {
+                eprintln!("JSON serialisation error: {e}");
+                return ExitCode::from(1);
+            }
+        },
+    }
+
+    // Clean up temp dir if we created one
+    if created_tmp {
+        let _ = std::fs::remove_dir_all(&tmp_dir);
+    }
+
+    ExitCode::SUCCESS
 }
 
 #[cfg(test)]
