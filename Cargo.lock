@@ -441,6 +441,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "semasm-riscv"
+version = "0.1.0"
+dependencies = [
+ "semasm-asir",
+ "semasm-decode",
+ "serde",
+]
+
+[[package]]
 name = "semasm-target"
 version = "0.1.0"
 dependencies = [
