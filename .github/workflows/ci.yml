@@ -20,17 +20,6 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Install system dependencies (ubuntu)
-        if: runner.os == 'Linux'
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y libcapstone-dev
-
-      - name: Install system dependencies (windows)
-        if: runner.os == 'Windows'
-        run: |
-          choco install capstone --version=5.0.1
-
       - name: Install Rust toolchain
         uses: dtolnay/rust-toolchain@stable
         with:
@@ -59,11 +48,6 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-
-      - name: Install system dependencies
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y libcapstone-dev
 
       - name: Install Rust toolchain
         uses: dtolnay/rust-toolchain@stable
