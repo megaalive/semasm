@@ -161,6 +161,100 @@ fn decode_x86_64_inner(
     ))
 }
 
+/// Decode an AArch64 (ARMv8-A 64-bit) machine-code buffer into normalised
+/// instructions.
+///
+/// `base_address` is the load address assigned to the first byte of `code`.
+///
+/// When the `capstone` feature is disabled this returns
+/// [`DecodeError::Unsupported`]; the normalised types are still usable
+/// downstream so core builds without Capstone.
+pub fn decode_aarch64(
+    code: &[u8],
+    base_address: u64,
+) -> Result<Vec<PhysicalInstruction>, DecodeError> {
+    if code.is_empty() {
+        return Err(DecodeError::EmptyInput);
+    }
+    decode_aarch64_inner(code, base_address)
+}
+
+#[cfg(feature = "capstone")]
+fn decode_aarch64_inner(
+    code: &[u8],
+    base_address: u64,
+) -> Result<Vec<PhysicalInstruction>, DecodeError> {
+    use capstone::prelude::*;
+
+    let cs = Capstone::new()
+        .arm64()
+        .mode(capstone::arch::arm64::ArchMode::Arm)
+        .detail(true)
+        .build()
+        .map_err(|e| DecodeError::InitFailed(format!("{e:?}")))?;
+
+    let insns = cs
+        .disasm_all(code, base_address)
+        .map_err(|e| DecodeError::DisasmFailed(format!("{e:?}")))?;
+
+    let mut out = Vec::with_capacity(insns.len());
+    for insn in insns.iter() {
+        let address = insn.address();
+        let bytes = insn.bytes().to_vec();
+        let mnemonic = insn.mnemonic().unwrap_or("").to_string();
+        let op_str = insn.op_str().unwrap_or("");
+        let operands: Vec<String> = if op_str.is_empty() {
+            Vec::new()
+        } else {
+            op_str.split(',').map(|s| s.trim().to_string()).collect()
+        };
+
+        let (read_regs, write_regs, groups) = match cs.insn_detail(insn) {
+            Ok(detail) => {
+                let read_regs = detail
+                    .regs_read()
+                    .iter()
+                    .filter_map(|r| cs.reg_name(*r))
+                    .collect();
+                let write_regs = detail
+                    .regs_write()
+                    .iter()
+                    .filter_map(|r| cs.reg_name(*r))
+                    .collect();
+                let groups: Vec<String> = detail
+                    .groups()
+                    .iter()
+                    .filter_map(|g| cs.group_name(*g))
+                    .collect();
+                (read_regs, write_regs, groups)
+            }
+            Err(_) => (Vec::new(), Vec::new(), Vec::new()),
+        };
+
+        out.push(PhysicalInstruction {
+            address,
+            bytes,
+            mnemonic,
+            operands,
+            read_regs,
+            write_regs,
+            groups,
+            detail_available: true,
+        });
+    }
+    Ok(out)
+}
+
+#[cfg(not(feature = "capstone"))]
+fn decode_aarch64_inner(
+    _code: &[u8],
+    _base_address: u64,
+) -> Result<Vec<PhysicalInstruction>, DecodeError> {
+    Err(DecodeError::Unsupported(
+        "AArch64 decoding requires the `capstone` feature".to_string(),
+    ))
+}
+
 /// Serialise a slice of instructions to stable, deterministic JSON.
 pub fn to_json(instrs: &[PhysicalInstruction]) -> Result<String, DecodeError> {
     serde_json::to_string_pretty(instrs).map_err(|e| DecodeError::DisasmFailed(e.to_string()))
@@ -254,5 +348,34 @@ mod tests {
         assert_eq!(call.mnemonic, "call");
         assert!(call.detail_available);
         assert!(call.groups.iter().any(|g| g == "call"));
+    }
+
+    #[cfg(feature = "capstone")]
+    #[test]
+    fn aarch64_ret_and_nop_decode() {
+        // `ret` (c0 03 5f d6) and `nop` (1f 20 03 d5), little-endian.
+        let code = [0xc0u8, 0x03, 0x5f, 0xd6, 0x1f, 0x20, 0x03, 0xd5];
+        let instrs = decode_aarch64(&code, 0x0040_0000).expect("decode");
+        assert_eq!(instrs.len(), 2);
+        assert_eq!(instrs[0].address, 0x0040_0000);
+        assert_eq!(instrs[0].mnemonic, "ret");
+        assert_eq!(instrs[0].bytes, vec![0xc0, 0x03, 0x5f, 0xd6]);
+        assert!(instrs[0].detail_available);
+        assert_eq!(instrs[1].mnemonic, "nop");
+    }
+
+    #[cfg(feature = "capstone")]
+    #[test]
+    fn aarch64_mov_imm_decodes_with_operand() {
+        // `mov x0, #1` → in A64 this is `movz x0, #1` (20 00 80 52) plus
+        // the following `ret` (c0 03 5f d6). We just assert the decoder
+        // yields the mov and its operands, whatever exact encoding Capstone
+        // prefers.
+        let code = [0x20u8, 0x00, 0x80, 0x52, 0xc0, 0x03, 0x5f, 0xd6];
+        let instrs = decode_aarch64(&code, 0x0).expect("decode");
+        assert_eq!(instrs.len(), 2);
+        assert!(instrs[0].mnemonic.starts_with("mov"));
+        assert!(!instrs[0].operands.is_empty());
+        assert_eq!(instrs[1].mnemonic, "ret");
     }
 }

@@ -1,0 +1,16 @@
+[package]
+name = "semasm-aarch64"
+version = "0.1.0"
+edition = "2021"
+license = "MIT"
+description = "AArch64 register/alias model and AAPCS64 rules for SemASM"
+
+[dependencies]
+serde = { workspace = true, features = ["derive"] }
+semasm-decode = { workspace = true }
+semasm-asir = { workspace = true }
+
+[dev-dependencies]
+
+[lints]
+workspace = true

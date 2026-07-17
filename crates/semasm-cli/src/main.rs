@@ -160,6 +160,19 @@ enum Commands {
         #[arg(long, value_enum, default_value_t = OutputFormat::Terminal)]
         format: OutputFormat,
     },
+    /// Check a function body against the AAPCS64 ABI
+    /// (decode + lower + ABI analysis).
+    #[cfg(feature = "capstone")]
+    Aarch64Abi {
+        /// Path to a raw binary blob containing one function body.
+        path: PathBuf,
+        /// Base address assigned to the first byte (default:0; `0x` hex ok).
+        #[arg(long, default_value = "0")]
+        base: String,
+        /// Output format.
+        #[arg(long, value_enum, default_value_t = OutputFormat::Terminal)]
+        format: OutputFormat,
+    },
 }
 
 #[derive(Debug, Subcommand)]
@@ -343,6 +356,17 @@ fn main() -> ExitCode {
                 }
             };
             do_win64_abi_inspect(&path, base, format)
+        }
+        #[cfg(feature = "capstone")]
+        Some(Commands::Aarch64Abi { path, base, format }) => {
+            let base = match parse_base(&base) {
+                Ok(b) => b,
+                Err(e) => {
+                    eprintln!("error: {e}");
+                    return ExitCode::from(2);
+                }
+            };
+            do_aarch64_abi_inspect(&path, base, format)
         }
     }
 }
@@ -1839,6 +1863,135 @@ fn json_win64_abi_report(
             .findings
             .iter()
             .map(|f| JsonWin64AbiFinding {
+                code: f.code.to_string(),
+                severity: f.severity_str().to_string(),
+                at: f.at,
+                message: f.message.clone(),
+            })
+            .collect(),
+    }
+}
+
+/// Decode a raw binary blob, lower it, and run the AAPCS64 ABI
+/// analysis over the (single) function body.
+#[cfg(feature = "capstone")]
+fn do_aarch64_abi_inspect(path: &Path, base: u64, format: OutputFormat) -> ExitCode {
+    let code = match std::fs::read(path) {
+        Ok(b) => b,
+        Err(e) => {
+            eprintln!("{}: error: failed to read file: {e}", path.display());
+            return ExitCode::from(1);
+        }
+    };
+
+    let instrs = match semasm_decode::decode_aarch64(&code, base) {
+        Ok(i) => i,
+        Err(DecodeError::Unsupported(_)) => {
+            eprintln!(
+                "error: AArch64 decoding is not compiled into this build; \
+                 rebuild `semasm-cli` with the `capstone` feature"
+            );
+            return ExitCode::from(1);
+        }
+        Err(e) => {
+            eprintln!("error: {e}");
+            return ExitCode::from(1);
+        }
+    };
+
+    // Lower every decoded instruction; Unsupported ones are dropped before
+    // the ABI walk.
+    let lowered: Vec<semasm_aarch64::lower::LoweredInstr> = instrs
+        .iter()
+        .filter_map(|p| match semasm_aarch64::lower::lower(p) {
+            semasm_aarch64::lower::Lowering::Lowered(l) => Some(l),
+            semasm_aarch64::lower::Lowering::Unsupported { .. } => None,
+        })
+        .collect();
+
+    let report = semasm_aarch64::abi::analyze(&lowered);
+
+    match format {
+        OutputFormat::Json => {
+            match serde_json::to_string_pretty(&json_aarch64_abi_report(&report, lowered.len())) {
+                Ok(s) => {
+                    println!("{s}");
+                    ExitCode::SUCCESS
+                }
+                Err(e) => {
+                    eprintln!("failed to serialize JSON: {e}");
+                    ExitCode::from(1)
+                }
+            }
+        }
+        OutputFormat::Terminal => {
+            println!("instructions lowered: {}", lowered.len());
+            println!("leaf function:       {}", report.is_leaf);
+            println!("final SP delta:      {}", report.final_sp_delta);
+            println!("call sites:          {}", report.call_sites.len());
+            println!();
+            if report.findings.is_empty() {
+                println!("AAPCS64 ABI: clean — no AArch64 violations detected");
+            } else {
+                for f in &report.findings {
+                    let tag = match f.severity {
+                        semasm_aarch64::abi::Severity::Error => "ERROR  ",
+                        semasm_aarch64::abi::Severity::Warning => "warning",
+                        semasm_aarch64::abi::Severity::Info => "info   ",
+                    };
+                    let where_ = match f.at {
+                        Some(i) => format!(" @{i}"),
+                        None => String::new(),
+                    };
+                    println!("[{}] {} ({}{})", f.code, f.severity_str(), tag, where_);
+                    println!("        {}", f.message);
+                }
+            }
+            if report.is_clean() {
+                ExitCode::SUCCESS
+            } else {
+                ExitCode::from(1)
+            }
+        }
+    }
+}
+
+/// A JSON-friendly view of [`semasm_aarch64::abi::AbiReport`].
+#[cfg(feature = "capstone")]
+#[derive(serde::Serialize)]
+struct JsonAarch64AbiReport {
+    instructions_lowered: usize,
+    is_leaf: bool,
+    final_sp_delta: i64,
+    call_site_count: usize,
+    clean: bool,
+    findings: Vec<JsonAarch64AbiFinding>,
+}
+
+#[cfg(feature = "capstone")]
+#[derive(serde::Serialize)]
+struct JsonAarch64AbiFinding {
+    code: String,
+    severity: String,
+    at: Option<usize>,
+    message: String,
+}
+
+#[cfg(feature = "capstone")]
+fn json_aarch64_abi_report(
+    r: &semasm_aarch64::abi::AbiReport,
+    lowered_count: usize,
+) -> JsonAarch64AbiReport {
+    JsonAarch64AbiReport {
+        instructions_lowered: lowered_count,
+        is_leaf: r.is_leaf,
+        final_sp_delta: r.final_sp_delta,
+        call_site_count: r.call_sites.len(),
+        clean: r.is_clean(),
+        findings: r
+            .findings
+            .iter()
+            .map(|f| JsonAarch64AbiFinding {
                 code: f.code.to_string(),
                 severity: f.severity_str().to_string(),
                 at: f.at,
