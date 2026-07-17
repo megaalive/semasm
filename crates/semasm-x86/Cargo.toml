@@ -7,6 +7,8 @@ description = "x86-64 register/alias model and System V register classes for Sem
 
 [dependencies]
 serde = { workspace = true, features = ["derive"] }
+semasm-decode = { workspace = true }
+semasm-asir = { workspace = true }
 
 [dev-dependencies]
 

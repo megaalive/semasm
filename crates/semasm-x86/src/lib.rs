@@ -17,6 +17,8 @@
 
 use serde::{Deserialize, Serialize};
 
+pub mod lower;
+
 /// Bit width of a register view.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub enum Width {
@@ -92,6 +94,24 @@ impl Gp {
     #[must_use]
     pub const fn low32(self) -> Register {
         Register::gp(self, Width::B32, false)
+    }
+
+    /// The 16-bit view (`AX`, `CX`, ...) of this register.
+    #[must_use]
+    pub const fn low16(self) -> Register {
+        Register::gp(self, Width::B16, false)
+    }
+
+    /// The low 8-bit view (`AL`) of this register.
+    #[must_use]
+    pub const fn low8(self) -> Register {
+        Register::gp(self, Width::B8, false)
+    }
+
+    /// The high 8-bit view (`AH`) of this register.
+    #[must_use]
+    pub const fn high8(self) -> Register {
+        Register::gp(self, Width::B8, true)
     }
 }
 
