@@ -93,3 +93,124 @@ impl CommandRecord {
         Self::new(label, spec, output, SystemTime::now())
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use serde_json;
+    use std::time::Duration;
+
+    fn sample_spec() -> CommandSpec {
+        CommandSpec::new("nasm", vec!["-f".into(), "elf64".into(), "exit.asm".into()])
+            .with_timeout(Duration::from_secs(15))
+            .with_env_allowlist(vec!["PATH".into()])
+    }
+
+    fn sample_output() -> CommandOutput {
+        CommandOutput {
+            exit_status: None,
+            exit_code: Some(0),
+            stdout: b"nasm: warning: ...\n".to_vec(),
+            stderr: Vec::new(),
+            duration: Duration::from_millis(123),
+            timed_out: false,
+        }
+    }
+
+    #[test]
+    fn record_roundtrip() {
+        let spec = sample_spec();
+        let output = sample_output();
+        let started = SystemTime::UNIX_EPOCH + Duration::from_secs(1_700_000_000);
+        let rec = CommandRecord::new("assemble", &spec, &output, started);
+        assert_eq!(rec.label, "assemble");
+        assert_eq!(rec.command.program, "nasm");
+        assert_eq!(rec.command.args, vec!["-f", "elf64", "exit.asm"]);
+        assert!(rec.command.env_restricted);
+        assert!((rec.command.timeout_secs - 15.0).abs() < 1e-9);
+        assert_eq!(rec.output.exit_code, Some(0));
+        assert!(rec.output.stdout.contains("nasm: warning"));
+        assert!((rec.output.duration_secs - 0.123).abs() < 1e-9);
+        assert!(!rec.output.timed_out);
+        assert!(rec.output.success);
+        assert_eq!(rec.started_at, 1_700_000_000);
+    }
+
+    #[test]
+    fn record_now() {
+        let spec = sample_spec();
+        let output = sample_output();
+        let rec = CommandRecord::now("link", &spec, &output);
+        assert_eq!(rec.label, "link");
+        // Timestamp should be close to "now".
+        let now = SystemTime::now()
+            .duration_since(SystemTime::UNIX_EPOCH)
+            .map_or(0, |d| d.as_secs());
+        assert!(rec.started_at <= now);
+        assert!(rec.started_at > now - 2); // at most 2 seconds ago.
+    }
+
+    #[test]
+    fn record_json_serializes() {
+        let spec = sample_spec();
+        let output = sample_output();
+        let rec = CommandRecord::now("test", &spec, &output);
+        let json = serde_json::to_string_pretty(&rec).unwrap();
+        assert!(json.contains("\"program\": \"nasm\""));
+        assert!(json.contains("\"label\": \"test\""));
+        assert!(json.contains("\"exit_code\": 0"));
+        assert!(json.contains("\"success\": true"));
+    }
+
+    #[test]
+    fn record_non_zero_exit() {
+        let output = CommandOutput {
+            exit_status: None,
+            exit_code: Some(1),
+            stdout: Vec::new(),
+            stderr: b"error: something failed\n".to_vec(),
+            duration: Duration::from_millis(50),
+            timed_out: false,
+        };
+        let rec =
+            CommandRecord::now("fail", &sample_spec(), &output);
+        assert!(!rec.output.success);
+        assert_eq!(rec.output.exit_code, Some(1));
+        assert!(rec.output.stderr.contains("something failed"));
+    }
+
+    #[test]
+    fn record_timed_out() {
+        let output = CommandOutput {
+            exit_status: None,
+            exit_code: None,
+            stdout: b"partial output\n".to_vec(),
+            stderr: Vec::new(),
+            duration: Duration::from_secs(30),
+            timed_out: true,
+        };
+        let rec = CommandRecord::now("timeout", &sample_spec(), &output);
+        assert!(rec.output.timed_out);
+        assert_eq!(rec.output.exit_code, None);
+        assert!(!rec.output.success);
+    }
+
+    #[test]
+    fn record_no_env_restriction() {
+        let spec = CommandSpec::new("true", vec![]);
+        let output = sample_output();
+        let rec = CommandRecord::now("open", &spec, &output);
+        assert!(!rec.command.env_restricted);
+    }
+
+    #[test]
+    fn record_working_dir() {
+        let spec = sample_spec().with_working_dir("/tmp/build");
+        let output = sample_output();
+        let rec = CommandRecord::now("build", &spec, &output);
+        assert_eq!(
+            rec.command.working_dir,
+            Some(PathBuf::from("/tmp/build")),
+        );
+    }
+}
