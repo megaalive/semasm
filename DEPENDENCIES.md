@@ -20,6 +20,9 @@ Every third-party crate must have a written reason. Prefer the Rust standard lib
 |---|---|---|
 | `thiserror` | `semasm-core` | Explicit, ergonomic error enums without large ecosystem surface |
 | `clap` (derive) | `semasm-cli` only | Standard CLI parsing for the tool binary |
+| `serde` | `semasm-contract` | Schema derive for contracts and JSON diagnostics |
+| `serde_json` | `semasm-contract`, `semasm-cli` | JSON diagnostic / check reports |
+| `toml` | `semasm-contract` | Contract file format (`*.sem.toml`) |
 
 Workspace path crates (`semasm-core`, `semasm-contract`, `semasm-asir`, `semasm-target`) are first-party.
 
@@ -27,7 +30,6 @@ Workspace path crates (`semasm-core`, `semasm-contract`, `semasm-asir`, `semasm-
 
 | Category | Likely crates | When |
 |---|---|---|
-| Serialization | `serde`, `serde_json`, TOML parser | VS-01 contract parsing |
 | Object files | `object` | object inspection slices |
 | Test temp dirs | test-only helper | integration tests |
 

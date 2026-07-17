@@ -13,6 +13,10 @@ keywords.workspace = true
 
 [dependencies]
 semasm-core = { workspace = true }
+semasm-target = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+toml = { workspace = true }
 
 [lints]
 workspace = true

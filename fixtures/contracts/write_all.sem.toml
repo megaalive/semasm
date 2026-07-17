@@ -1,0 +1,44 @@
+contract_version = "0.1"
+
+[function]
+name = "write_all"
+summary = "Write all requested bytes or return an explicit failure status."
+visibility = "internal"
+
+[[function.parameters]]
+name = "buffer"
+type = "ptr<const u8>"
+role = "input"
+
+[[function.parameters]]
+name = "length"
+type = "usize"
+role = "input"
+
+[[function.returns]]
+name = "written"
+type = "usize"
+
+[[function.returns]]
+name = "status"
+type = "status"
+
+[[function.requires]]
+expression = "buffer.valid_for_read(length)"
+reason = "The function reads exactly length bytes from buffer."
+
+[[function.ensures]]
+expression = "status.ok implies written == length"
+
+[[function.effects]]
+kind = "memory_read"
+region = "buffer[0..length]"
+
+[[function.effects]]
+kind = "platform_io"
+resource = "stdout"
+
+[function.constraints]
+no_heap = true
+no_recursion = true
+bounded_stack_bytes = 128

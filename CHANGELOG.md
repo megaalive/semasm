@@ -14,7 +14,11 @@ once the first release is tagged. Until then, the API is unstable.
 - `semasm --version` / `semasm version` and `semasm status` commands.
 - Repository governance documents, dual licensing, CI skeleton, and mdBook stub.
 - Core types: diagnostics, errors, spans, IDs; ASIR and target identity shells.
+- **VS-01:** portable contract schema, semantic type parser, expression subset, codes `CTR001`–`CTR007`.
+- `semasm contract check <path>` with terminal and JSON output.
+- `semasm --explain CTR003` / `semasm explain CTR003`.
+- Fixture `fixtures/contracts/write_all.sem.toml` and compatibility policy in `crates/semasm-contract/COMPATIBILITY.md`.
 
 ### Notes
 
-- No architecture backends or assembly demos yet (VS-00 only).
+- No architecture backends or assembly demos yet (VS-02+).

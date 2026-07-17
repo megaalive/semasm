@@ -1,0 +1,7 @@
+contract_version = "0.1"
+
+[function]
+name = "bad"
+[[function.parameters]]
+name = "p"
+type = "&str"

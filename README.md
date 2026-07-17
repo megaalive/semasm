@@ -2,7 +2,7 @@
 
 **SemASM** is multi-architecture semantic infrastructure for software written directly in assembly language. It supplies portable semantic contracts, target kits, analysis (ASIR), and verification so humans and AI agents can produce and check minimal target programs without shipping a high-level language runtime.
 
-> **Status:** early bootstrap (vertical slice VS-00). The workspace builds and the CLI prints a version. There are **no** production architecture backends, assemblers integration, or end-to-end demos yet. Do not treat planned targets as supported.
+> **Status:** early development. VS-00 bootstrap and VS-01 contract checking are in tree. There are **no** production architecture backends, assembler integration, or end-to-end assembly demos yet. Do not treat planned targets as supported.
 
 ## Architecture (build-time only)
 
@@ -24,6 +24,8 @@ Requirements: a recent stable Rust toolchain (`rustfmt`, `clippy`).
 cargo build -p semasm-cli
 cargo run -p semasm-cli -- --version
 cargo run -p semasm-cli -- status
+cargo run -p semasm-cli -- contract check fixtures/contracts/write_all.sem.toml
+cargo run -p semasm-cli -- --explain CTR003
 ```
 
 Quality gates used in CI:

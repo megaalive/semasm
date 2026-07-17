@@ -1,7 +1,9 @@
 //! Source locations for diagnostics and ASIR provenance.
 
+use serde::{Deserialize, Serialize};
+
 /// Byte offset into a source buffer (UTF-8 bytes, not characters).
-#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Default)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Default, Serialize, Deserialize)]
 pub struct ByteOffset(pub u32);
 
 impl ByteOffset {
@@ -19,7 +21,7 @@ impl ByteOffset {
 }
 
 /// Inclusive-start exclusive-end span over a source buffer.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Default)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Default, Serialize, Deserialize)]
 pub struct SourceSpan {
     /// Start byte offset (inclusive).
     pub start: ByteOffset,
