@@ -339,6 +339,8 @@ pub fn is_nonvolatile(reg: Gpr) -> bool {
 pub mod abi;
 pub mod lower;
 
+pub use abi::{argument_register, return_register};
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -426,17 +428,3 @@ mod tests {
     }
 }
 
-/// The integer argument register for the Nth integer argument (0-based).
-///
-/// Returns `None` once the eight GPR argument registers are exhausted —
-/// further arguments are passed on the stack.
-#[must_use]
-pub fn argument_register(index: usize) -> Option<Register> {
-    ARG_REGS.get(index).map(|g| g.full())
-}
-
-/// The integer/address return register (`a0` / `x10`).
-#[must_use]
-pub fn return_register() -> Register {
-    RETURN_REG.full()
-}
