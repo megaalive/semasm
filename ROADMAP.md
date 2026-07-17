@@ -10,7 +10,7 @@ Targets listed as planned are **not supported** until a vertical slice marks the
 |---|---|---|
 | VS-00 | Repository bootstrap and governance | **done** (scaffold) |
 | VS-01 | Contract parser and deterministic diagnostics | **done** (check + explain) |
-| VS-02 | First executable hosted slice (x86-64 Linux) | planned |
+| VS-02 | First executable hosted slice (x86-64 Linux) | **in progress** (TARGET-002 tool discovery done) |
 | Later | Windows x64, AArch64 Linux, RISC-V 64 Linux, RISC-V 32 bare-metal | planned |
 | Later | Agent task packets, object inspection, measurement framework | planned |
 

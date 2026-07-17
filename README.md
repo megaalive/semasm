@@ -2,7 +2,7 @@
 
 **SemASM** is multi-architecture semantic infrastructure for software written directly in assembly language. It supplies portable semantic contracts, target kits, analysis (ASIR), and verification so humans and AI agents can produce and check minimal target programs without shipping a high-level language runtime.
 
-> **Status:** early development. VS-00 bootstrap and VS-01 contract checking are in tree. There are **no** production architecture backends, assembler integration, or end-to-end assembly demos yet. Do not treat planned targets as supported.
+> **Status:** early development. VS-00 bootstrap, VS-01 contract checking, and TARGET-002 tool discovery (`target doctor`) are in tree. There are **no** production architecture backends, assembler integration, or end-to-end assembly demos yet. Do not treat planned targets as supported.
 
 ## Architecture (build-time only)
 
@@ -26,6 +26,8 @@ cargo run -p semasm-cli -- --version
 cargo run -p semasm-cli -- status
 cargo run -p semasm-cli -- contract check fixtures/contracts/write_all.sem.toml
 cargo run -p semasm-cli -- --explain CTR003
+cargo run -p semasm-cli -- target doctor x86_64-unknown-linux-gnu
+cargo run -p semasm-cli -- target doctor x86_64-unknown-linux-gnu --format json
 ```
 
 Quality gates used in CI:
@@ -69,7 +71,7 @@ Raw assembly states machine operations precisely but often hides intent: contrac
 | `semasm-core` | IDs, spans, diagnostics, errors |
 | `semasm-contract` | Portable semantic contracts (types only for now) |
 | `semasm-asir` | ASIR graph types |
-| `semasm-target` | Target identity / kit shells |
+| `semasm-target` | Target identity, kit shells, tool discovery (`target doctor`) |
 | `semasm-cli` | `semasm` binary |
 
 Further crates (analysis, object, agent protocol, arch/ABI backends) appear only when a vertical slice needs a stable boundary.
