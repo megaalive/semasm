@@ -5,6 +5,7 @@ use serde::{Deserialize, Serialize};
 
 /// Parsed portable semantic type.
 #[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[cfg_attr(feature = "schema", derive(schemars::JsonSchema))]
 #[serde(rename_all = "snake_case")]
 pub enum SemType {
     /// Boolean.

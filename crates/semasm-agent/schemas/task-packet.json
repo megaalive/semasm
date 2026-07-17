@@ -1,0 +1,1199 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "TaskPacket",
+  "description": "A structured task packet delivered to an external coding agent.\n\nEvery packet is self-contained: all contract definitions, target\ndescriptions, tool snapshots, and context are included inline.\nIntegrity hashes let the receiver (and audit tools) verify that\nthe contract and target definitions have not been modified since\nthe packet was created.",
+  "type": "object",
+  "properties": {
+    "allowed_commands": {
+      "description": "Shell commands the agent is permitted to run.",
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "allowed_files": {
+      "description": "Glob patterns for files the agent may create or modify.",
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "context": {
+      "description": "Full context the agent needs to complete the task.",
+      "$ref": "#/$defs/ContextBundle"
+    },
+    "contract": {
+      "description": "The function contract, sealed with its SHA-256 hash.",
+      "$ref": "#/$defs/PackedRef"
+    },
+    "created_at": {
+      "description": "ISO 8601 / RFC 3339 timestamp of creation.",
+      "type": "string"
+    },
+    "semasm_version": {
+      "description": "SemASM version that produced this packet.",
+      "type": "string"
+    },
+    "target": {
+      "description": "The target definition, sealed with its SHA-256 hash.",
+      "$ref": "#/$defs/PackedRef2"
+    },
+    "version": {
+      "description": "Packet schema version (semver).",
+      "type": "string"
+    }
+  },
+  "required": [
+    "version",
+    "created_at",
+    "semasm_version",
+    "contract",
+    "target",
+    "allowed_files",
+    "allowed_commands",
+    "context"
+  ],
+  "$defs": {
+    "ABIParameter": {
+      "description": "A single ABI parameter mapping: name → register.",
+      "type": "object",
+      "properties": {
+        "name": {
+          "description": "Parameter name as declared in the contract.",
+          "type": "string"
+        },
+        "register": {
+          "description": "Register that holds this parameter (e.g. `rdi`, `rsi`).",
+          "type": "string"
+        },
+        "type_name": {
+          "description": "Semantic type name (e.g. `u64`, `ptr u8`).",
+          "type": "string"
+        }
+      },
+      "required": [
+        "name",
+        "register",
+        "type_name"
+      ]
+    },
+    "ABIReturn": {
+      "description": "Return value ABI mapping.",
+      "type": "object",
+      "properties": {
+        "register": {
+          "description": "Register that holds the return value (e.g. `rax`).",
+          "type": "string"
+        },
+        "type_name": {
+          "description": "Semantic type name (e.g. `u64`).",
+          "type": "string"
+        }
+      },
+      "required": [
+        "register",
+        "type_name"
+      ]
+    },
+    "Abi": {
+      "description": "Calling convention / ABI family.",
+      "oneOf": [
+        {
+          "description": "System V AMD64 ABI (Linux, BSD, etc.).",
+          "type": "string",
+          "const": "SysVAmd64"
+        },
+        {
+          "description": "Microsoft x64 calling convention.",
+          "type": "string",
+          "const": "WindowsX64"
+        },
+        {
+          "description": "AArch64 Procedure Call Standard.",
+          "type": "string",
+          "const": "Aapcs64"
+        },
+        {
+          "description": "RISC-V psABI (LP64 / ILP32 variants selected elsewhere).",
+          "type": "string",
+          "const": "Riscv"
+        }
+      ]
+    },
+    "BinOp": {
+      "description": "Binary operators with fixed precedence.",
+      "oneOf": [
+        {
+          "description": "Logical implication.",
+          "type": "string",
+          "const": "implies"
+        },
+        {
+          "description": "Boolean or.",
+          "type": "string",
+          "const": "or"
+        },
+        {
+          "description": "Boolean and.",
+          "type": "string",
+          "const": "and"
+        },
+        {
+          "description": "Equality.",
+          "type": "string",
+          "const": "eq"
+        },
+        {
+          "description": "Inequality.",
+          "type": "string",
+          "const": "ne"
+        },
+        {
+          "description": "Less-than.",
+          "type": "string",
+          "const": "lt"
+        },
+        {
+          "description": "Less-or-equal.",
+          "type": "string",
+          "const": "le"
+        },
+        {
+          "description": "Greater-than.",
+          "type": "string",
+          "const": "gt"
+        },
+        {
+          "description": "Greater-or-equal.",
+          "type": "string",
+          "const": "ge"
+        },
+        {
+          "description": "Addition.",
+          "type": "string",
+          "const": "add"
+        },
+        {
+          "description": "Subtraction.",
+          "type": "string",
+          "const": "sub"
+        },
+        {
+          "description": "Multiplication.",
+          "type": "string",
+          "const": "mul"
+        },
+        {
+          "description": "Division.",
+          "type": "string",
+          "const": "div"
+        }
+      ]
+    },
+    "ByteOffset": {
+      "description": "Byte offset into a source buffer (UTF-8 bytes, not characters).",
+      "type": "integer",
+      "format": "uint32",
+      "minimum": 0
+    },
+    "CheckedCondition": {
+      "description": "Checked condition with AST.",
+      "type": "object",
+      "properties": {
+        "expr": {
+          "description": "Expression AST.",
+          "$ref": "#/$defs/Expr"
+        },
+        "reason": {
+          "description": "Optional reason.",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "source": {
+          "description": "Original source.",
+          "type": "string"
+        }
+      },
+      "required": [
+        "expr",
+        "source"
+      ]
+    },
+    "CheckedContract": {
+      "description": "Validated contract ready for later analysis stages.",
+      "type": "object",
+      "properties": {
+        "constraints": {
+          "description": "Constraints passthrough.",
+          "anyOf": [
+            {
+              "$ref": "#/$defs/ConstraintsSchema"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "effects": {
+          "description": "Checked effects.",
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/EffectSchema"
+          }
+        },
+        "ensures": {
+          "description": "Parsed ensures.",
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/CheckedCondition"
+          }
+        },
+        "name": {
+          "description": "Function name.",
+          "type": "string"
+        },
+        "parameters": {
+          "description": "Parameters with parsed types.",
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/CheckedParam"
+          }
+        },
+        "requires": {
+          "description": "Parsed requires.",
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/CheckedCondition"
+          }
+        },
+        "returns": {
+          "description": "Returns with parsed types.",
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/CheckedReturn"
+          }
+        },
+        "summary": {
+          "description": "Optional summary.",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "target_overrides": {
+          "description": "Validated target override IDs.",
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "version_major": {
+          "description": "Schema version major/minor.",
+          "type": "integer",
+          "format": "uint32",
+          "minimum": 0
+        },
+        "version_minor": {
+          "description": "Schema version minor.",
+          "type": "integer",
+          "format": "uint32",
+          "minimum": 0
+        }
+      },
+      "required": [
+        "version_major",
+        "version_minor",
+        "name",
+        "parameters",
+        "returns",
+        "requires",
+        "ensures",
+        "effects",
+        "target_overrides"
+      ]
+    },
+    "CheckedParam": {
+      "description": "Checked parameter.",
+      "type": "object",
+      "properties": {
+        "name": {
+          "description": "Name.",
+          "type": "string"
+        },
+        "role": {
+          "description": "Role.",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "ty": {
+          "description": "Parsed type.",
+          "$ref": "#/$defs/SemType"
+        }
+      },
+      "required": [
+        "name",
+        "ty"
+      ]
+    },
+    "CheckedReturn": {
+      "description": "Checked return.",
+      "type": "object",
+      "properties": {
+        "name": {
+          "description": "Name.",
+          "type": "string"
+        },
+        "ty": {
+          "description": "Parsed type.",
+          "$ref": "#/$defs/SemType"
+        }
+      },
+      "required": [
+        "name",
+        "ty"
+      ]
+    },
+    "ConstraintsSchema": {
+      "description": "Constraints block.",
+      "type": "object",
+      "properties": {
+        "bounded_stack_bytes": {
+          "description": "Maximum stack bytes if known.",
+          "type": [
+            "integer",
+            "null"
+          ],
+          "format": "uint64",
+          "default": null,
+          "minimum": 0
+        },
+        "no_heap": {
+          "description": "Disallow heap allocation.",
+          "type": [
+            "boolean",
+            "null"
+          ],
+          "default": null
+        },
+        "no_recursion": {
+          "description": "Disallow recursion.",
+          "type": [
+            "boolean",
+            "null"
+          ],
+          "default": null
+        }
+      },
+      "additionalProperties": false
+    },
+    "ContextBundle": {
+      "description": "Everything an agent needs to implement and test a single routine.",
+      "type": "object",
+      "properties": {
+        "abi_parameters": {
+          "description": "How each parameter is passed (register / stack offset).",
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/ABIParameter"
+          }
+        },
+        "abi_return": {
+          "description": "How the return value is passed back.",
+          "$ref": "#/$defs/ABIReturn"
+        },
+        "acceptance_commands": {
+          "description": "Shell commands that constitute acceptance.",
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "allowed_instructions": {
+          "description": "Allowed instruction mnemonics; empty means all are allowed.",
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "existing_source": {
+          "description": "Existing source lines, if any, to extend or modify.",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "function_name": {
+          "description": "Name of the function to implement.",
+          "type": "string"
+        },
+        "preserved_registers": {
+          "description": "Registers the callee must preserve (callee-saved).",
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "test_vectors": {
+          "description": "Test vectors to validate the implementation against.",
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/TestVector"
+          }
+        },
+        "volatile_registers": {
+          "description": "Registers the callee may freely clobber (caller-saved).",
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        }
+      },
+      "required": [
+        "function_name",
+        "abi_parameters",
+        "abi_return",
+        "preserved_registers",
+        "volatile_registers",
+        "allowed_instructions",
+        "test_vectors",
+        "acceptance_commands"
+      ]
+    },
+    "ContractContent": {
+      "description": "The function contract that the agent must implement.",
+      "type": "object",
+      "properties": {
+        "contract": {
+          "description": "Validated, parsed contract.",
+          "$ref": "#/$defs/CheckedContract"
+        },
+        "text": {
+          "description": "Raw contract source text (e.g. the `.semasm` file contents).",
+          "type": "string"
+        }
+      },
+      "required": [
+        "text",
+        "contract"
+      ]
+    },
+    "Dialect": {
+      "description": "Assembly source dialect.",
+      "oneOf": [
+        {
+          "description": "NASM Intel syntax.",
+          "type": "string",
+          "const": "NasmIntel"
+        },
+        {
+          "description": "GNU assembler AT&T syntax.",
+          "type": "string",
+          "const": "GasAtt"
+        },
+        {
+          "description": "GNU/LLVM unified or architecture-default syntax.",
+          "type": "string",
+          "const": "GasUnified"
+        }
+      ]
+    },
+    "EffectSchema": {
+      "description": "Side-effect declaration.",
+      "type": "object",
+      "properties": {
+        "kind": {
+          "description": "Effect kind (`memory_read`, `memory_write`, `platform_io`, `no_memory`, ...).",
+          "type": "string"
+        },
+        "region": {
+          "description": "Optional region expression (for example `buffer[0..length]`).",
+          "type": [
+            "string",
+            "null"
+          ],
+          "default": null
+        },
+        "resource": {
+          "description": "Optional platform resource (`stdout`, ...).",
+          "type": [
+            "string",
+            "null"
+          ],
+          "default": null
+        }
+      },
+      "additionalProperties": false,
+      "required": [
+        "kind"
+      ]
+    },
+    "ExecutionProfile": {
+      "description": "Runtime / environment profile for the program.",
+      "oneOf": [
+        {
+          "description": "Hosted userspace with a minimal OS surface.",
+          "type": "string",
+          "const": "HostedMinimal"
+        },
+        {
+          "description": "Freestanding with no OS assumptions.",
+          "type": "string",
+          "const": "Freestanding"
+        },
+        {
+          "description": "Bare-metal firmware / board image.",
+          "type": "string",
+          "const": "BareMetal"
+        }
+      ]
+    },
+    "Expr": {
+      "description": "Expression AST node.",
+      "oneOf": [
+        {
+          "description": "Integer literal.",
+          "type": "object",
+          "properties": {
+            "kind": {
+              "type": "string",
+              "const": "int"
+            },
+            "span": {
+              "description": "Source span in the expression string.",
+              "$ref": "#/$defs/SourceSpan"
+            },
+            "value": {
+              "description": "Value.",
+              "type": "integer",
+              "format": "int64"
+            }
+          },
+          "required": [
+            "kind",
+            "value",
+            "span"
+          ]
+        },
+        {
+          "description": "Boolean literal.",
+          "type": "object",
+          "properties": {
+            "kind": {
+              "type": "string",
+              "const": "bool"
+            },
+            "span": {
+              "description": "Source span.",
+              "$ref": "#/$defs/SourceSpan"
+            },
+            "value": {
+              "description": "Value.",
+              "type": "boolean"
+            }
+          },
+          "required": [
+            "kind",
+            "value",
+            "span"
+          ]
+        },
+        {
+          "description": "Identifier.",
+          "type": "object",
+          "properties": {
+            "kind": {
+              "type": "string",
+              "const": "ident"
+            },
+            "name": {
+              "description": "Name.",
+              "type": "string"
+            },
+            "span": {
+              "description": "Source span.",
+              "$ref": "#/$defs/SourceSpan"
+            }
+          },
+          "required": [
+            "kind",
+            "name",
+            "span"
+          ]
+        },
+        {
+          "description": "Field or member access (`status.ok`).",
+          "type": "object",
+          "properties": {
+            "base": {
+              "description": "Base expression.",
+              "$ref": "#/$defs/Expr"
+            },
+            "field": {
+              "description": "Field name.",
+              "type": "string"
+            },
+            "kind": {
+              "type": "string",
+              "const": "member"
+            },
+            "span": {
+              "description": "Span covering `.field`.",
+              "$ref": "#/$defs/SourceSpan"
+            }
+          },
+          "required": [
+            "kind",
+            "base",
+            "field",
+            "span"
+          ]
+        },
+        {
+          "description": "Call or method-style call after member resolution (`valid_for_read(length)`).",
+          "type": "object",
+          "properties": {
+            "args": {
+              "description": "Arguments.",
+              "type": "array",
+              "items": {
+                "$ref": "#/$defs/Expr"
+              }
+            },
+            "callee": {
+              "description": "Callee expression (often a member).",
+              "$ref": "#/$defs/Expr"
+            },
+            "kind": {
+              "type": "string",
+              "const": "call"
+            },
+            "span": {
+              "description": "Full call span.",
+              "$ref": "#/$defs/SourceSpan"
+            }
+          },
+          "required": [
+            "kind",
+            "callee",
+            "args",
+            "span"
+          ]
+        },
+        {
+          "description": "Inclusive-start exclusive-end style range `lo..hi` (bounds only; not evaluated).",
+          "type": "object",
+          "properties": {
+            "end": {
+              "description": "Upper bound.",
+              "$ref": "#/$defs/Expr"
+            },
+            "kind": {
+              "type": "string",
+              "const": "range"
+            },
+            "span": {
+              "description": "Full range span.",
+              "$ref": "#/$defs/SourceSpan"
+            },
+            "start": {
+              "description": "Lower bound.",
+              "$ref": "#/$defs/Expr"
+            }
+          },
+          "required": [
+            "kind",
+            "start",
+            "end",
+            "span"
+          ]
+        },
+        {
+          "description": "Indexing `base[index_or_range]`.",
+          "type": "object",
+          "properties": {
+            "base": {
+              "description": "Base.",
+              "$ref": "#/$defs/Expr"
+            },
+            "index": {
+              "description": "Index expression (may be a range).",
+              "$ref": "#/$defs/Expr"
+            },
+            "kind": {
+              "type": "string",
+              "const": "index"
+            },
+            "span": {
+              "description": "Full index span.",
+              "$ref": "#/$defs/SourceSpan"
+            }
+          },
+          "required": [
+            "kind",
+            "base",
+            "index",
+            "span"
+          ]
+        },
+        {
+          "description": "Unary operation.",
+          "type": "object",
+          "properties": {
+            "expr": {
+              "description": "Operand.",
+              "$ref": "#/$defs/Expr"
+            },
+            "kind": {
+              "type": "string",
+              "const": "unary"
+            },
+            "op": {
+              "description": "Operator.",
+              "$ref": "#/$defs/UnaryOp"
+            },
+            "span": {
+              "description": "Span.",
+              "$ref": "#/$defs/SourceSpan"
+            }
+          },
+          "required": [
+            "kind",
+            "op",
+            "expr",
+            "span"
+          ]
+        },
+        {
+          "description": "Binary operation.",
+          "type": "object",
+          "properties": {
+            "kind": {
+              "type": "string",
+              "const": "binary"
+            },
+            "left": {
+              "description": "Left.",
+              "$ref": "#/$defs/Expr"
+            },
+            "op": {
+              "description": "Operator.",
+              "$ref": "#/$defs/BinOp"
+            },
+            "right": {
+              "description": "Right.",
+              "$ref": "#/$defs/Expr"
+            },
+            "span": {
+              "description": "Span.",
+              "$ref": "#/$defs/SourceSpan"
+            }
+          },
+          "required": [
+            "kind",
+            "op",
+            "left",
+            "right",
+            "span"
+          ]
+        }
+      ]
+    },
+    "Isa": {
+      "description": "Instruction set architecture family.",
+      "oneOf": [
+        {
+          "description": "x86-64 (AMD64).",
+          "type": "string",
+          "const": "X86_64"
+        },
+        {
+          "description": "AArch64 (ARM 64-bit).",
+          "type": "string",
+          "const": "AArch64"
+        },
+        {
+          "description": "RISC-V 64-bit.",
+          "type": "string",
+          "const": "Riscv64"
+        },
+        {
+          "description": "RISC-V 32-bit.",
+          "type": "string",
+          "const": "Riscv32"
+        }
+      ]
+    },
+    "ObjectFormat": {
+      "description": "Object file / executable container format.",
+      "oneOf": [
+        {
+          "description": "ELF (typically Linux / bare-metal).",
+          "type": "string",
+          "const": "Elf"
+        },
+        {
+          "description": "PE/COFF (Windows).",
+          "type": "string",
+          "const": "PeCoff"
+        }
+      ]
+    },
+    "PackedRef": {
+      "description": "Bundles arbitrary content with its SHA-256 hex digest.\n\nThe hash is computed over the canonical JSON representation of\n`content`, so the same logical input always produces the same\nhash regardless of field ordering or formatting differences.",
+      "type": "object",
+      "properties": {
+        "content": {
+          "description": "The referenced content.",
+          "$ref": "#/$defs/ContractContent"
+        },
+        "hash": {
+          "description": "SHA-256 hex digest of the canonical JSON content.",
+          "type": "string"
+        }
+      },
+      "required": [
+        "hash",
+        "content"
+      ]
+    },
+    "PackedRef2": {
+      "description": "Bundles arbitrary content with its SHA-256 hex digest.\n\nThe hash is computed over the canonical JSON representation of\n`content`, so the same logical input always produces the same\nhash regardless of field ordering or formatting differences.",
+      "type": "object",
+      "properties": {
+        "content": {
+          "description": "The referenced content.",
+          "$ref": "#/$defs/TargetContent"
+        },
+        "hash": {
+          "description": "SHA-256 hex digest of the canonical JSON content.",
+          "type": "string"
+        }
+      },
+      "required": [
+        "hash",
+        "content"
+      ]
+    },
+    "SemType": {
+      "description": "Parsed portable semantic type.",
+      "oneOf": [
+        {
+          "description": "Boolean.",
+          "type": "string",
+          "const": "bool"
+        },
+        {
+          "description": "Portable success/failure status (not a raw integer ABI).",
+          "type": "string",
+          "const": "status"
+        },
+        {
+          "description": "Unsigned integer of the given bit width.",
+          "type": "object",
+          "properties": {
+            "u_int": {
+              "type": "object",
+              "properties": {
+                "bits": {
+                  "description": "Bit width: 8, 16, 32, 64, or 128.",
+                  "type": "integer",
+                  "format": "uint16",
+                  "maximum": 65535,
+                  "minimum": 0
+                }
+              },
+              "required": [
+                "bits"
+              ]
+            }
+          },
+          "additionalProperties": false,
+          "required": [
+            "u_int"
+          ]
+        },
+        {
+          "description": "Signed integer of the given bit width.",
+          "type": "object",
+          "properties": {
+            "int": {
+              "type": "object",
+              "properties": {
+                "bits": {
+                  "description": "Bit width: 8, 16, 32, 64, or 128.",
+                  "type": "integer",
+                  "format": "uint16",
+                  "maximum": 65535,
+                  "minimum": 0
+                }
+              },
+              "required": [
+                "bits"
+              ]
+            }
+          },
+          "additionalProperties": false,
+          "required": [
+            "int"
+          ]
+        },
+        {
+          "description": "Pointer-sized unsigned integer.",
+          "type": "string",
+          "const": "usize"
+        },
+        {
+          "description": "Pointer-sized signed integer.",
+          "type": "string",
+          "const": "isize"
+        },
+        {
+          "description": "Pointer to `inner`. When `is_const`, pointee is read-only.",
+          "type": "object",
+          "properties": {
+            "ptr": {
+              "type": "object",
+              "properties": {
+                "inner": {
+                  "description": "Pointee type.",
+                  "$ref": "#/$defs/SemType"
+                },
+                "is_const": {
+                  "description": "Const pointee.",
+                  "type": "boolean"
+                }
+              },
+              "required": [
+                "inner",
+                "is_const"
+              ]
+            }
+          },
+          "additionalProperties": false,
+          "required": [
+            "ptr"
+          ]
+        },
+        {
+          "description": "Contiguous slice of `inner` elements.",
+          "type": "object",
+          "properties": {
+            "slice": {
+              "type": "object",
+              "properties": {
+                "inner": {
+                  "description": "Element type.",
+                  "$ref": "#/$defs/SemType"
+                }
+              },
+              "required": [
+                "inner"
+              ]
+            }
+          },
+          "additionalProperties": false,
+          "required": [
+            "slice"
+          ]
+        },
+        {
+          "description": "Fixed-size array.",
+          "type": "object",
+          "properties": {
+            "array": {
+              "type": "object",
+              "properties": {
+                "inner": {
+                  "description": "Element type.",
+                  "$ref": "#/$defs/SemType"
+                },
+                "len": {
+                  "description": "Element count.",
+                  "type": "integer",
+                  "format": "uint64",
+                  "minimum": 0
+                }
+              },
+              "required": [
+                "inner",
+                "len"
+              ]
+            }
+          },
+          "additionalProperties": false,
+          "required": [
+            "array"
+          ]
+        },
+        {
+          "description": "Named opaque type (layout not portable).",
+          "type": "object",
+          "properties": {
+            "opaque": {
+              "type": "object",
+              "properties": {
+                "name": {
+                  "description": "Opaque type name.",
+                  "type": "string"
+                }
+              },
+              "required": [
+                "name"
+              ]
+            }
+          },
+          "additionalProperties": false,
+          "required": [
+            "opaque"
+          ]
+        }
+      ]
+    },
+    "SourceSpan": {
+      "description": "Inclusive-start exclusive-end span over a source buffer.",
+      "type": "object",
+      "properties": {
+        "end": {
+          "description": "End byte offset (exclusive).",
+          "$ref": "#/$defs/ByteOffset"
+        },
+        "start": {
+          "description": "Start byte offset (inclusive).",
+          "$ref": "#/$defs/ByteOffset"
+        }
+      },
+      "required": [
+        "start",
+        "end"
+      ]
+    },
+    "TargetContent": {
+      "description": "The target definition that the agent must target.",
+      "type": "object",
+      "properties": {
+        "identity": {
+          "description": "Canonical target identity (triple + structured fields).",
+          "$ref": "#/$defs/TargetIdentity"
+        },
+        "toolchain": {
+          "description": "Tool binary versions at the time the packet was created.",
+          "$ref": "#/$defs/TargetToolchain"
+        }
+      },
+      "required": [
+        "identity",
+        "toolchain"
+      ]
+    },
+    "TargetIdentity": {
+      "description": "Complete target identity (architecture alone is never enough).",
+      "type": "object",
+      "properties": {
+        "abi": {
+          "description": "ABI.",
+          "$ref": "#/$defs/Abi"
+        },
+        "dialect": {
+          "description": "Preferred assembly dialect for this kit.",
+          "$ref": "#/$defs/Dialect"
+        },
+        "isa": {
+          "description": "ISA family.",
+          "$ref": "#/$defs/Isa"
+        },
+        "name": {
+          "description": "Canonical triple-like name (for example `x86_64-unknown-linux-gnu`).",
+          "type": "string"
+        },
+        "object_format": {
+          "description": "Object format.",
+          "$ref": "#/$defs/ObjectFormat"
+        },
+        "profile": {
+          "description": "Execution profile.",
+          "$ref": "#/$defs/ExecutionProfile"
+        }
+      },
+      "required": [
+        "name",
+        "isa",
+        "abi",
+        "object_format",
+        "dialect",
+        "profile"
+      ]
+    },
+    "TargetToolchain": {
+      "description": "Snapshot of the host toolchain used for building and verifying.",
+      "type": "object",
+      "properties": {
+        "assembler": {
+          "description": "Assembler binary name (e.g. `nasm`).",
+          "type": "string"
+        },
+        "disassembler": {
+          "description": "Disassembler binary name (e.g. `llvm-objdump`).",
+          "type": "string"
+        },
+        "linker": {
+          "description": "Linker binary name (e.g. `ld.lld`).",
+          "type": "string"
+        },
+        "runner": {
+          "description": "User-mode runner binary, if available (e.g. `qemu-x86_64`).",
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      },
+      "required": [
+        "assembler",
+        "linker",
+        "disassembler"
+      ]
+    },
+    "TestVector": {
+      "description": "A named test case with inputs and expected output.",
+      "type": "object",
+      "properties": {
+        "expected": {
+          "description": "Expected output value."
+        },
+        "inputs": {
+          "description": "Ordered input values (JSON array).",
+          "type": "array",
+          "items": true
+        },
+        "name": {
+          "description": "Human-readable name for this case (e.g. \"empty input\").",
+          "type": "string"
+        }
+      },
+      "required": [
+        "name",
+        "inputs",
+        "expected"
+      ]
+    },
+    "UnaryOp": {
+      "description": "Unary operators.",
+      "oneOf": [
+        {
+          "description": "Logical not.",
+          "type": "string",
+          "const": "not"
+        },
+        {
+          "description": "Numeric negation.",
+          "type": "string",
+          "const": "neg"
+        }
+      ]
+    }
+  }
+}

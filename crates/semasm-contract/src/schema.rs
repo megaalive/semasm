@@ -90,6 +90,7 @@ pub struct ConditionSchema {
 
 /// Side-effect declaration.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "schema", derive(schemars::JsonSchema))]
 #[serde(deny_unknown_fields)]
 pub struct EffectSchema {
     /// Effect kind (`memory_read`, `memory_write`, `platform_io`, `no_memory`, ...).
@@ -104,6 +105,7 @@ pub struct EffectSchema {
 
 /// Constraints block.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, Default)]
+#[cfg_attr(feature = "schema", derive(schemars::JsonSchema))]
 #[serde(deny_unknown_fields)]
 pub struct ConstraintsSchema {
     /// Disallow heap allocation.

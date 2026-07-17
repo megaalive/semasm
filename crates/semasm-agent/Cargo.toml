@@ -1,0 +1,29 @@
+[package]
+name = "semasm-agent"
+description = "Task packet schema and context bundle for AI agent integration"
+rust-version.workspace = true
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+homepage.workspace = true
+authors.workspace = true
+categories.workspace = true
+keywords.workspace = true
+readme.workspace = true
+
+[lints]
+workspace = true
+
+[dependencies]
+semasm-core.workspace = true
+semasm-contract.workspace = true
+semasm-target.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+sha2.workspace = true
+
+schemars = { version = "1.0", optional = true }
+
+[features]
+schema = ["schemars", "semasm-contract/schema", "semasm-target/schema", "semasm-core/schema"]

@@ -5,6 +5,7 @@ use serde::{Deserialize, Serialize};
 
 /// Binary operators with fixed precedence.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[cfg_attr(feature = "schema", derive(schemars::JsonSchema))]
 #[serde(rename_all = "snake_case")]
 pub enum BinOp {
     /// Logical implication.
@@ -37,6 +38,7 @@ pub enum BinOp {
 
 /// Unary operators.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[cfg_attr(feature = "schema", derive(schemars::JsonSchema))]
 #[serde(rename_all = "snake_case")]
 pub enum UnaryOp {
     /// Logical not.
@@ -47,6 +49,7 @@ pub enum UnaryOp {
 
 /// Expression AST node.
 #[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[cfg_attr(feature = "schema", derive(schemars::JsonSchema))]
 #[serde(rename_all = "snake_case", tag = "kind")]
 pub enum Expr {
     /// Integer literal.

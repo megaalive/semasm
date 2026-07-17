@@ -15,6 +15,7 @@ use crate::sem_type::SemType;
 
 /// Validated contract ready for later analysis stages.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "schema", derive(schemars::JsonSchema))]
 pub struct CheckedContract {
     /// Schema version major/minor.
     pub version_major: u32,
@@ -42,6 +43,7 @@ pub struct CheckedContract {
 
 /// Checked parameter.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "schema", derive(schemars::JsonSchema))]
 pub struct CheckedParam {
     /// Name.
     pub name: String,
@@ -53,6 +55,7 @@ pub struct CheckedParam {
 
 /// Checked return.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "schema", derive(schemars::JsonSchema))]
 pub struct CheckedReturn {
     /// Name.
     pub name: String,
@@ -62,6 +65,7 @@ pub struct CheckedReturn {
 
 /// Checked condition with AST.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "schema", derive(schemars::JsonSchema))]
 pub struct CheckedCondition {
     /// Expression AST.
     pub expr: Expr,

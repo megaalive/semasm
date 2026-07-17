@@ -11,9 +11,11 @@ pub mod tools;
 use std::fmt;
 
 use semasm_core::{Error, Result};
+use serde::{Deserialize, Serialize};
 
 /// Instruction set architecture family.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[cfg_attr(feature = "schema", derive(schemars::JsonSchema))]
 pub enum Isa {
     /// x86-64 (AMD64).
     X86_64,
@@ -37,7 +39,8 @@ impl fmt::Display for Isa {
 }
 
 /// Calling convention / ABI family.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[cfg_attr(feature = "schema", derive(schemars::JsonSchema))]
 pub enum Abi {
     /// System V AMD64 ABI (Linux, BSD, etc.).
     SysVAmd64,
@@ -61,7 +64,8 @@ impl fmt::Display for Abi {
 }
 
 /// Object file / executable container format.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[cfg_attr(feature = "schema", derive(schemars::JsonSchema))]
 pub enum ObjectFormat {
     /// ELF (typically Linux / bare-metal).
     Elf,
@@ -79,7 +83,8 @@ impl fmt::Display for ObjectFormat {
 }
 
 /// Assembly source dialect.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[cfg_attr(feature = "schema", derive(schemars::JsonSchema))]
 pub enum Dialect {
     /// NASM Intel syntax.
     NasmIntel,
@@ -100,7 +105,8 @@ impl fmt::Display for Dialect {
 }
 
 /// Runtime / environment profile for the program.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[cfg_attr(feature = "schema", derive(schemars::JsonSchema))]
 pub enum ExecutionProfile {
     /// Hosted userspace with a minimal OS surface.
     HostedMinimal,
@@ -121,7 +127,8 @@ impl fmt::Display for ExecutionProfile {
 }
 
 /// Complete target identity (architecture alone is never enough).
-#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[cfg_attr(feature = "schema", derive(schemars::JsonSchema))]
 pub struct TargetIdentity {
     /// Canonical triple-like name (for example `x86_64-unknown-linux-gnu`).
     pub name: String,
@@ -171,7 +178,8 @@ impl fmt::Display for TargetIdentity {
 }
 
 /// Placeholder for a full target kit (tools, ABI tables, fragments).
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "schema", derive(schemars::JsonSchema))]
 pub struct TargetKit {
     /// Identity of this kit.
     pub identity: TargetIdentity,

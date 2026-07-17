@@ -6,6 +6,7 @@ members = [
     "crates/semasm-asir",
     "crates/semasm-target",
     "crates/semasm-build",
+    "crates/semasm-agent",
     "crates/semasm-cli",
 ]
 default-members = ["crates/semasm-cli"]
@@ -28,6 +29,7 @@ semasm-contract = { path = "crates/semasm-contract", version = "0.1.0" }
 semasm-asir = { path = "crates/semasm-asir", version = "0.1.0" }
 semasm-target = { path = "crates/semasm-target", version = "0.1.0" }
 semasm-build = { path = "crates/semasm-build", version = "0.1.0" }
+semasm-agent = { path = "crates/semasm-agent", version = "0.1.0" }
 clap = { version = "4.5", features = ["derive"] }
 serde = { version = "1.0", features = ["derive"] }
 serde_json = { version = "1.0", default-features = false, features = ["std"] }

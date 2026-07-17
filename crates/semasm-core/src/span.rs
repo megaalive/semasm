@@ -6,6 +6,7 @@ use serde::{Deserialize, Serialize};
 #[derive(
     Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Default, Serialize, Deserialize,
 )]
+#[cfg_attr(feature = "schema", derive(schemars::JsonSchema))]
 pub struct ByteOffset(pub u32);
 
 impl ByteOffset {
@@ -24,6 +25,7 @@ impl ByteOffset {
 
 /// Inclusive-start exclusive-end span over a source buffer.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Default, Serialize, Deserialize)]
+#[cfg_attr(feature = "schema", derive(schemars::JsonSchema))]
 pub struct SourceSpan {
     /// Start byte offset (inclusive).
     pub start: ByteOffset,
