@@ -20,6 +20,8 @@ pub enum ToolKind {
     Nasm,
     /// LLD linker (ELF / COFF).
     Lld,
+    /// LLVM/LLD `lld-link` COFF/PE linker for Windows targets.
+    LldLink,
     /// GNU ld linker fallback.
     LdBfd,
     /// LLVM object dumper.
@@ -28,6 +30,10 @@ pub enum ToolKind {
     Objdump,
     /// QEMU user-mode runner for a specific ISA.
     Qemu(&'static str),
+    /// Native host execution (e.g. running a PE directly on Windows).
+    /// Always "found" on the matching host OS; on other hosts it reports
+    /// missing so the doctor surfaces the portability gap.
+    NativeHost,
 }
 
 impl ToolKind {
@@ -37,10 +43,12 @@ impl ToolKind {
         match self {
             Self::Nasm => "nasm",
             Self::Lld => "ld.lld",
+            Self::LldLink => "lld-link",
             Self::LdBfd => "ld.bfd",
             Self::LlvmObjdump => "llvm-objdump",
             Self::Objdump => "objdump",
             Self::Qemu(cpu) => cpu,
+            Self::NativeHost => "native",
         }
     }
 
@@ -50,10 +58,14 @@ impl ToolKind {
         match self {
             Self::Nasm => "nasm",
             Self::Lld => "ld.lld",
+            Self::LldLink => "lld-link",
             Self::LdBfd => "ld.bfd",
             Self::LlvmObjdump => "llvm-objdump",
             Self::Objdump => "objdump",
             Self::Qemu(_) => self.label(),
+            // Native execution uses no wrapper binary; the probe resolves it
+            // by host platform instead of spawning a `--version` check.
+            Self::NativeHost => "",
         }
     }
 
@@ -62,9 +74,9 @@ impl ToolKind {
     pub fn category(&self) -> &str {
         match self {
             Self::Nasm => "assembler",
-            Self::Lld | Self::LdBfd => "linker",
+            Self::Lld | Self::LldLink | Self::LdBfd => "linker",
             Self::LlvmObjdump | Self::Objdump => "disassembler",
-            Self::Qemu(_) => "runner",
+            Self::Qemu(_) | Self::NativeHost => "runner",
         }
     }
 
@@ -82,6 +94,11 @@ impl ToolKind {
                 "brew install lld",
                 "Ensure LLD is available from an LLVM installation",
             ],
+            Self::LldLink => vec![
+                "Install the LLVM toolchain (provides lld-link)",
+                "choco install llvm",
+                "Optionally install MSVC build tools for link.exe",
+            ],
             Self::LdBfd | Self::Objdump => vec!["apt install binutils", "brew install binutils"],
             Self::LlvmObjdump => vec![
                 "apt install llvm",
@@ -89,6 +106,10 @@ impl ToolKind {
                 "Ensure llvm-objdump (or objdump) is on PATH",
             ],
             Self::Qemu(_) => vec!["apt install qemu-user", "brew install qemu"],
+            Self::NativeHost => vec![
+                "Native execution is only available on the matching host OS \
+                 (e.g. run a Windows PE on Windows)",
+            ],
         }
     }
 }
@@ -118,6 +139,24 @@ pub struct ToolProbe {
 
 impl ToolProbe {
     fn probe(kind: ToolKind) -> Self {
+        // Native host execution has no wrapper binary; it is "found" only
+        // when the build host is the target OS (here: Windows).
+        if let ToolKind::NativeHost = kind {
+            #[cfg(windows)]
+            let found = true;
+            #[cfg(not(windows))]
+            let found = false;
+            return Self {
+                kind,
+                found,
+                version: Some(if found {
+                    "host (native)".to_string()
+                } else {
+                    "host is not Windows".to_string()
+                }),
+                detail: None,
+            };
+        }
         let binary = kind.binary();
         match Command::new(binary).arg("--version").output() {
             Ok(output) => {
@@ -250,6 +289,17 @@ pub fn required_tools(target: &TargetIdentity) -> Vec<ToolSlot> {
                 vec![ToolKind::LlvmObjdump, ToolKind::Objdump],
             ),
             ToolSlot::probe("runner", vec![ToolKind::Qemu("qemu-x86_64")]),
+        ],
+        // Windows x64: NASM → win64 object, lld-link → PE, native execution.
+        (Isa::X86_64, Abi::WindowsX64, ObjectFormat::PeCoff) => vec![
+            ToolSlot::probe("assembler", vec![ToolKind::Nasm]),
+            ToolSlot::probe("linker", vec![ToolKind::LldLink, ToolKind::Lld]),
+            ToolSlot::probe(
+                "disassembler",
+                vec![ToolKind::LlvmObjdump, ToolKind::Objdump],
+            ),
+            // Native Windows execution — no emulator required on a Windows host.
+            ToolSlot::probe("runner", vec![ToolKind::NativeHost]),
         ],
         _ => vec![],
     }

@@ -20,6 +20,7 @@ semasm-target = { workspace = true }
 
 [dev-dependencies]
 serde_json = { workspace = true }
+semasm-obj = { workspace = true }
 
 [lints]
 workspace = true

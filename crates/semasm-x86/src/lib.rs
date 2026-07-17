@@ -18,6 +18,7 @@
 use serde::{Deserialize, Serialize};
 
 pub mod abi;
+pub mod abi_win64;
 pub mod analysis;
 pub mod lower;
 

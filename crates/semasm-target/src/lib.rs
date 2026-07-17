@@ -159,15 +159,43 @@ impl TargetIdentity {
         }
     }
 
+    /// Windows x64 (Microsoft ABI), PE/COFF container, native execution.
+    #[must_use]
+    pub fn x86_64_windows_msvc() -> Self {
+        Self {
+            name: "x86_64-pc-windows-msvc".to_string(),
+            isa: Isa::X86_64,
+            abi: Abi::WindowsX64,
+            object_format: ObjectFormat::PeCoff,
+            dialect: Dialect::NasmIntel,
+            profile: ExecutionProfile::HostedMinimal,
+        }
+    }
+
     /// Parse a known target name. Unknown names return [`Error::NotFound`].
     ///
     /// Full target registry and kits arrive in later slices.
     pub fn parse_known(name: &str) -> Result<Self> {
         match name {
             "x86_64-unknown-linux-gnu" | "x86_64-linux-gnu" => Ok(Self::x86_64_linux_gnu()),
+            "x86_64-pc-windows-msvc" | "x86_64-windows-msvc" => Ok(Self::x86_64_windows_msvc()),
             other => Err(Error::not_found(format!(
                 "unknown or unsupported target `{other}` (planned targets are not yet registered)"
             ))),
+        }
+    }
+
+    /// The NASM output format string for this target's object container.
+    ///
+    /// | Target | NASM `-f` format |
+    /// |---|---|
+    /// | `x86_64-unknown-linux-gnu` | `elf64` |
+    /// | `x86_64-pc-windows-msvc` | `win64` |
+    #[must_use]
+    pub fn nasm_format(&self) -> &str {
+        match self.object_format {
+            ObjectFormat::Elf => "elf64",
+            ObjectFormat::PeCoff => "win64",
         }
     }
 }
@@ -210,6 +238,15 @@ mod tests {
         assert_eq!(t.isa, Isa::X86_64);
         assert_eq!(t.abi, Abi::SysVAmd64);
         assert_eq!(t.object_format, ObjectFormat::Elf);
+    }
+
+    #[test]
+    fn parses_windows_x86_64() {
+        let t = TargetIdentity::parse_known("x86_64-pc-windows-msvc").unwrap();
+        assert_eq!(t.isa, Isa::X86_64);
+        assert_eq!(t.abi, Abi::WindowsX64);
+        assert_eq!(t.object_format, ObjectFormat::PeCoff);
+        assert_eq!(t, TargetIdentity::x86_64_windows_msvc());
     }
 
     #[test]

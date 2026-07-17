@@ -393,6 +393,28 @@ mod tests {
     }
 
     #[test]
+    fn parses_minimal_win64_object() {
+        let bytes = build_minimal_win64();
+        let info = parse(&bytes).unwrap();
+        assert_eq!(info.format, ContainerFormat::Pe);
+        // The assembled fixture is x86-64.
+        assert_eq!(info.architecture, Isa::X86_64);
+        // At least one text-like section is present.
+        assert!(info.sections.iter().any(|s| s.kind == "text"));
+    }
+
+    #[test]
+    fn win64_object_is_not_elf() {
+        let win = build_minimal_win64();
+        let elf = build_minimal_elf();
+        assert_ne!(
+            parse(&win).unwrap().format,
+            parse(&elf).unwrap().format,
+            "win64 and elf objects must report different containers"
+        );
+    }
+
+    #[test]
     fn architecture_mismatch_is_hard_error() {
         use semasm_target::{Isa, TargetIdentity};
 
@@ -436,6 +458,35 @@ mod tests {
 
         let out = pipe
             .assemble(&src, &obj, "elf64")
+            .expect("assemble fixture");
+        assert!(out.success(), "assembler must succeed");
+
+        let bytes = std::fs::read(&obj).expect("read object");
+        let _ = std::fs::remove_dir_all(&dir);
+        bytes
+    }
+
+    // Assemble a real, minimal PE/COFF object (win64) with the workspace
+    // toolchain so the parser is exercised against genuine container bytes.
+    fn build_minimal_win64() -> Vec<u8> {
+        use semasm_build::Pipeline;
+        use semasm_target::TargetIdentity;
+
+        let target = TargetIdentity::x86_64_windows_msvc();
+        let pipe = Pipeline::discover(&target);
+
+        let dir = std::env::temp_dir().join(format!(
+            "semasm-obj-test-{}-{}",
+            std::process::id(),
+            UNIQUE.fetch_add(1, std::sync::atomic::Ordering::Relaxed)
+        ));
+        let _ = std::fs::create_dir_all(&dir);
+        let src = dir.join("exit.asm");
+        let obj = dir.join("exit.obj");
+        std::fs::write(&src, "BITS 64\nsection .text\n; minimal ret\nret\n").expect("write asm");
+
+        let out = pipe
+            .assemble(&src, &obj, target.nasm_format())
             .expect("assemble fixture");
         assert!(out.success(), "assembler must succeed");
 

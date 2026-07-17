@@ -348,6 +348,7 @@ name = "semasm-build"
 version = "0.1.0"
 dependencies = [
  "semasm-core",
+ "semasm-obj",
  "semasm-target",
  "serde",
  "serde_json",
