@@ -176,11 +176,20 @@ dependencies = [
 ]
 
 [[package]]
+name = "semasm-build"
+version = "0.1.0"
+dependencies = [
+ "semasm-core",
+ "serde",
+]
+
+[[package]]
 name = "semasm-cli"
 version = "0.1.0"
 dependencies = [
  "clap",
  "semasm-asir",
+ "semasm-build",
  "semasm-contract",
  "semasm-core",
  "semasm-target",
