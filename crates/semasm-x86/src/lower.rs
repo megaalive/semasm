@@ -346,6 +346,28 @@ pub fn lower(instr: &PhysicalInstruction) -> Lowering {
     })
 }
 
+/// Lower every instruction, keeping the output 1:1 with the input so its
+/// indices line up with a control-flow graph built from the same instructions.
+/// Instructions outside the modelled subset become a `LoweredInstr` with
+/// `OpKind::Unknown` (an explicit "not modelled" placeholder) rather than
+/// being dropped.
+#[must_use]
+pub fn lower_keep_all(instrs: &[PhysicalInstruction]) -> Vec<LoweredInstr> {
+    instrs
+        .iter()
+        .map(|p| match lower(p) {
+            Lowering::Lowered(l) => l,
+            Lowering::Unsupported { mnemonic } => LoweredInstr {
+                mnemonic,
+                kind: OpKind::Unknown,
+                width: Width::B64,
+                signed: None,
+                operands: Vec::new(),
+            },
+        })
+        .collect()
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

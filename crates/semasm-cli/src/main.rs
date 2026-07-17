@@ -134,6 +134,19 @@ enum Commands {
         #[arg(long, value_enum, default_value_t = OutputFormat::Terminal)]
         format: OutputFormat,
     },
+    /// Forward data-flow analysis over a function body (decode + lower +
+    /// control-flow graph + abstract interpretation).
+    #[cfg(feature = "capstone")]
+    Analyze {
+        /// Path to a raw binary blob containing one function body.
+        path: PathBuf,
+        /// Base address assigned to the first byte (default:0; `0x` hex ok).
+        #[arg(long, default_value = "0")]
+        base: String,
+        /// Output format.
+        #[arg(long, value_enum, default_value_t = OutputFormat::Terminal)]
+        format: OutputFormat,
+    },
 }
 
 #[derive(Debug, Subcommand)]
@@ -201,6 +214,7 @@ enum OutputFormat {
     Json,
 }
 
+#[allow(clippy::too_many_lines)]
 fn main() -> ExitCode {
     let cli = Cli::parse();
 
@@ -293,6 +307,17 @@ fn main() -> ExitCode {
                 }
             };
             do_abi_inspect(&path, base, format)
+        }
+        #[cfg(feature = "capstone")]
+        Some(Commands::Analyze { path, base, format }) => {
+            let base = match parse_base(&base) {
+                Ok(b) => b,
+                Err(e) => {
+                    eprintln!("error: {e}");
+                    return ExitCode::from(2);
+                }
+            };
+            do_analyze_inspect(&path, base, format)
         }
     }
 }
@@ -1489,6 +1514,131 @@ fn json_abi_report(r: &semasm_x86::abi::AbiReport, lowered_count: usize) -> Json
                 severity: f.severity_str().to_string(),
                 at: f.at,
                 message: f.message.clone(),
+            })
+            .collect(),
+    }
+}
+
+/// Decode a raw binary blob, lower it, build a control-flow graph, and run
+/// the forward data-flow analysis (ANALYSIS-001).
+#[cfg(feature = "capstone")]
+fn do_analyze_inspect(path: &Path, base: u64, format: OutputFormat) -> ExitCode {
+    let code = match std::fs::read(path) {
+        Ok(b) => b,
+        Err(e) => {
+            eprintln!("{}: error: failed to read file: {e}", path.display());
+            return ExitCode::from(1);
+        }
+    };
+
+    let instrs = match semasm_decode::decode_x86_64(&code, base) {
+        Ok(i) => i,
+        Err(DecodeError::Unsupported(_)) => {
+            eprintln!(
+                "error: x86-64 decoding is not compiled into this build; \
+                 rebuild `semasm-cli` with the `capstone` feature"
+            );
+            return ExitCode::from(1);
+        }
+        Err(e) => {
+            eprintln!("error: {e}");
+            return ExitCode::from(1);
+        }
+    };
+
+    // Lower every decoded instruction, keeping a 1:1 mapping with the
+    // decoded list so CFG instruction indices line up.
+    let lowered = semasm_x86::lower::lower_keep_all(&instrs);
+
+    let cfg = match semasm_cfg::build(&instrs) {
+        Ok(g) => g,
+        Err(e) => {
+            eprintln!("error: {e}");
+            return ExitCode::from(1);
+        }
+    };
+
+    // Convert CFG blocks into analysis block ranges. Successor edges carry
+    // real block indices (including back-edges and merges).
+    let blocks: Vec<semasm_x86::analysis::BlockRange> = cfg
+        .blocks
+        .iter()
+        .map(|b| semasm_x86::analysis::BlockRange {
+            start: b.start_instruction,
+            end: b.end_instruction,
+            successors: b.successors.iter().filter_map(|e| e.to).collect(),
+        })
+        .collect();
+
+    let report = semasm_x86::analysis::analyze(&lowered, &blocks);
+
+    match format {
+        OutputFormat::Json => match serde_json::to_string_pretty(&json_analysis_report(&report)) {
+            Ok(s) => {
+                println!("{s}");
+                ExitCode::SUCCESS
+            }
+            Err(e) => {
+                eprintln!("failed to serialize JSON: {e}");
+                ExitCode::from(1)
+            }
+        },
+        OutputFormat::Terminal => {
+            print_analysis_terminal(&report);
+            ExitCode::SUCCESS
+        }
+    }
+}
+
+/// Print the analysis report in human-readable form.
+#[cfg(feature = "capstone")]
+fn print_analysis_terminal(r: &semasm_x86::analysis::AnalysisReport) {
+    println!("fixpoint iterations: {}", r.iterations);
+    println!("blocks analysed:      {}", r.block_out.len());
+    println!("memory accesses:       {}", r.mem_accesses.len());
+    println!();
+    if r.notes.is_empty() {
+        println!("ANALYSIS: no register/memory notes (all state unknown/empty)");
+    } else {
+        for n in &r.notes {
+            println!("[{}] @block {}: {}", n.code, n.block, n.message);
+        }
+    }
+}
+
+/// A JSON-friendly view of [`semasm_x86::analysis::AnalysisReport`].
+#[cfg(feature = "capstone")]
+#[derive(serde::Serialize)]
+struct JsonAnalysisReport {
+    iterations: usize,
+    converged: bool,
+    block_count: usize,
+    mem_access_count: usize,
+    notes: Vec<JsonAnalysisNote>,
+}
+
+#[cfg(feature = "capstone")]
+#[derive(serde::Serialize)]
+struct JsonAnalysisNote {
+    code: String,
+    block: usize,
+    message: String,
+}
+
+#[cfg(feature = "capstone")]
+fn json_analysis_report(r: &semasm_x86::analysis::AnalysisReport) -> JsonAnalysisReport {
+    JsonAnalysisReport {
+        iterations: r.iterations,
+        converged: r.converged,
+        block_count: r.block_out.len(),
+        mem_access_count: r.mem_accesses.len(),
+        notes: r
+            .notes
+            .iter()
+            .map(|n| JsonAnalysisNote {
+                code: n.code.to_string(),
+                block: n.block,
+                message: n.message.clone(),
             })
             .collect(),
     }
