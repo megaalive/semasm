@@ -355,6 +355,16 @@ dependencies = [
 ]
 
 [[package]]
+name = "semasm-cfg"
+version = "0.1.0"
+dependencies = [
+ "semasm-decode",
+ "serde",
+ "serde_json",
+ "thiserror",
+]
+
+[[package]]
 name = "semasm-cli"
 version = "0.1.0"
 dependencies = [
@@ -362,6 +372,7 @@ dependencies = [
  "semasm-agent",
  "semasm-asir",
  "semasm-build",
+ "semasm-cfg",
  "semasm-contract",
  "semasm-core",
  "semasm-decode",

@@ -1,0 +1,25 @@
+[package]
+name = "semasm-cfg"
+version = "0.1.0"
+edition = "2021"
+license = "MIT"
+description = "Control-flow graph extraction for SemASM decoded instructions"
+
+[dependencies]
+semasm-decode = { workspace = true }
+serde = { workspace = true, features = ["derive"] }
+serde_json = { workspace = true }
+thiserror = { workspace = true }
+
+[dev-dependencies]
+semasm-decode = { workspace = true, features = ["capstone"] }
+
+[features]
+default = []
+# Forwards to the decode backend so the CFG tests can decode real fixtures.
+# The CFG extractor itself is backend-agnostic (operates on
+# PhysicalInstruction) and does not require Capstone.
+capstone = ["semasm-decode/capstone"]
+
+[lints]
+workspace = true

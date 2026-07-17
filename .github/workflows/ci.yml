@@ -67,6 +67,8 @@ jobs:
         run: |
           printf '\x31\xc0\xc3' > /tmp/sample.bin
           cargo run -q -p semasm-cli --features capstone -- decode /tmp/sample.bin --base 0
+          printf '\x31\xc0\x48\xff\xc9\x75\xfb\xc3' > /tmp/loop.bin
+          cargo run -q -p semasm-cli --features capstone -- cfg /tmp/loop.bin --base 0x1000
 
   # Optional advisory job; continues on missing cargo-deny in older setups
   deny:

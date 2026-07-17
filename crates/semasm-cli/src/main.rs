@@ -102,9 +102,21 @@ enum Commands {
     Decode {
         /// Path to a raw binary blob to disassemble.
         path: PathBuf,
-        /// Base address assigned to the first byte (default: 0).
-        #[arg(long, default_value_t = 0)]
-        base: u64,
+        /// Base address assigned to the first byte (default: 0; `0x` hex ok).
+        #[arg(long, default_value = "0")]
+        base: String,
+        /// Output format.
+        #[arg(long, value_enum, default_value_t = OutputFormat::Terminal)]
+        format: OutputFormat,
+    },
+    /// Build a control-flow graph from raw machine code (Capstone-backed).
+    #[cfg(feature = "capstone")]
+    Cfg {
+        /// Path to a raw binary blob to analyse.
+        path: PathBuf,
+        /// Base address assigned to the first byte (default: 0; `0x` hex ok).
+        #[arg(long, default_value = "0")]
+        base: String,
         /// Output format.
         #[arg(long, value_enum, default_value_t = OutputFormat::Terminal)]
         format: OutputFormat,
@@ -233,7 +245,27 @@ fn main() -> ExitCode {
             format,
         }) => do_obj_inspect(&path, target.as_deref(), format),
         #[cfg(feature = "capstone")]
-        Some(Commands::Decode { path, base, format }) => do_decode_inspect(&path, base, format),
+        Some(Commands::Decode { path, base, format }) => {
+            let base = match parse_base(&base) {
+                Ok(b) => b,
+                Err(e) => {
+                    eprintln!("error: {e}");
+                    return ExitCode::from(2);
+                }
+            };
+            do_decode_inspect(&path, base, format)
+        }
+        #[cfg(feature = "capstone")]
+        Some(Commands::Cfg { path, base, format }) => {
+            let base = match parse_base(&base) {
+                Ok(b) => b,
+                Err(e) => {
+                    eprintln!("error: {e}");
+                    return ExitCode::from(2);
+                }
+            };
+            do_cfg_inspect(&path, base, format)
+        }
     }
 }
 
@@ -1162,6 +1194,22 @@ fn do_obj_inspect(path: &Path, target: Option<&str>, format: OutputFormat) -> Ex
     }
 }
 
+/// Parse a `--base` value, accepting decimal or `0x`-prefixed hex.
+#[cfg(feature = "capstone")]
+fn parse_base(s: &str) -> Result<u64, String> {
+    let trimmed = s.trim();
+    if let Some(hex) = trimmed
+        .strip_prefix("0x")
+        .or_else(|| trimmed.strip_prefix("0X"))
+    {
+        u64::from_str_radix(hex, 16).map_err(|e| format!("invalid hex base `{s}`: {e}"))
+    } else {
+        trimmed
+            .parse::<u64>()
+            .map_err(|e| format!("invalid base `{s}`: {e}"))
+    }
+}
+
 /// Disassemble a raw binary blob and emit normalised physical instructions.
 #[cfg(feature = "capstone")]
 fn do_decode_inspect(path: &Path, base: u64, format: OutputFormat) -> ExitCode {
@@ -1218,6 +1266,58 @@ fn do_decode_inspect(path: &Path, base: u64, format: OutputFormat) -> ExitCode {
                 }
                 println!();
             }
+            ExitCode::SUCCESS
+        }
+    }
+}
+
+/// Build a control-flow graph from a raw binary blob and emit it.
+#[cfg(feature = "capstone")]
+fn do_cfg_inspect(path: &Path, base: u64, format: OutputFormat) -> ExitCode {
+    let code = match std::fs::read(path) {
+        Ok(b) => b,
+        Err(e) => {
+            eprintln!("{}: error: failed to read file: {e}", path.display());
+            return ExitCode::from(1);
+        }
+    };
+
+    let instrs = match semasm_decode::decode_x86_64(&code, base) {
+        Ok(i) => i,
+        Err(DecodeError::Unsupported(_)) => {
+            eprintln!(
+                "error: x86-64 decoding is not compiled into this build; \
+                 rebuild `semasm-cli` with the `capstone` feature"
+            );
+            return ExitCode::from(1);
+        }
+        Err(e) => {
+            eprintln!("error: {e}");
+            return ExitCode::from(1);
+        }
+    };
+
+    let graph = match semasm_cfg::build(&instrs) {
+        Ok(g) => g,
+        Err(e) => {
+            eprintln!("error: {e}");
+            return ExitCode::from(1);
+        }
+    };
+
+    match format {
+        OutputFormat::Json => match graph.to_json() {
+            Ok(s) => {
+                println!("{s}");
+                ExitCode::SUCCESS
+            }
+            Err(e) => {
+                eprintln!("failed to serialize JSON: {e}");
+                ExitCode::from(1)
+            }
+        },
+        OutputFormat::Terminal => {
+            print!("{}", graph.to_terminal());
             ExitCode::SUCCESS
         }
     }
