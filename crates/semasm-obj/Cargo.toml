@@ -1,6 +1,6 @@
 [package]
-name = "semasm-cli"
-description = "Command-line interface for SemASM"
+name = "semasm-obj"
+description = "ELF/PE/Mach-O object inspection for SemASM"
 version.workspace = true
 edition.workspace = true
 rust-version.workspace = true
@@ -11,21 +11,16 @@ readme.workspace = true
 categories.workspace = true
 keywords.workspace = true
 
-[[bin]]
-name = "semasm"
-path = "src/main.rs"
-
 [dependencies]
-clap = { workspace = true }
+object = { workspace = true }
+semasm-target = { workspace = true }
+semasm-core = { workspace = true }
 serde = { workspace = true }
 serde_json = { workspace = true }
-semasm-core = { workspace = true }
-semasm-contract = { workspace = true }
-semasm-asir = { workspace = true }
+thiserror = { workspace = true }
+
+[dev-dependencies]
 semasm-build = { workspace = true }
-semasm-target = { workspace = true }
-semasm-agent = { workspace = true }
-semasm-obj = { workspace = true }
 
 [lints]
 workspace = true
