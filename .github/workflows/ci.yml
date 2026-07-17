@@ -43,6 +43,31 @@ jobs:
       - name: CLI version
         run: cargo run -p semasm-cli -- --version
 
+  decode:
+    name: decode (capstone)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt, clippy
+
+      - name: Cache cargo
+        uses: Swatinem/rust-cache@v2
+
+      - name: Clippy (capstone feature)
+        run: cargo clippy --workspace --all-targets --all-features -- -D warnings
+
+      - name: Test (capstone feature)
+        run: cargo test --workspace --all-features
+
+      - name: CLI decode smoke
+        run: |
+          printf '\x31\xc0\xc3' > /tmp/sample.bin
+          cargo run -q -p semasm-cli --features capstone -- decode /tmp/sample.bin --base 0
+
   # Optional advisory job; continues on missing cargo-deny in older setups
   deny:
     name: cargo-deny

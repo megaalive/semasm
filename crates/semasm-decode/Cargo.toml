@@ -1,0 +1,23 @@
+[package]
+name = "semasm-decode"
+version = "0.1.0"
+edition = "2021"
+license = "MIT"
+description = "Physical-instruction decoder adapter for SemASM (Capstone-backed, feature-gated)"
+
+[dependencies]
+semasm-core = { workspace = true }
+semasm-target = { workspace = true }
+serde = { workspace = true, features = ["derive"] }
+serde_json = { workspace = true }
+thiserror = { workspace = true }
+capstone = { version = "0.14", optional = true }
+
+[features]
+default = []
+capstone = ["dep:capstone"]
+
+[dev-dependencies]
+
+[lints]
+workspace = true

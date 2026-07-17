@@ -26,6 +26,11 @@ semasm-build = { workspace = true }
 semasm-target = { workspace = true }
 semasm-agent = { workspace = true }
 semasm-obj = { workspace = true }
+semasm-decode = { workspace = true, optional = true }
+
+[features]
+default = []
+capstone = ["semasm-decode/capstone"]
 
 [lints]
 workspace = true

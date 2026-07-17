@@ -16,6 +16,8 @@ use semasm_contract::{
     check_file, explain_code, format_diagnostics_terminal, CheckReportJson, ContractCode,
 };
 use semasm_core::SEMASM_VERSION;
+#[cfg(feature = "capstone")]
+use semasm_decode::{self, DecodeError};
 use semasm_obj::{self, ObjectError};
 use semasm_target::tools;
 use semasm_target::TargetIdentity;
@@ -93,6 +95,18 @@ enum Commands {
         target: Option<String>,
         /// Output format.
         #[arg(long, value_enum, default_value_t = OutputFormat::Json)]
+        format: OutputFormat,
+    },
+    /// Disassemble raw machine code (Capstone-backed).
+    #[cfg(feature = "capstone")]
+    Decode {
+        /// Path to a raw binary blob to disassemble.
+        path: PathBuf,
+        /// Base address assigned to the first byte (default: 0).
+        #[arg(long, default_value_t = 0)]
+        base: u64,
+        /// Output format.
+        #[arg(long, value_enum, default_value_t = OutputFormat::Terminal)]
         format: OutputFormat,
     },
 }
@@ -176,10 +190,11 @@ fn main() -> ExitCode {
         }
         Some(Commands::Status) => {
             println!("semasm {SEMASM_VERSION}");
-            println!("phase: VS-01 contract parser");
-            println!("status: contract check available; no architecture backends yet");
+            println!("phase: VS-04 object inspection + decode adapter");
+            println!("status: contract check, agent packets/verify, obj inspect, decode available");
             println!(
-                "crates: semasm-core, semasm-contract, semasm-asir, semasm-target, semasm-cli"
+                "crates: semasm-core, semasm-contract, semasm-asir, semasm-target, \
+                 semasm-build, semasm-agent, semasm-obj, semasm-decode"
             );
             println!("note: generated programs do not link SemASM by default");
             ExitCode::SUCCESS
@@ -217,6 +232,8 @@ fn main() -> ExitCode {
             target,
             format,
         }) => do_obj_inspect(&path, target.as_deref(), format),
+        #[cfg(feature = "capstone")]
+        Some(Commands::Decode { path, base, format }) => do_decode_inspect(&path, base, format),
     }
 }
 
@@ -1140,6 +1157,67 @@ fn do_obj_inspect(path: &Path, target: Option<&str>, format: OutputFormat) -> Ex
             println!("relocations: {}", info.relocations.len());
             println!("imports:     {}", info.imports.len());
             println!("exports:     {}", info.exports.len());
+            ExitCode::SUCCESS
+        }
+    }
+}
+
+/// Disassemble a raw binary blob and emit normalised physical instructions.
+#[cfg(feature = "capstone")]
+fn do_decode_inspect(path: &Path, base: u64, format: OutputFormat) -> ExitCode {
+    let code = match std::fs::read(path) {
+        Ok(b) => b,
+        Err(e) => {
+            eprintln!("{}: error: failed to read file: {e}", path.display());
+            return ExitCode::from(1);
+        }
+    };
+
+    let instrs = match semasm_decode::decode_x86_64(&code, base) {
+        Ok(i) => i,
+        Err(DecodeError::Unsupported(_)) => {
+            eprintln!(
+                "error: x86-64 decoding is not compiled into this build; \
+                 rebuild `semasm-cli` with the `capstone` feature"
+            );
+            return ExitCode::from(1);
+        }
+        Err(e) => {
+            eprintln!("error: {e}");
+            return ExitCode::from(1);
+        }
+    };
+
+    match format {
+        OutputFormat::Json => match semasm_decode::to_json(&instrs) {
+            Ok(s) => {
+                println!("{s}");
+                ExitCode::SUCCESS
+            }
+            Err(e) => {
+                eprintln!("failed to serialize JSON: {e}");
+                ExitCode::from(1)
+            }
+        },
+        OutputFormat::Terminal => {
+            if instrs.is_empty() {
+                println!("(no instructions decoded)");
+            }
+            for insn in &instrs {
+                print!("{insn}");
+                if insn.detail_available {
+                    if !insn.read_regs.is_empty() {
+                        print!("  ; r:{}", insn.read_regs.join("/"));
+                    }
+                    if !insn.write_regs.is_empty() {
+                        print!("  w:{}", insn.write_regs.join("/"));
+                    }
+                    if !insn.groups.is_empty() {
+                        print!("  [{}]", insn.groups.join("/"));
+                    }
+                }
+                println!();
+            }
             ExitCode::SUCCESS
         }
     }
