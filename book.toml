@@ -1,0 +1,14 @@
+[book]
+title = "SemASM Book"
+description = "Documentation for SemASM: semantic infrastructure for assembly programs"
+authors = ["SemASM contributors"]
+language = "en"
+src = "docs/src"
+
+[build]
+build-dir = "book"
+create-missing = false
+
+[output.html]
+default-theme = "light"
+git-repository-url = "https://github.com/megaalive/semasm"

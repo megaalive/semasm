@@ -1,0 +1,44 @@
+[workspace]
+resolver = "2"
+members = [
+    "crates/semasm-core",
+    "crates/semasm-contract",
+    "crates/semasm-asir",
+    "crates/semasm-target",
+    "crates/semasm-cli",
+]
+default-members = ["crates/semasm-cli"]
+
+[workspace.package]
+version = "0.1.0"
+edition = "2021"
+rust-version = "1.85"
+license = "MIT OR Apache-2.0"
+repository = "https://github.com/megaalive/semasm"
+homepage = "https://github.com/megaalive/semasm"
+authors = ["SemASM contributors"]
+categories = ["development-tools", "compilers"]
+keywords = ["assembly", "semantics", "abi", "asir", "semasm"]
+readme = "README.md"
+
+[workspace.dependencies]
+semasm-core = { path = "crates/semasm-core", version = "0.1.0" }
+semasm-contract = { path = "crates/semasm-contract", version = "0.1.0" }
+semasm-asir = { path = "crates/semasm-asir", version = "0.1.0" }
+semasm-target = { path = "crates/semasm-target", version = "0.1.0" }
+clap = { version = "4.5", features = ["derive"] }
+serde = { version = "1.0", features = ["derive"], default-features = false }
+serde_json = { version = "1.0", default-features = false, features = ["std"] }
+thiserror = "2.0"
+
+[workspace.lints.rust]
+unsafe_code = "forbid"
+missing_docs = "warn"
+
+[workspace.lints.clippy]
+all = { level = "warn", priority = -1 }
+pedantic = { level = "warn", priority = -1 }
+module_name_repetitions = "allow"
+missing_errors_doc = "allow"
+missing_panics_doc = "allow"
+doc_markdown = "allow"

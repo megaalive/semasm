@@ -1,0 +1,5 @@
+# Shared Clippy configuration for the SemASM workspace.
+# Warnings are denied in CI via: cargo clippy ... -- -D warnings
+cognitive-complexity-threshold = 30
+too-many-arguments-threshold = 8
+type-complexity-threshold = 250
