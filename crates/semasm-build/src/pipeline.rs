@@ -326,7 +326,7 @@ impl Pipeline {
             if run.exit_code != Some(expected) {
                 return Err(BuildError::Spawn(
                     "run".into(),
-                    format!("expected exit code {expected}, got {:?}", run.exit_code,),
+                    format!("expected exit code {expected}, got {:?}", run.exit_code),
                 ));
             }
         }

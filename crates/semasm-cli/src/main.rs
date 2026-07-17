@@ -364,7 +364,7 @@ fn do_build(
     let out_dir: &Path = if let Some(d) = out_dir {
         d
     } else {
-        tmp_dir = std::env::temp_dir().join(format!("semasm-build-{}", std::process::id(),));
+        tmp_dir = std::env::temp_dir().join(format!("semasm-build-{}", std::process::id()));
         let _ = std::fs::create_dir_all(&tmp_dir);
         created_tmp = true;
         &tmp_dir
