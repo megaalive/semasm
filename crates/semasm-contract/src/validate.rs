@@ -1,6 +1,7 @@
 //! Load and validate contract documents into a checked form.
 
 use std::collections::BTreeSet;
+use std::fmt::Write;
 use std::path::Path;
 
 use semasm_core::{Diagnostic, DiagnosticLevel, Diagnostics, SourceSpan};
@@ -9,7 +10,7 @@ use serde::{Deserialize, Serialize};
 
 use crate::codes::ContractCode;
 use crate::expr::Expr;
-use crate::schema::{ContractDocument, EffectSchema, FunctionSchema};
+use crate::schema::{ContractDocument, EffectSchema};
 use crate::sem_type::SemType;
 
 /// Validated contract ready for later analysis stages.
@@ -179,6 +180,7 @@ pub fn check_str(text: &str) -> CheckResult {
     validate_document(&doc, &mut diagnostics)
 }
 
+#[allow(clippy::too_many_lines)]
 fn validate_document(doc: &ContractDocument, diagnostics: &mut Diagnostics) -> CheckResult {
     if doc.contract_version != "0.1" {
         push_code(
@@ -421,7 +423,7 @@ pub fn format_diagnostics_terminal(path: &str, diagnostics: &Diagnostics) -> Str
             .code
             .as_ref()
             .map_or_else(String::new, |c| format!("[{c}] "));
-        out.push_str(&format!("{path}: {level}: {code}{}\n", d.message));
+        let _ = writeln!(out, "{path}: {level}: {code}{}", d.message);
     }
     out
 }

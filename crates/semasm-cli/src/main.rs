@@ -102,19 +102,16 @@ fn main() -> ExitCode {
 }
 
 fn do_explain(code: &str) -> ExitCode {
-    match explain_code(code) {
-        Some(text) => {
-            println!("{text}");
-            ExitCode::SUCCESS
+    if let Some(text) = explain_code(code) {
+        println!("{text}");
+        ExitCode::SUCCESS
+    } else {
+        eprintln!("unknown diagnostic code `{code}`");
+        eprintln!("known contract codes:");
+        for c in ContractCode::all() {
+            eprintln!("  {}", c.as_str());
         }
-        None => {
-            eprintln!("unknown diagnostic code `{code}`");
-            eprintln!("known contract codes:");
-            for c in ContractCode::all() {
-                eprintln!("  {}", c.as_str());
-            }
-            ExitCode::from(2)
-        }
+        ExitCode::from(2)
     }
 }
 

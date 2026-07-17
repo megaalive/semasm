@@ -82,6 +82,7 @@ impl ContractCode {
     }
 
     /// Parse a code string such as `CTR003` or `ctr003`.
+    #[must_use]
     pub fn parse(input: &str) -> Option<Self> {
         match input.trim().to_ascii_uppercase().as_str() {
             "CTR001" => Some(Self::Ctr001),
