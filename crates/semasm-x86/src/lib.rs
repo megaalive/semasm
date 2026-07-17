@@ -17,6 +17,7 @@
 
 use serde::{Deserialize, Serialize};
 
+pub mod abi;
 pub mod lower;
 
 /// Bit width of a register view.

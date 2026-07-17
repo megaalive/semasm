@@ -28,10 +28,11 @@ semasm-agent = { workspace = true }
 semasm-obj = { workspace = true }
 semasm-decode = { workspace = true, optional = true }
 semasm-cfg = { workspace = true, optional = true }
+semasm-x86 = { workspace = true, optional = true }
 
 [features]
 default = []
-capstone = ["semasm-decode/capstone", "semasm-cfg/capstone"]
+capstone = ["semasm-decode/capstone", "semasm-cfg/capstone", "semasm-x86"]
 
 [lints]
 workspace = true

@@ -114,7 +114,20 @@ enum Commands {
     Cfg {
         /// Path to a raw binary blob to analyse.
         path: PathBuf,
-        /// Base address assigned to the first byte (default: 0; `0x` hex ok).
+        /// Base address assigned to the first byte (default:0; `0x` hex ok).
+        #[arg(long, default_value = "0")]
+        base: String,
+        /// Output format.
+        #[arg(long, value_enum, default_value_t = OutputFormat::Terminal)]
+        format: OutputFormat,
+    },
+    /// Check a function body against the System V AMD64 ABI
+    /// (decode + lower + ABI analysis).
+    #[cfg(feature = "capstone")]
+    Abi {
+        /// Path to a raw binary blob containing one function body.
+        path: PathBuf,
+        /// Base address assigned to the first byte (default:0; `0x` hex ok).
         #[arg(long, default_value = "0")]
         base: String,
         /// Output format.
@@ -202,11 +215,15 @@ fn main() -> ExitCode {
         }
         Some(Commands::Status) => {
             println!("semasm {SEMASM_VERSION}");
-            println!("phase: VS-04 object inspection + decode adapter");
-            println!("status: contract check, agent packets/verify, obj inspect, decode available");
+            println!("phase: VS-05 x86-64 ASIR + System V ABI checks");
+            println!(
+                "status: contract check, agent packets/verify, obj inspect, decode, \
+                 cfg, and System V AMD64 ABI analysis available"
+            );
             println!(
                 "crates: semasm-core, semasm-contract, semasm-asir, semasm-target, \
-                 semasm-build, semasm-agent, semasm-obj, semasm-decode"
+                 semasm-build, semasm-agent, semasm-obj, semasm-decode, semasm-cfg, \
+                 semasm-x86"
             );
             println!("note: generated programs do not link SemASM by default");
             ExitCode::SUCCESS
@@ -265,6 +282,17 @@ fn main() -> ExitCode {
                 }
             };
             do_cfg_inspect(&path, base, format)
+        }
+        #[cfg(feature = "capstone")]
+        Some(Commands::Abi { path, base, format }) => {
+            let base = match parse_base(&base) {
+                Ok(b) => b,
+                Err(e) => {
+                    eprintln!("error: {e}");
+                    return ExitCode::from(2);
+                }
+            };
+            do_abi_inspect(&path, base, format)
         }
     }
 }
@@ -1320,5 +1348,148 @@ fn do_cfg_inspect(path: &Path, base: u64, format: OutputFormat) -> ExitCode {
             print!("{}", graph.to_terminal());
             ExitCode::SUCCESS
         }
+    }
+}
+
+/// Decode a raw binary blob, lower it, and run the System V AMD64 ABI
+/// analysis over the (single) function body.
+#[cfg(feature = "capstone")]
+fn do_abi_inspect(path: &Path, base: u64, format: OutputFormat) -> ExitCode {
+    let code = match std::fs::read(path) {
+        Ok(b) => b,
+        Err(e) => {
+            eprintln!("{}: error: failed to read file: {e}", path.display());
+            return ExitCode::from(1);
+        }
+    };
+
+    let instrs = match semasm_decode::decode_x86_64(&code, base) {
+        Ok(i) => i,
+        Err(DecodeError::Unsupported(_)) => {
+            eprintln!(
+                "error: x86-64 decoding is not compiled into this build; \
+                 rebuild `semasm-cli` with the `capstone` feature"
+            );
+            return ExitCode::from(1);
+        }
+        Err(e) => {
+            eprintln!("error: {e}");
+            return ExitCode::from(1);
+        }
+    };
+
+    // Lower every decoded instruction; Unsupported ones are dropped (explicit
+    // "not modelled" signal) before the ABI walk.
+    let lowered: Vec<semasm_x86::lower::LoweredInstr> = instrs
+        .iter()
+        .filter_map(|p| match semasm_x86::lower::lower(p) {
+            semasm_x86::lower::Lowering::Lowered(l) => Some(l),
+            semasm_x86::lower::Lowering::Unsupported { .. } => None,
+        })
+        .collect();
+
+    let report = semasm_x86::abi::analyze(&lowered);
+
+    match format {
+        OutputFormat::Json => {
+            match serde_json::to_string_pretty(&json_abi_report(&report, lowered.len())) {
+                Ok(s) => {
+                    println!("{s}");
+                    ExitCode::SUCCESS
+                }
+                Err(e) => {
+                    eprintln!("failed to serialize JSON: {e}");
+                    ExitCode::from(1)
+                }
+            }
+        }
+        OutputFormat::Terminal => {
+            println!("instructions lowered: {}", lowered.len());
+            println!("leaf function:       {}", report.is_leaf);
+            println!("contains syscall:    {}", report.has_syscall);
+            println!("final RSP delta:    {}", report.final_rsp_delta);
+            println!("call sites:          {}", report.call_sites.len());
+            println!(
+                "max red-zone disp:   {}",
+                if report.max_red_zone_disp < 0 {
+                    report.max_red_zone_disp
+                } else {
+                    0
+                }
+            );
+            println!();
+            if report.findings.is_empty() {
+                println!("ABI: clean — no System V AMD64 violations detected ✓");
+            } else {
+                for f in &report.findings {
+                    let tag = match f.severity {
+                        semasm_x86::abi::Severity::Error => "ERROR  ",
+                        semasm_x86::abi::Severity::Warning => "warning",
+                        semasm_x86::abi::Severity::Info => "info   ",
+                    };
+                    let where_ = match f.at {
+                        Some(i) => format!(" @{i}"),
+                        None => String::new(),
+                    };
+                    println!("[{tag}] {} ({}{})", f.code, f.severity_str(), where_);
+                    println!("        {}", f.message);
+                }
+            }
+            if report.is_clean() {
+                ExitCode::SUCCESS
+            } else {
+                ExitCode::from(1)
+            }
+        }
+    }
+}
+
+/// A JSON-friendly view of [`semasm_x86::abi::AbiReport`].
+#[cfg(feature = "capstone")]
+#[derive(serde::Serialize)]
+struct JsonAbiReport {
+    instructions_lowered: usize,
+    is_leaf: bool,
+    has_syscall: bool,
+    final_rsp_delta: i64,
+    call_site_count: usize,
+    max_red_zone_disp: i64,
+    clean: bool,
+    findings: Vec<JsonAbiFinding>,
+}
+
+#[cfg(feature = "capstone")]
+#[derive(serde::Serialize)]
+struct JsonAbiFinding {
+    code: String,
+    severity: String,
+    at: Option<usize>,
+    message: String,
+}
+
+#[cfg(feature = "capstone")]
+fn json_abi_report(r: &semasm_x86::abi::AbiReport, lowered_count: usize) -> JsonAbiReport {
+    JsonAbiReport {
+        instructions_lowered: lowered_count,
+        is_leaf: r.is_leaf,
+        has_syscall: r.has_syscall,
+        final_rsp_delta: r.final_rsp_delta,
+        call_site_count: r.call_sites.len(),
+        max_red_zone_disp: if r.max_red_zone_disp < 0 {
+            r.max_red_zone_disp
+        } else {
+            0
+        },
+        clean: r.is_clean(),
+        findings: r
+            .findings
+            .iter()
+            .map(|f| JsonAbiFinding {
+                code: f.code.to_string(),
+                severity: f.severity_str().to_string(),
+                at: f.at,
+                message: f.message.clone(),
+            })
+            .collect(),
     }
 }

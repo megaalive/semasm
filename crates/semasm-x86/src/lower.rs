@@ -276,7 +276,7 @@ pub fn lower(instr: &PhysicalInstruction) -> Lowering {
 
     // Semantic kind + signedness for the supported subset.
     let (kind, signed) = match m.as_str() {
-        "mov" | "push" | "pop" => (OpKind::Store, None),
+        "mov" | "movabs" | "push" | "pop" => (OpKind::Store, None),
         "lea" => (OpKind::Load, None),
         "xor" | "add" | "sub" | "inc" | "dec" => (OpKind::Binary, None),
         "cmp" | "test" => (OpKind::Compare, None),

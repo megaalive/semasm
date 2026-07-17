@@ -378,6 +378,7 @@ dependencies = [
  "semasm-decode",
  "semasm-obj",
  "semasm-target",
+ "semasm-x86",
  "serde",
  "serde_json",
 ]
