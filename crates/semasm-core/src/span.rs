@@ -3,7 +3,9 @@
 use serde::{Deserialize, Serialize};
 
 /// Byte offset into a source buffer (UTF-8 bytes, not characters).
-#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Default, Serialize, Deserialize)]
+#[derive(
+    Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Default, Serialize, Deserialize,
+)]
 pub struct ByteOffset(pub u32);
 
 impl ByteOffset {

@@ -62,10 +62,7 @@ impl SemType {
         let ty = p.parse_type()?;
         p.skip_ws();
         if p.pos < p.bytes.len() {
-            return Err(format!(
-                "trailing junk in type starting at byte {}",
-                p.pos
-            ));
+            return Err(format!("trailing junk in type starting at byte {}", p.pos));
         }
         let span = SourceSpan::from_offsets(0, u32::try_from(input.len()).unwrap_or(u32::MAX));
         Ok((ty, span))

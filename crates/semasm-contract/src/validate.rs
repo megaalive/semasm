@@ -243,14 +243,16 @@ fn validate_document(doc: &ContractDocument, diagnostics: &mut Diagnostics) -> C
 
     let mut requires = Vec::new();
     for c in &f.requires {
-        if let Some(cond) = check_condition(c.expression.as_str(), c.reason.clone(), &names, diagnostics)
+        if let Some(cond) =
+            check_condition(c.expression.as_str(), c.reason.clone(), &names, diagnostics)
         {
             requires.push(cond);
         }
     }
     let mut ensures = Vec::new();
     for c in &f.ensures {
-        if let Some(cond) = check_condition(c.expression.as_str(), c.reason.clone(), &names, diagnostics)
+        if let Some(cond) =
+            check_condition(c.expression.as_str(), c.reason.clone(), &names, diagnostics)
         {
             ensures.push(cond);
         }
@@ -369,7 +371,9 @@ fn check_effects(
                     }
                 }
             } else if !names.contains(region.as_str())
-                && !region.chars().all(|c| c.is_ascii_alphanumeric() || c == '_')
+                && !region
+                    .chars()
+                    .all(|c| c.is_ascii_alphanumeric() || c == '_')
             {
                 // leave free-form resources alone
             }
