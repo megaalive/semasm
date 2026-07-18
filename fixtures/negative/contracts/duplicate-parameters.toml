@@ -1,0 +1,13 @@
+version = "0.1"
+
+[[functions]]
+name = "duplicate_parameters"
+
+[[functions.params]]
+name = "value"
+type = "u64"
+
+[[functions.params]]
+name = "value"
+type = "u64"
+
