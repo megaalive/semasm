@@ -244,6 +244,9 @@ enum AgentCmd {
         /// Output format: `terminal` (human) or `json` (HarnessReport).
         #[arg(long, value_enum, default_value_t = OutputFormat::Terminal)]
         format: OutputFormat,
+        /// Explicitly permit candidate execution after all static gates pass.
+        #[arg(long)]
+        allow_execution: bool,
     },
 }
 
@@ -308,7 +311,8 @@ fn main() -> ExitCode {
                 contract,
                 target,
                 format,
-            } => do_agent_verify(&source, &contract, &target, format),
+                allow_execution,
+            } => do_agent_verify(&source, &contract, &target, format, allow_execution),
         },
         Some(Commands::Obj {
             path,
@@ -407,6 +411,46 @@ mod tests {
     #[test]
     fn cli_debug_assert() {
         Cli::command().debug_assert();
+    }
+
+    #[test]
+    fn agent_verify_requires_explicit_execution_opt_in() {
+        let parsed = Cli::try_parse_from([
+            "semasm",
+            "agent",
+            "verify",
+            "candidate.asm",
+            "contract.toml",
+        ])
+        .unwrap();
+        let Some(Commands::Agent {
+            action: AgentCmd::Verify {
+                allow_execution, ..
+            },
+        }) = parsed.command
+        else {
+            panic!("expected agent verify command");
+        };
+        assert!(!allow_execution);
+
+        let opted_in = Cli::try_parse_from([
+            "semasm",
+            "agent",
+            "verify",
+            "candidate.asm",
+            "contract.toml",
+            "--allow-execution",
+        ])
+        .unwrap();
+        let Some(Commands::Agent {
+            action: AgentCmd::Verify {
+                allow_execution, ..
+            },
+        }) = opted_in.command
+        else {
+            panic!("expected agent verify command");
+        };
+        assert!(allow_execution);
     }
 
     #[test]
@@ -545,6 +589,7 @@ type = "usize"
             &contract,
             "x86_64-unknown-linux-gnu",
             OutputFormat::Terminal,
+            false,
         );
         // Without a runner (qemu) the toolchain is incomplete → non-zero.
         assert!(code != ExitCode::SUCCESS);

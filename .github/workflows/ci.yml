@@ -207,6 +207,9 @@ jobs:
       - name: Test (capstone feature)
         run: cargo test --workspace --all-features
 
+      - name: Agent semantic-gate integration tests
+        run: cargo test -p semasm-cli --all-features -- --ignored --nocapture
+
       - name: Compile fuzz targets
         run: cargo check --manifest-path fuzz/Cargo.toml --bins --locked
 

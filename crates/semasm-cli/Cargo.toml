@@ -32,7 +32,7 @@ semasm-x86 = { workspace = true, optional = true }
 semasm-aarch64 = { workspace = true, optional = true }
 
 [features]
-default = []
+default = ["capstone"]
 capstone = ["semasm-decode/capstone", "semasm-cfg/capstone", "semasm-x86", "semasm-aarch64"]
 
 [lints]

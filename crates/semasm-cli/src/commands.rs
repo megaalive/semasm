@@ -10,8 +10,8 @@ use semasm_build::{BuildError, Pipeline};
 use semasm_contract::{
     check_file, explain_code, format_diagnostics_terminal, CheckReportJson, ContractCode,
 };
-use semasm_obj::ObjectError;
-use semasm_target::{tools, TargetIdentity};
+use semasm_obj::{ContainerKind, ObjectError};
+use semasm_target::{tools, Abi, Isa, ObjectFormat, TargetIdentity};
 
 use crate::OutputFormat;
 
@@ -176,6 +176,7 @@ pub(crate) fn do_agent_verify(
     contract_path: &Path,
     target_str: &str,
     format: OutputFormat,
+    allow_execution: bool,
 ) -> ExitCode {
     let identity = match TargetIdentity::parse_known(target_str) {
         Ok(identity) => identity,
@@ -249,6 +250,12 @@ pub(crate) fn do_agent_verify(
         }
     }
 
+    if let Err(error) = verify_candidate_semantics(&routine_object, &identity, &routine_symbol) {
+        eprintln!("semantic gate failed: {error}");
+        let _ = std::fs::remove_dir_all(&directory);
+        return ExitCode::from(1);
+    }
+
     let harness_path = directory.join("harness.asm");
     if let Err(error) = std::fs::write(&harness_path, &harness_source) {
         eprintln!("error: cannot write harness source: {error}");
@@ -284,6 +291,31 @@ pub(crate) fn do_agent_verify(
             let _ = std::fs::remove_dir_all(&directory);
             return ExitCode::from(1);
         }
+    }
+
+    match semasm_obj::read_for_target(&executable, &identity) {
+        Ok(info) if info.kind == ContainerKind::Executable => {}
+        Ok(info) => {
+            eprintln!(
+                "executable object gate failed: produced {:?} container",
+                info.kind
+            );
+            let _ = std::fs::remove_dir_all(&directory);
+            return ExitCode::from(1);
+        }
+        Err(error) => {
+            eprintln!("executable object gate failed: {error}");
+            let _ = std::fs::remove_dir_all(&directory);
+            return ExitCode::from(1);
+        }
+    }
+
+    if !allow_execution {
+        eprintln!(
+            "execution denied: static semantic gates passed; rerun with --allow-execution to run the candidate"
+        );
+        let _ = std::fs::remove_dir_all(&directory);
+        return ExitCode::from(1);
     }
 
     let run = match pipeline.run(&executable) {
@@ -331,6 +363,135 @@ pub(crate) fn do_agent_verify(
         ExitCode::SUCCESS
     } else {
         ExitCode::from(1)
+    }
+}
+
+#[cfg(feature = "capstone")]
+fn verify_candidate_semantics(
+    object_path: &Path,
+    identity: &TargetIdentity,
+    routine_symbol: &str,
+) -> Result<(), String> {
+    if (identity.isa, identity.abi, identity.object_format)
+        != (Isa::X86_64, Abi::SysVAmd64, ObjectFormat::Elf)
+    {
+        return Err(format!(
+            "agent verification currently has complete semantic gates only for x86_64-unknown-linux-gnu, not `{}`",
+            identity.name
+        ));
+    }
+
+    let info =
+        semasm_obj::read_for_target(object_path, identity).map_err(|error| error.to_string())?;
+    if info.kind != ContainerKind::Relocatable {
+        return Err(format!(
+            "candidate must be relocatable, found {:?}",
+            info.kind
+        ));
+    }
+    if !info.exports.iter().any(|symbol| symbol == routine_symbol) {
+        return Err(format!(
+            "required routine symbol `{routine_symbol}` is not exported"
+        ));
+    }
+    if !info.imports.is_empty() {
+        return Err(format!(
+            "candidate has forbidden external capabilities/imports: {}",
+            info.imports.join(", ")
+        ));
+    }
+
+    let sections =
+        semasm_obj::read_code_sections(object_path, identity).map_err(|error| error.to_string())?;
+    if sections.is_empty() {
+        return Err("candidate contains no executable code section".to_string());
+    }
+
+    let mut physical = Vec::new();
+    let mut code_bytes = 0usize;
+    for section in sections {
+        code_bytes += section.bytes.len();
+        let mut decoded = semasm_decode::decode_x86_64(&section.bytes, section.address)
+            .map_err(|error| format!("decode failed for {}: {error}", section.name))?;
+        physical.append(&mut decoded);
+    }
+    let decoded_bytes = physical
+        .iter()
+        .map(|instruction| instruction.bytes.len())
+        .sum::<usize>();
+    if decoded_bytes != code_bytes {
+        return Err(format!(
+            "decode coverage incomplete: decoded {decoded_bytes} of {code_bytes} executable bytes"
+        ));
+    }
+
+    let mut lowered = Vec::with_capacity(physical.len());
+    for instruction in &physical {
+        match semasm_x86::lower::lower(instruction) {
+            semasm_x86::lower::Lowering::Lowered(instruction) => lowered.push(instruction),
+            semasm_x86::lower::Lowering::Unsupported { mnemonic } => {
+                return Err(format!(
+                    "lowering coverage incomplete at {:#x}: unsupported `{mnemonic}`",
+                    instruction.address
+                ));
+            }
+        }
+    }
+
+    let abi = semasm_x86::abi::analyze(&lowered);
+    if !abi.is_clean() {
+        let findings = abi
+            .findings
+            .iter()
+            .map(|finding| format!("{}: {}", finding.code, finding.message))
+            .collect::<Vec<_>>()
+            .join("; ");
+        return Err(format!("System V ABI verification failed: {findings}"));
+    }
+    if abi.has_syscall {
+        return Err("candidate requests the forbidden syscall capability".to_string());
+    }
+    Ok(())
+}
+
+#[cfg(not(feature = "capstone"))]
+fn verify_candidate_semantics(
+    _object_path: &Path,
+    _identity: &TargetIdentity,
+    _routine_symbol: &str,
+) -> Result<(), String> {
+    Err("agent verification requires a build with the `capstone` feature".to_string())
+}
+
+#[cfg(all(test, feature = "capstone"))]
+mod semantic_gate_tests {
+    use super::*;
+    use std::process::Command;
+
+    #[test]
+    #[ignore = "requires nasm on PATH"]
+    fn canonical_candidate_passes_static_semantic_gates() {
+        let workspace = Path::new(env!("CARGO_MANIFEST_DIR")).join("../..");
+        let source = workspace.join("fixtures/asm/count_byte.asm");
+        let scratch =
+            std::env::temp_dir().join(format!("semasm-semantic-gate-{}", std::process::id()));
+        std::fs::create_dir_all(&scratch).unwrap();
+        let object = scratch.join("count_byte.o");
+        let output = Command::new("nasm")
+            .args(["-f", "elf64"])
+            .arg(&source)
+            .arg("-o")
+            .arg(&object)
+            .output()
+            .unwrap();
+        assert!(
+            output.status.success(),
+            "nasm failed: {}",
+            String::from_utf8_lossy(&output.stderr)
+        );
+        let target = TargetIdentity::parse_known("x86_64-unknown-linux-gnu").unwrap();
+        verify_candidate_semantics(&object, &target, "count_byte").unwrap();
+        let _ = std::fs::remove_dir_all(scratch);
     }
 }
 
