@@ -15,7 +15,7 @@ use crate::exec::{self, BuildError, CaptureInfo, CommandOutput, CommandSpec, Ter
 use crate::pipeline::Pipeline;
 
 /// Current serialized artifact-report schema.
-pub const ARTIFACT_REPORT_SCHEMA_VERSION: &str = "0.1";
+pub const ARTIFACT_REPORT_SCHEMA_VERSION: &str = "0.2";
 
 // ---------------------------------------------------------------------------
 // Data types
@@ -170,6 +170,8 @@ impl ExecutionInfo {
 pub struct ArtifactReport {
     /// Serialized schema identity used for compatibility checks.
     pub schema_version: &'static str,
+    /// Normalized compilation target identity.
+    pub target: String,
     /// Source file information.
     pub source: SourceInfo,
     /// Tool versions used in the build.
@@ -259,6 +261,84 @@ pub struct CommandRecordJson {
     pub stderr_capture: CaptureInfo,
     /// Process-tree termination diagnostics, when applicable.
     pub termination: Option<TerminationInfo>,
+}
+
+#[derive(Serialize)]
+struct CanonicalEvidence<'a> {
+    schema_version: &'a str,
+    target: &'a str,
+    source_sha256: &'a str,
+    tools: Vec<(&'a String, &'a String)>,
+    commands: Vec<CanonicalCommandOutcome<'a>>,
+    object: Option<CanonicalArtifact<'a>>,
+    executable: CanonicalArtifact<'a>,
+    execution: CanonicalExecutionOutcome,
+}
+
+#[derive(Serialize)]
+struct CanonicalCommandOutcome<'a> {
+    label: &'a str,
+    exit_code: Option<i32>,
+    timed_out: bool,
+    success: bool,
+}
+
+#[derive(Serialize)]
+struct CanonicalArtifact<'a> {
+    sha256: &'a str,
+    size: u64,
+    sections: Vec<(&'a str, u64, u64, &'a str)>,
+    symbols: Vec<(&'a str, u64, u64, &'a str, char)>,
+    is_dynamic: bool,
+}
+
+#[derive(Serialize)]
+#[serde(tag = "status", rename_all = "snake_case")]
+enum CanonicalExecutionOutcome {
+    NotRequested,
+    Unavailable,
+    Failed,
+    Succeeded {
+        exit_code: Option<i32>,
+        timed_out: bool,
+    },
+}
+
+fn canonical_artifact(artifact: &ArtifactFileInfo) -> CanonicalArtifact<'_> {
+    let mut sections: Vec<_> = artifact
+        .sections
+        .iter()
+        .map(|section| {
+            (
+                section.name.as_str(),
+                section.size,
+                section.vma,
+                section.flags.as_str(),
+            )
+        })
+        .collect();
+    sections.sort_unstable();
+    let mut symbols: Vec<_> = artifact
+        .symbols
+        .iter()
+        .map(|symbol| {
+            (
+                symbol.name.as_str(),
+                symbol.address,
+                symbol.size,
+                symbol.section.as_str(),
+                symbol.kind,
+            )
+        })
+        .collect();
+    symbols.sort_unstable();
+    CanonicalArtifact {
+        sha256: &artifact.hash.sha256,
+        size: artifact.size,
+        sections,
+        symbols,
+        is_dynamic: artifact.is_dynamic,
+    }
 }
 
 // ---------------------------------------------------------------------------
@@ -561,6 +641,7 @@ pub fn generate_report(
 
     Ok(ArtifactReport {
         schema_version: ARTIFACT_REPORT_SCHEMA_VERSION,
+        target: pipeline.target.to_string(),
         source: source_info,
         tool_versions,
         command_records,
@@ -571,6 +652,61 @@ pub fn generate_report(
 }
 
 impl ArtifactReport {
+    /// Serialize the stable evidence subset using deterministic field and item ordering.
+    pub fn canonical_evidence_json(&self) -> Result<String, serde_json::Error> {
+        let mut tools: Vec<_> = self
+            .tool_versions
+            .iter()
+            .map(|tool| (&tool.tool, &tool.version))
+            .collect();
+        tools.sort_unstable();
+
+        let object = self.object.as_ref().map(canonical_artifact);
+        let executable = canonical_artifact(&self.executable);
+        let commands: Vec<_> = self
+            .command_records
+            .iter()
+            .map(|record| CanonicalCommandOutcome {
+                label: &record.label,
+                exit_code: record.exit_code,
+                timed_out: record.timed_out,
+                success: record.success,
+            })
+            .collect();
+        let execution = match &self.execution {
+            ExecutionInfo::NotRequested => CanonicalExecutionOutcome::NotRequested,
+            ExecutionInfo::Unavailable { .. } => CanonicalExecutionOutcome::Unavailable,
+            ExecutionInfo::Failed { .. } => CanonicalExecutionOutcome::Failed,
+            ExecutionInfo::Succeeded {
+                exit_code,
+                timed_out,
+                ..
+            } => CanonicalExecutionOutcome::Succeeded {
+                exit_code: *exit_code,
+                timed_out: *timed_out,
+            },
+        };
+        let evidence = CanonicalEvidence {
+            schema_version: self.schema_version,
+            target: &self.target,
+            source_sha256: &self.source.hash.sha256,
+            tools,
+            commands,
+            object,
+            executable,
+            execution,
+        };
+        serde_json::to_string(&evidence)
+    }
+
+    /// SHA-256 of the canonical deterministic evidence JSON bytes.
+    pub fn canonical_evidence_hash(&self) -> Result<String, serde_json::Error> {
+        let json = self.canonical_evidence_json()?;
+        let mut hasher = Sha256::new();
+        hasher.update(json.as_bytes());
+        Ok(format!("{:x}", hasher.finalize()))
+    }
+
     /// Serialise to pretty-printed JSON.
     pub fn to_json_pretty(&self) -> Result<String, BuildError> {
         serde_json::to_string_pretty(self)
@@ -584,6 +720,7 @@ impl ArtifactReport {
 
         let _ = writeln!(out, "=== Artifact Report ===");
         let _ = writeln!(out, "Schema:      {}", self.schema_version);
+        let _ = writeln!(out, "Target:      {}", self.target);
         let _ = writeln!(out);
 
         let _ = writeln!(
@@ -840,6 +977,7 @@ SYMBOL TABLE:
     fn report_terminal_includes_header() {
         let report = ArtifactReport {
             schema_version: ARTIFACT_REPORT_SCHEMA_VERSION,
+            target: "x86_64-pc-windows-msvc".into(),
             source: SourceInfo {
                 path: "test.asm".into(),
                 hash: FileHash {
@@ -897,6 +1035,7 @@ SYMBOL TABLE:
     fn report_to_json_roundtrip() {
         let report = ArtifactReport {
             schema_version: ARTIFACT_REPORT_SCHEMA_VERSION,
+            target: "x86_64-unknown-linux-gnu".into(),
             source: SourceInfo {
                 path: "exit.asm".into(),
                 hash: FileHash {
@@ -984,11 +1123,15 @@ SYMBOL TABLE:
             check_report_schema_compatibility(r#"{"schema_version":"0.0"}"#),
             Ok(ReportSchemaCompatibility::CompatibleOlder)
         );
+        assert_eq!(
+            check_report_schema_compatibility(r#"{"schema_version":"0.1"}"#),
+            Ok(ReportSchemaCompatibility::CompatibleOlder)
+        );
     }
 
     #[test]
     fn report_schema_compatibility_rejects_unsupported_versions() {
-        for json in [r#"{"schema_version":"0.2"}"#, r#"{"schema_version":"1.0"}"#] {
+        for json in [r#"{"schema_version":"0.3"}"#, r#"{"schema_version":"1.0"}"#] {
             let error = check_report_schema_compatibility(json).unwrap_err();
             assert!(error.contains("unsupported artifact report schema"));
         }
@@ -1004,6 +1147,101 @@ SYMBOL TABLE:
             let error = check_report_schema_compatibility(&json).unwrap_err();
             assert!(error.contains("expected MAJOR.MINOR"));
         }
+    }
+
+    fn canonical_test_report(root: &str) -> ArtifactReport {
+        ArtifactReport {
+            schema_version: ARTIFACT_REPORT_SCHEMA_VERSION,
+            target: "x86_64-unknown-linux-gnu".into(),
+            source: SourceInfo {
+                path: format!("{root}/src/fixture.asm"),
+                hash: FileHash {
+                    sha256: "source-hash".into(),
+                },
+            },
+            tool_versions: vec![
+                ToolVersionInfo {
+                    tool: "linker".into(),
+                    version: "1.0".into(),
+                },
+                ToolVersionInfo {
+                    tool: "assembler".into(),
+                    version: "2.0".into(),
+                },
+            ],
+            command_records: Vec::new(),
+            object: None,
+            executable: ArtifactFileInfo {
+                path: format!("{root}/out/fixture"),
+                hash: FileHash {
+                    sha256: "artifact-hash".into(),
+                },
+                size: 42,
+                sections: vec![
+                    SectionInfo {
+                        name: ".data".into(),
+                        size: 2,
+                        vma: 2,
+                        flags: "DATA".into(),
+                    },
+                    SectionInfo {
+                        name: ".text".into(),
+                        size: 4,
+                        vma: 0,
+                        flags: "TEXT".into(),
+                    },
+                ],
+                symbols: vec![
+                    SymbolInfo {
+                        name: "z_symbol".into(),
+                        address: 2,
+                        size: 1,
+                        section: ".data".into(),
+                        kind: 'O',
+                    },
+                    SymbolInfo {
+                        name: "entry".into(),
+                        address: 0,
+                        size: 4,
+                        section: ".text".into(),
+                        kind: 'F',
+                    },
+                ],
+                is_dynamic: false,
+                raw_sections: format!("volatile sections from {root}"),
+                raw_symbols: format!("volatile symbols from {root}"),
+                raw_private_headers: format!("volatile headers from {root}"),
+            },
+            execution: ExecutionInfo::NotRequested,
+        }
+    }
+
+    #[test]
+    fn canonical_evidence_hash_ignores_host_paths_raw_output_and_item_order() {
+        let first = canonical_test_report("/tmp/build-a");
+        let mut second = canonical_test_report("D:/temp/build-b");
+        second.tool_versions.reverse();
+        second.executable.sections.reverse();
+        second.executable.symbols.reverse();
+
+        assert_eq!(
+            first.canonical_evidence_hash().unwrap(),
+            second.canonical_evidence_hash().unwrap()
+        );
+    }
+
+    #[test]
+    fn canonical_evidence_hash_changes_with_target_or_content() {
+        let report = canonical_test_report("/tmp/build");
+        let original = report.canonical_evidence_hash().unwrap();
+
+        let mut changed_target = report.clone();
+        changed_target.target = "x86_64-pc-windows-msvc".into();
+        assert_ne!(original, changed_target.canonical_evidence_hash().unwrap());
+
+        let mut changed_content = report;
+        changed_content.executable.hash.sha256 = "different-hash".into();
+        assert_ne!(original, changed_content.canonical_evidence_hash().unwrap());
     }
 
     // ------------------------------------------------------------------
