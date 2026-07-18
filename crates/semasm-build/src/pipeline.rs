@@ -678,9 +678,9 @@ start address 0x0000000000000000
         // Verify architecture
         let arch = pipe.verify_architecture(&exe).expect("verify");
         assert!(
-            arch.format.contains("x86-64") || arch.format.contains("x86_64"),
-            "unexpected format: {}",
-            arch.format
+            arch.arch.contains("X86_64"),
+            "unexpected architecture: {}",
+            arch.arch
         );
         assert!(
             arch.is_executable,
