@@ -433,7 +433,6 @@ name = "semasm-obj"
 version = "0.1.0"
 dependencies = [
  "object",
- "semasm-build",
  "semasm-core",
  "semasm-target",
  "serde",
