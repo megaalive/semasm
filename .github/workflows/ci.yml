@@ -50,7 +50,7 @@ jobs:
       - uses: actions/checkout@v4
 
       - name: Install build tools
-        run: sudo apt-get update && sudo apt-get install -y nasm binutils
+        run: sudo apt-get update && sudo apt-get install -y nasm binutils qemu-user
 
       - name: Install Rust toolchain
         uses: dtolnay/rust-toolchain@stable
@@ -65,7 +65,9 @@ jobs:
           objdump --version | head -n 1
 
       - name: Run Linux build, inspect, execute, and report scenarios
-        run: cargo test -p semasm-build -- --ignored --nocapture
+        run: |
+          cargo test -p semasm-build -- --ignored --nocapture
+          cargo test -p semasm-obj -- --ignored --nocapture
 
   windows-e2e:
     name: e2e (x86-64 Windows)

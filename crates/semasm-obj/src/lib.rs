@@ -373,6 +373,7 @@ mod tests {
     }
 
     #[test]
+    #[ignore = "requires nasm on PATH"]
     fn json_output_is_deterministic() {
         // Re-parsing the same bytes yields identical JSON.
         let bytes = build_minimal_elf();
@@ -382,6 +383,7 @@ mod tests {
     }
 
     #[test]
+    #[ignore = "requires nasm on PATH"]
     fn parses_minimal_elf_sections() {
         let bytes = build_minimal_elf();
         let info = parse(&bytes).unwrap();
@@ -393,6 +395,7 @@ mod tests {
     }
 
     #[test]
+    #[ignore = "requires nasm on PATH"]
     fn parses_minimal_win64_object() {
         let bytes = build_minimal_win64();
         let info = parse(&bytes).unwrap();
@@ -404,6 +407,7 @@ mod tests {
     }
 
     #[test]
+    #[ignore = "requires nasm on PATH"]
     fn win64_object_is_not_elf() {
         let win = build_minimal_win64();
         let elf = build_minimal_elf();
@@ -415,6 +419,7 @@ mod tests {
     }
 
     #[test]
+    #[ignore = "requires nasm on PATH"]
     fn architecture_mismatch_is_hard_error() {
         use semasm_target::{Isa, TargetIdentity};
 
