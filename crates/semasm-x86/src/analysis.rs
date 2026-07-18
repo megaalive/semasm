@@ -96,8 +96,12 @@ pub struct BlockState {
     pub regs: HashMap<Gp, RegAbs>,
     /// Net change to `RSP` since entry (positive = stack grown down).
     pub rsp_delta: i64,
+    /// Whether [`Self::rsp_delta`] remains known.
+    pub rsp_known: bool,
     /// Signedness context of the most recent comparison.
     pub cmp: CmpContext,
+    /// Whether memory facts remain valid after all observed instructions.
+    pub memory_known: bool,
 }
 
 impl BlockState {
@@ -106,7 +110,9 @@ impl BlockState {
         Self {
             regs: HashMap::new(),
             rsp_delta: 0,
+            rsp_known: true,
             cmp: CmpContext::None,
+            memory_known: true,
         }
     }
 
@@ -141,6 +147,7 @@ impl BlockState {
                 // Conflict mechanism, not here. We preserve the smaller delta.
                 self.rsp_delta.min(other.rsp_delta)
             },
+            rsp_known: self.rsp_known && other.rsp_known && self.rsp_delta == other.rsp_delta,
             cmp: match (self.cmp, other.cmp) {
                 (CmpContext::None, x) | (x, CmpContext::None) => x,
                 // Two equal contexts stay; anything else merges to Unsigned
@@ -148,6 +155,7 @@ impl BlockState {
                 (a, b) if a == b => a,
                 _ => CmpContext::Unsigned,
             },
+            memory_known: self.memory_known && other.memory_known,
         }
     }
 }
@@ -312,9 +320,8 @@ fn transfer(ins: &LoweredInstr, state: &mut BlockState) {
                 if let Storage::Gp(g) = dst.storage {
                     let val = match ins.operands.get(1) {
                         Some(Operand::Imm(n)) => AbsVal::Const(*n),
-                        Some(Operand::Reg(src)) => state
-                            .regs
-                            .get(&gp_of(*src))
+                        Some(Operand::Reg(src)) => gp_of(*src)
+                            .and_then(|source| state.regs.get(&source))
                             .map_or(AbsVal::Conflict, |r| r.value),
                         _ => AbsVal::Conflict,
                     };
@@ -329,8 +336,8 @@ fn transfer(ins: &LoweredInstr, state: &mut BlockState) {
             }
             // Stack pointer adjustment for push/pop.
             match ins.mnemonic.as_str() {
-                "push" => state.rsp_delta += 8,
-                "pop" => state.rsp_delta -= 8,
+                "push" if state.rsp_known => state.rsp_delta += 8,
+                "pop" if state.rsp_known => state.rsp_delta -= 8,
                 _ => {}
             }
         }
@@ -385,18 +392,52 @@ fn transfer(ins: &LoweredInstr, state: &mut BlockState) {
                     },
                 );
             }
-            state.rsp_delta += 8;
+            if state.rsp_known {
+                state.rsp_delta += 8;
+            }
         }
-        OpKind::Branch | OpKind::Return | OpKind::Unknown | OpKind::Nop => {}
+        OpKind::Unknown => invalidate_unknown(state),
+        OpKind::Branch | OpKind::Return | OpKind::Nop => {}
     }
 }
 
+fn invalidate_unknown(state: &mut BlockState) {
+    for g in [
+        Gp::Rax,
+        Gp::Rbx,
+        Gp::Rcx,
+        Gp::Rdx,
+        Gp::Rsi,
+        Gp::Rdi,
+        Gp::Rsp,
+        Gp::Rbp,
+        Gp::R8,
+        Gp::R9,
+        Gp::R10,
+        Gp::R11,
+        Gp::R12,
+        Gp::R13,
+        Gp::R14,
+        Gp::R15,
+    ] {
+        state.regs.insert(
+            g,
+            RegAbs {
+                value: AbsVal::Conflict,
+                width: Width::B64,
+            },
+        );
+    }
+    state.cmp = CmpContext::None;
+    state.rsp_known = false;
+    state.memory_known = false;
+}
+
 /// Extract the canonical GP register of a `Register`, if it is one.
-fn gp_of(r: Register) -> Gp {
+fn gp_of(r: Register) -> Option<Gp> {
     match r.storage {
-        Storage::Gp(g) => g,
-        // Non-GP storage is not tracked as a GP value.
-        _ => Gp::Rax,
+        Storage::Gp(g) => Some(g),
+        _ => None,
     }
 }
 
@@ -458,6 +499,16 @@ pub fn analyze(lowered: &[LoweredInstr], blocks: &[BlockRange]) -> AnalysisRepor
     // stack delta during transfer below is approximated at entry; we recompute
     // provenance from the final out-state per block for accuracy).
     for (at, ins) in lowered.iter().enumerate() {
+        if ins.kind == OpKind::Unknown {
+            notes.push(AnalysisNote {
+                code: "ANALYSIS_INCOMPLETE",
+                block: block_of(blocks, at),
+                message: format!(
+                    "instruction {at} (`{}`) has unknown effects; register, flag, stack, and memory facts were invalidated",
+                    ins.mnemonic
+                ),
+            });
+        }
         let kind = match ins.kind {
             OpKind::Load => Some(MemKind::Load),
             OpKind::Store => {
@@ -599,7 +650,7 @@ pub fn analyze_linear(lowered: &[LoweredInstr]) -> AnalysisReport {
 mod tests {
     use super::{analyze, analyze_linear, AbsVal, BlockRange, CmpContext, MemProvenance};
     use crate::lower::{LoweredInstr, MemOperand, Operand};
-    use crate::{Gp, Width};
+    use crate::{Gp, Register, Storage, Width};
     use semasm_asir::OpKind as Kind;
 
     fn ins(mnemonic: &str, kind: Kind, operands: Vec<Operand>) -> LoweredInstr {
@@ -773,5 +824,47 @@ mod tests {
         let out = &r.block_out[0];
         // The signed comparison is recorded in the block's cmp context.
         assert_eq!(out.cmp, CmpContext::Signed);
+    }
+
+    #[test]
+    fn non_gp_source_never_reuses_rax_value() {
+        let xmm0 = Operand::Reg(Register {
+            storage: Storage::Xmm(0),
+            width: Width::B64,
+            high: false,
+        });
+        let body = vec![
+            ins("mov", Kind::Store, vec![reg(Gp::Rax), imm(7)]),
+            ins("mov", Kind::Store, vec![reg(Gp::Rbx), xmm0]),
+        ];
+        let report = analyze_linear(&body);
+        assert_eq!(
+            report.block_out[0].regs.get(&Gp::Rbx).unwrap().value,
+            AbsVal::Conflict
+        );
+    }
+
+    #[test]
+    fn unknown_instruction_invalidates_tracked_state() {
+        let body = vec![
+            ins("mov", Kind::Store, vec![reg(Gp::Rax), imm(7)]),
+            ins_signed(
+                "cmp",
+                Kind::Compare,
+                Some(true),
+                vec![reg(Gp::Rax), reg(Gp::Rbx)],
+            ),
+            ins("mystery", Kind::Unknown, vec![]),
+        ];
+        let report = analyze_linear(&body);
+        let out = &report.block_out[0];
+        assert_eq!(out.regs.get(&Gp::Rax).unwrap().value, AbsVal::Conflict);
+        assert_eq!(out.cmp, CmpContext::None);
+        assert!(!out.rsp_known);
+        assert!(!out.memory_known);
+        assert!(report
+            .notes
+            .iter()
+            .any(|note| note.code == "ANALYSIS_INCOMPLETE"));
     }
 }
