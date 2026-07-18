@@ -8,14 +8,15 @@ use std::fmt::Write as FmtWrite;
 use std::io::Read;
 use std::path::Path;
 
-use serde::Serialize;
+use serde::ser::Error as _;
+use serde::{Serialize, Serializer};
 use sha2::{Digest, Sha256};
 
 use crate::exec::{self, BuildError, CaptureInfo, CommandOutput, CommandSpec, TerminationInfo};
 use crate::pipeline::Pipeline;
 
 /// Current serialized artifact-report schema.
-pub const ARTIFACT_REPORT_SCHEMA_VERSION: &str = "0.2";
+pub const ARTIFACT_REPORT_SCHEMA_VERSION: &str = "0.3";
 
 // ---------------------------------------------------------------------------
 // Data types
@@ -166,7 +167,7 @@ impl ExecutionInfo {
 }
 
 /// Complete build artifact report, fully serialisable as JSON.
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone)]
 pub struct ArtifactReport {
     /// Serialized schema identity used for compatibility checks.
     pub schema_version: &'static str,
@@ -276,6 +277,31 @@ struct CanonicalEvidence<'a> {
 }
 
 #[derive(Serialize)]
+struct SerializedArtifactReport<'a> {
+    schema_version: &'a str,
+    deterministic_evidence: CanonicalEvidence<'a>,
+    deterministic_evidence_sha256: String,
+    volatile_metadata: VolatileMetadata<'a>,
+}
+
+#[derive(Serialize)]
+struct VolatileMetadata<'a> {
+    source_path: &'a str,
+    commands: &'a [CommandRecordJson],
+    object: Option<VolatileArtifact<'a>>,
+    executable: VolatileArtifact<'a>,
+    execution: &'a ExecutionInfo,
+}
+
+#[derive(Serialize)]
+struct VolatileArtifact<'a> {
+    path: &'a str,
+    raw_sections: &'a str,
+    raw_symbols: &'a str,
+    raw_private_headers: &'a str,
+}
+
+#[derive(Serialize)]
 struct CanonicalCommandOutcome<'a> {
     label: &'a str,
     exit_code: Option<i32>,
@@ -338,6 +364,15 @@ fn canonical_artifact(artifact: &ArtifactFileInfo) -> CanonicalArtifact<'_> {
         sections,
         symbols,
         is_dynamic: artifact.is_dynamic,
+    }
+}
+
+fn volatile_artifact(artifact: &ArtifactFileInfo) -> VolatileArtifact<'_> {
+    VolatileArtifact {
+        path: &artifact.path,
+        raw_sections: &artifact.raw_sections,
+        raw_symbols: &artifact.raw_symbols,
+        raw_private_headers: &artifact.raw_private_headers,
     }
 }
 
@@ -652,8 +687,7 @@ pub fn generate_report(
 }
 
 impl ArtifactReport {
-    /// Serialize the stable evidence subset using deterministic field and item ordering.
-    pub fn canonical_evidence_json(&self) -> Result<String, serde_json::Error> {
+    fn canonical_evidence(&self) -> CanonicalEvidence<'_> {
         let mut tools: Vec<_> = self
             .tool_versions
             .iter()
@@ -686,7 +720,7 @@ impl ArtifactReport {
                 timed_out: *timed_out,
             },
         };
-        let evidence = CanonicalEvidence {
+        CanonicalEvidence {
             schema_version: self.schema_version,
             target: &self.target,
             source_sha256: &self.source.hash.sha256,
@@ -695,8 +729,12 @@ impl ArtifactReport {
             object,
             executable,
             execution,
-        };
-        serde_json::to_string(&evidence)
+        }
+    }
+
+    /// Serialize the stable evidence subset using deterministic field and item ordering.
+    pub fn canonical_evidence_json(&self) -> Result<String, serde_json::Error> {
+        serde_json::to_string(&self.canonical_evidence())
     }
 
     /// SHA-256 of the canonical deterministic evidence JSON bytes.
@@ -802,6 +840,29 @@ impl ArtifactReport {
         write_execution(&mut out, &self.execution);
 
         out
+    }
+}
+
+impl Serialize for ArtifactReport {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: Serializer,
+    {
+        let report = SerializedArtifactReport {
+            schema_version: self.schema_version,
+            deterministic_evidence: self.canonical_evidence(),
+            deterministic_evidence_sha256: self
+                .canonical_evidence_hash()
+                .map_err(S::Error::custom)?,
+            volatile_metadata: VolatileMetadata {
+                source_path: &self.source.path,
+                commands: &self.command_records,
+                object: self.object.as_ref().map(volatile_artifact),
+                executable: volatile_artifact(&self.executable),
+                execution: &self.execution,
+            },
+        };
+        report.serialize(serializer)
     }
 }
 
@@ -1127,11 +1188,15 @@ SYMBOL TABLE:
             check_report_schema_compatibility(r#"{"schema_version":"0.1"}"#),
             Ok(ReportSchemaCompatibility::CompatibleOlder)
         );
+        assert_eq!(
+            check_report_schema_compatibility(r#"{"schema_version":"0.2"}"#),
+            Ok(ReportSchemaCompatibility::CompatibleOlder)
+        );
     }
 
     #[test]
     fn report_schema_compatibility_rejects_unsupported_versions() {
-        for json in [r#"{"schema_version":"0.3"}"#, r#"{"schema_version":"1.0"}"#] {
+        for json in [r#"{"schema_version":"0.4"}"#, r#"{"schema_version":"1.0"}"#] {
             let error = check_report_schema_compatibility(json).unwrap_err();
             assert!(error.contains("unsupported artifact report schema"));
         }
@@ -1169,7 +1234,19 @@ SYMBOL TABLE:
                     version: "2.0".into(),
                 },
             ],
-            command_records: Vec::new(),
+            command_records: vec![CommandRecordJson {
+                label: "link".into(),
+                command: format!("linker {root}/fixture.o"),
+                exit_code: Some(0),
+                stdout: format!("volatile stdout from {root}"),
+                stderr: String::new(),
+                duration_secs: 1.25,
+                timed_out: false,
+                success: true,
+                stdout_capture: capture_info(12),
+                stderr_capture: capture_info(0),
+                termination: None,
+            }],
             object: None,
             executable: ArtifactFileInfo {
                 path: format!("{root}/out/fixture"),
@@ -1223,10 +1300,33 @@ SYMBOL TABLE:
         second.tool_versions.reverse();
         second.executable.sections.reverse();
         second.executable.symbols.reverse();
+        second.command_records[0].duration_secs = 9.75;
 
         assert_eq!(
             first.canonical_evidence_hash().unwrap(),
             second.canonical_evidence_hash().unwrap()
+        );
+    }
+
+    #[test]
+    fn serialized_report_separates_deterministic_and_volatile_fields() {
+        let report = canonical_test_report("/tmp/build");
+        let json = serde_json::to_value(&report).unwrap();
+        let deterministic = &json["deterministic_evidence"];
+        let volatile = &json["volatile_metadata"];
+
+        assert_eq!(deterministic["target"], report.target);
+        assert!(deterministic.get("source_path").is_none());
+        assert!(deterministic["executable"].get("raw_sections").is_none());
+        assert_eq!(volatile["source_path"], "/tmp/build/src/fixture.asm");
+        assert_eq!(volatile["commands"][0]["duration_secs"], 1.25);
+        assert!(volatile["executable"]["raw_sections"]
+            .as_str()
+            .unwrap()
+            .contains("/tmp/build"));
+        assert_eq!(
+            json["deterministic_evidence_sha256"],
+            report.canonical_evidence_hash().unwrap()
         );
     }
 
