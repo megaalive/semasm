@@ -1,0 +1,37 @@
+name: Fuzz smoke
+
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: "23 3 * * 1"
+
+permissions:
+  contents: read
+
+jobs:
+  fuzz:
+    name: fuzz (${{ matrix.target }})
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    strategy:
+      fail-fast: false
+      matrix:
+        target: [contract, expression, object, decoder, cfg, lowering, report]
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install nightly Rust
+        uses: dtolnay/rust-toolchain@nightly
+
+      - name: Cache Cargo
+        uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: fuzz
+
+      - name: Install cargo-fuzz
+        run: cargo install cargo-fuzz --locked
+
+      - name: Run bounded fuzz campaign
+        run: >-
+          cargo +nightly fuzz run ${{ matrix.target }}
+          -- -max_total_time=30 -rss_limit_mb=2048 -timeout=10
