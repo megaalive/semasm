@@ -1,35 +1,43 @@
 # Roadmap
 
-Status labels: **done**, **in progress**, **planned**, **deferred**.
-
-Targets listed as planned are **not supported** until a vertical slice marks them otherwise.
+This roadmap describes implementation order. Target maturity is defined only by
+`capabilities.toml`; a completed vertical slice does not by itself mean
+CI-proven support.
 
 ## Vertical slices
 
 | Slice | Title | Status |
 |---|---|---|
-| VS-00 | Repository bootstrap and governance | **done** (scaffold) |
-| VS-01 | Contract parser and deterministic diagnostics | **done** (check + explain) |
-| VS-02 | First executable hosted slice (x86-64 Linux) | **in progress** (TARGET-002, BUILD-001/002, REPORT-001 done) |
-| Later | Windows x64, AArch64 Linux, RISC-V 64 Linux, RISC-V 32 bare-metal | planned |
-| Later | Agent task packets, object inspection, measurement framework | planned |
+| VS-00 | Repository bootstrap and governance | **done** |
+| VS-01 | Contract parser and deterministic diagnostics | **done** |
+| VS-02–VS-08 | Build/report, agents, object/decode/CFG, and architecture experiments | **implemented; stabilization evidence incomplete** |
+| Stabilization | Fail-closed execution, honest analysis, and target CI evidence | **in progress** |
 
-## Planned first production targets
+## Declared target identities
 
-1. x86-64 Linux, System V, ELF  
-2. x86-64 Windows, Windows x64 ABI, PE/COFF  
-3. AArch64 Linux, AAPCS64, ELF  
-4. RISC-V 64 Linux, psABI, ELF  
-5. RISC-V 32 bare-metal on a QEMU-supported machine  
+1. x86-64 Linux, System V, ELF
+2. x86-64 Windows, Windows x64 ABI, PE/COFF
+3. AArch64 Linux, AAPCS64, ELF
+4. RISC-V 64 Linux, psABI, ELF
+5. RISC-V 32 bare-metal on a QEMU-supported machine
 
-## Deferred (examples)
+The exact maturity of decoding, lowering, ABI analysis, assembly, linking,
+execution, and verification for each identity is generated from
+`capabilities.toml` and shown by `semasm status`.
 
-x86-32, ARMv7, Windows ARM64, UEFI, WebAssembly, AVR, many MCU boards, kernel modules, eBPF, GPU ISAs — deferred until the target-kit contract and conformance suite are proven.
+## Deferred examples
 
-## Near-term success criteria
+x86-32, ARMv7, Windows ARM64, UEFI, WebAssembly, AVR, many MCU boards,
+kernel modules, eBPF, and GPU ISAs are deferred until target-kit contracts and
+conformance evidence are proven.
 
-- Clean workspace build with CI on Linux and Windows.
-- Contract check CLI for portable contracts (VS-01).
-- One end-to-end “exit code / tiny program” demo with reports (VS-02).
+## Near-term stabilization criteria
 
-See `semasm-complete-project-plan.md` for the full ordered task list and acceptance criteria.
+- Clean workspace checks on Linux and Windows.
+- Named Linux and Windows end-to-end CI jobs.
+- Unsupported instructions produce an incomplete result, never a clean result.
+- AArch64 and RISC-V claims remain below CI-verified until cross-target jobs pass.
+- Capability documentation remains synchronized with the manifest.
+
+See `semasm-complete-project-plan.md` for the original ordered vertical slices
+and `docs/status/BASELINE-2026-07.md` for the stabilization baseline.

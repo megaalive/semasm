@@ -31,18 +31,27 @@ Assemble → object inspect → disassemble → ASIR lower → static checks →
 
 Only selected `.asm` sources, objects, linked images, explicit runtime fragments, optional debug data, and artifact reports.
 
-## Bootstrap crate map
+## Current crate map
 
 ```text
 semasm-cli
     |
     +-- semasm-contract  --> semasm-core
+    +-- semasm-agent     --> semasm-contract, semasm-target
+    +-- semasm-build     --> semasm-target, semasm-obj
+    +-- semasm-decode    --> normalized physical instructions
+    +-- semasm-cfg       --> semasm-decode
+    +-- semasm-x86       --> x86 lowering and ABI analysis
+    +-- semasm-aarch64   --> AArch64 lowering and ABI analysis
+    +-- semasm-riscv     --> RISC-V lowering and ABI analysis
+    +-- semasm-obj       --> structured object inspection
     +-- semasm-asir      --> semasm-core
-    +-- semasm-target    --> semasm-core
-    +-- semasm-core
+    +-- semasm-target    --> semasm-core, capability manifest
 ```
 
-Later crates (`semasm-analysis`, `semasm-object`, arch/ABI/format/adapters) appear only when a vertical slice demonstrates a stable boundary.
+The workspace contains thirteen crates. Their boundaries remain subject to the
+stabilization crate-boundary audit; this map records current implementation and
+does not assert that every split requires independent versioning.
 
 ## Target identity
 

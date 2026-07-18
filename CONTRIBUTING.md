@@ -11,6 +11,15 @@ Repository language is **English** for source identifiers, comments, diagnostics
 1. Install a stable Rust toolchain with `rustfmt` and `clippy` (see `rust-toolchain.toml`).
 2. Clone the repository and run the acceptance commands below from a clean tree.
 
+### Windows and WSL
+
+Windows contributors may use WSL2 for Linux target evidence. Install Rust
+inside the WSL distribution as well as NASM and the required ELF linker; the
+Windows Rust installation is not automatically available inside Linux. From
+WSL, open the repository under `/mnt/<drive>/...`, then run `semasm target
+doctor x86_64-unknown-linux-gnu` before the Linux end-to-end command in the
+README. Record WSL evidence as local Linux evidence, never as CI evidence.
+
 ## Required local checks
 
 Run these before opening a pull request:
@@ -19,8 +28,10 @@ Run these before opening a pull request:
 cargo fmt --all -- --check
 cargo clippy --workspace --all-targets --all-features -- -D warnings
 cargo test --workspace
+cargo test --workspace --all-features
 cargo doc --workspace --no-deps
 cargo run -p semasm-cli -- --version
+cargo run -p semasm-cli -- status
 ```
 
 Optional (when installed):

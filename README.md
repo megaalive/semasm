@@ -2,7 +2,11 @@
 
 **SemASM** is multi-architecture semantic infrastructure for software written directly in assembly language. It supplies portable semantic contracts, target kits, analysis (ASIR), and verification so humans and AI agents can produce and check minimal target programs without shipping a high-level language runtime.
 
-> **Status:** early development. VS-00 bootstrap, VS-01 contract checking, TARGET-002 tool discovery (`target doctor`), BUILD-001/002 build pipeline, and REPORT-001 artifact reports are in tree. The first fixture (`exit.asm`) can be assembled, linked, verified, and reported end-to-end when the host has NASM, an ELF linker, and QEMU user-mode installed. There are **no** production architecture backends or end-to-end assembly demos yet. Do not treat planned targets as supported.
+> **Status:** early stabilization. Contract checking, target discovery, build and
+> report infrastructure, object inspection, decoding, CFG construction, and
+> partial x86-64, AArch64, and RISC-V semantics are implemented. Capability
+> maturity comes only from `capabilities.toml`; code in the tree is not the same
+> as CI-proven support.
 
 ## Architecture (build-time only)
 
@@ -18,7 +22,7 @@ Rich tools (Rust analyzers, optional Capstone/LLVM/QEMU adapters) may exist in t
 
 ## Quick start (tooling)
 
-Requirements: a recent stable Rust toolchain (`rustfmt`, `clippy`).
+Requirements: a recent stable Rust toolchain with `rustfmt` and `clippy`.
 
 ```bash
 cargo build -p semasm-cli
@@ -29,9 +33,23 @@ cargo run -p semasm-cli -- --explain CTR003
 cargo run -p semasm-cli -- target doctor x86_64-unknown-linux-gnu
 cargo run -p semasm-cli -- target doctor x86_64-unknown-linux-gnu --format json
 
-# Build pipeline (requires nasm + linker on PATH)
-cargo test -p semasm-build -- --ignored --test-threads=1
 ```
+
+The contract command is the current five-minute success path. It exits zero and
+prints that the `write_all` contract is valid. It does not assemble or execute a
+program.
+
+An exact Linux end-to-end command is:
+
+```bash
+cargo run -p semasm-cli -- build fixtures/asm/exit.asm \
+  --target x86_64-unknown-linux-gnu \
+  --out-dir target/e2e-linux
+```
+
+Run it only on Linux or WSL with Rust, NASM, a compatible ELF linker, and any
+runner reported by `target doctor`. This path is not yet executed by a named CI
+job, so it is an exploratory check rather than published support evidence.
 
 Quality gates used in CI:
 
@@ -42,7 +60,16 @@ cargo test --workspace
 cargo doc --workspace --no-deps
 ```
 
-A five-minute assembly demo will land with later vertical slices (see the project plan / ROADMAP). Until then, this repository is scaffolding only.
+## What SemASM does not yet prove
+
+- No target is currently marked `CI-verified` or `release-qualified`.
+- Ordinary workspace tests do not execute the ignored external-tool scenarios.
+- A decoder or lowering implementation may cover only part of an ISA.
+- Cross-host reproducibility and AArch64/RISC-V execution are not established.
+- Current ABI commands can drop unsupported instructions. Until that is fixed,
+  `clean` means no violation was found in the modeled subset; it does **not**
+  prove the whole input was modeled. Unsupported instructions must be treated
+  as incomplete evidence by users and automation.
 
 ## Target capability evidence
 
@@ -72,18 +99,26 @@ Raw assembly states machine operations precisely but often hides intent: contrac
 - Not a bundled AI model provider.
 - Not a mandatory runtime linked into generated programs.
 
-## Workspace crates (bootstrap)
+## Workspace crates
 
 | Crate | Role |
 |---|---|
 | `semasm-core` | IDs, spans, diagnostics, errors |
-| `semasm-contract` | Portable semantic contracts (types only for now) |
+| `semasm-contract` | Portable semantic contracts and validation |
 | `semasm-asir` | ASIR graph types |
-| `semasm-target` | Target identity, kit shells, tool discovery (`target doctor`) |
+| `semasm-target` | Target identity, capability registry, and tool discovery |
 | `semasm-build` | Safe process execution, build pipeline (assemble, link, verify, run), artifact reports |
+| `semasm-agent` | Provider-neutral agent packets and verification |
 | `semasm-cli` | `semasm` binary |
+| `semasm-obj` | Structured object-file inspection |
+| `semasm-decode` | Physical instruction decoding |
+| `semasm-cfg` | Control-flow graph construction |
+| `semasm-x86` | x86-64 lowering and ABI analysis |
+| `semasm-aarch64` | AArch64 lowering and ABI analysis |
+| `semasm-riscv` | RISC-V lowering and ABI analysis |
 
-Further crates (analysis, object, agent protocol, arch/ABI backends) appear only when a vertical slice needs a stable boundary.
+These boundaries are implemented but still await the stabilization boundary
+audit; crate count is not itself evidence of capability maturity.
 
 ## Contributing
 

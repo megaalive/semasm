@@ -545,6 +545,12 @@ semasm/
 
 ### 10.1 Initial workspace constraint
 
+> **Implementation status (July 2026):** This section records the bootstrap
+> constraint, not the current tree. The workspace now has thirteen crates after
+> VS-02 through VS-08 implementation work. Their current capability evidence is
+> defined in `capabilities.toml`; their boundary value remains subject to the
+> stabilization crate-boundary audit.
+
 At repository bootstrap, implement only:
 
 ```text
@@ -3343,4 +3349,3 @@ Use current official specifications during implementation and record the exact r
 - [Arm ABI Repository](https://github.com/ARM-software/abi-aa)
 - [AAPCS64 Source](https://github.com/ARM-software/abi-aa/blob/main/aapcs64/aapcs64.rst)
 - [RISC-V ELF psABI Specification](https://riscv-non-isa.github.io/riscv-elf-psabi-doc/)
-
