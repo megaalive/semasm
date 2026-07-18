@@ -210,7 +210,19 @@ impl Pipeline {
         output: &Path,
         format: &str,
     ) -> Result<CommandOutput, BuildError> {
-        let spec = CommandSpec::new(
+        let spec = self.assemble_reproducible_spec(source, output, format);
+        exec::exec(&spec)
+    }
+
+    /// Construct the exact reproducible assembler command without executing it.
+    #[must_use]
+    pub fn assemble_reproducible_spec(
+        &self,
+        source: &Path,
+        output: &Path,
+        format: &str,
+    ) -> CommandSpec {
+        CommandSpec::new(
             &self.toolchain.assembler,
             vec![
                 "-O0".into(),
@@ -221,8 +233,7 @@ impl Pipeline {
                 "-o".into(),
                 output.to_string_lossy().into_owned(),
             ],
-        );
-        exec::exec(&spec)
+        )
     }
 
     // -- Link -----------------------------------------------------------
@@ -247,6 +258,13 @@ impl Pipeline {
         objects: &[&Path],
         output: &Path,
     ) -> Result<CommandOutput, BuildError> {
+        let spec = self.link_reproducible_spec(objects, output);
+        exec::exec(&spec)
+    }
+
+    /// Construct the exact reproducible linker command without executing it.
+    #[must_use]
+    pub fn link_reproducible_spec(&self, objects: &[&Path], output: &Path) -> CommandSpec {
         let mut args = vec![
             "--build-id=none".into(),
             "--hash-style=sysv".into(),
@@ -256,8 +274,7 @@ impl Pipeline {
         for obj in objects {
             args.push(obj.to_string_lossy().into_owned());
         }
-        let spec = CommandSpec::new(&self.toolchain.linker, args);
-        exec::exec(&spec)
+        CommandSpec::new(&self.toolchain.linker, args)
     }
 
     // -- Verify ---------------------------------------------------------
@@ -332,6 +349,19 @@ impl Pipeline {
         entry: &str,
         subsystem: &str,
     ) -> Result<CommandOutput, BuildError> {
+        let spec = self.link_pe_spec(objects, output, entry, subsystem);
+        exec::exec(&spec)
+    }
+
+    /// Construct the exact PE linker command without executing it.
+    #[must_use]
+    pub fn link_pe_spec(
+        &self,
+        objects: &[&Path],
+        output: &Path,
+        entry: &str,
+        subsystem: &str,
+    ) -> CommandSpec {
         let mut args = vec![
             format!("/ENTRY:{}", entry),
             format!("/SUBSYSTEM:{}", subsystem),
@@ -347,8 +377,7 @@ impl Pipeline {
         for obj in objects {
             args.push(obj.to_string_lossy().into_owned());
         }
-        let spec = CommandSpec::new(&self.toolchain.linker, args);
-        exec::exec(&spec)
+        CommandSpec::new(&self.toolchain.linker, args)
     }
 
     /// Build the fixture end-to-end and return the assembly, link, verify,

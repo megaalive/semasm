@@ -16,7 +16,7 @@ use crate::exec::{self, BuildError, CaptureInfo, CommandOutput, CommandSpec, Ter
 use crate::pipeline::Pipeline;
 
 /// Current serialized artifact-report schema.
-pub const ARTIFACT_REPORT_SCHEMA_VERSION: &str = "0.3";
+pub const ARTIFACT_REPORT_SCHEMA_VERSION: &str = "0.4";
 
 // ---------------------------------------------------------------------------
 // Data types
@@ -244,6 +244,10 @@ pub struct CommandRecordJson {
     pub label: String,
     /// Command line string.
     pub command: String,
+    /// Executable identity, kept separate from display formatting.
+    pub program: String,
+    /// Structured command arguments before canonical path normalization.
+    pub arguments: Vec<String>,
     /// Exit code.
     pub exit_code: Option<i32>,
     /// Stdout (lossy UTF-8).
@@ -304,6 +308,8 @@ struct VolatileArtifact<'a> {
 #[derive(Serialize)]
 struct CanonicalCommandOutcome<'a> {
     label: &'a str,
+    program: String,
+    arguments: Vec<String>,
     exit_code: Option<i32>,
     timed_out: bool,
     success: bool,
@@ -374,6 +380,26 @@ fn volatile_artifact(artifact: &ArtifactFileInfo) -> VolatileArtifact<'_> {
         raw_symbols: &artifact.raw_symbols,
         raw_private_headers: &artifact.raw_private_headers,
     }
+}
+
+fn normalize_command_component(value: &str, paths: &[(&str, &str)]) -> String {
+    let mut normalized = value.replace('\\', "/");
+    for (path, label) in paths {
+        let normalized_path = path.replace('\\', "/");
+        normalized = normalized.replace(&normalized_path, label);
+    }
+    if normalized.to_ascii_lowercase().ends_with("/kernel32.lib") {
+        return "$KERNEL32_IMPORT_LIBRARY".to_string();
+    }
+    normalized
+}
+
+fn normalized_program(program: &str) -> String {
+    Path::new(program)
+        .file_name()
+        .and_then(|name| name.to_str())
+        .unwrap_or(program)
+        .to_ascii_lowercase()
 }
 
 // ---------------------------------------------------------------------------
@@ -697,11 +723,24 @@ impl ArtifactReport {
 
         let object = self.object.as_ref().map(canonical_artifact);
         let executable = canonical_artifact(&self.executable);
+        let mut logical_paths = vec![
+            (self.source.path.as_str(), "$SOURCE"),
+            (self.executable.path.as_str(), "$EXECUTABLE"),
+        ];
+        if let Some(object) = &self.object {
+            logical_paths.push((object.path.as_str(), "$OBJECT"));
+        }
         let commands: Vec<_> = self
             .command_records
             .iter()
             .map(|record| CanonicalCommandOutcome {
                 label: &record.label,
+                program: normalized_program(&record.program),
+                arguments: record
+                    .arguments
+                    .iter()
+                    .map(|argument| normalize_command_component(argument, &logical_paths))
+                    .collect(),
                 exit_code: record.exit_code,
                 timed_out: record.timed_out,
                 success: record.success,
@@ -1110,6 +1149,14 @@ SYMBOL TABLE:
             command_records: vec![CommandRecordJson {
                 label: "assemble".into(),
                 command: "nasm -f elf64 exit.asm -o exit.o".into(),
+                program: "nasm".into(),
+                arguments: vec![
+                    "-f".into(),
+                    "elf64".into(),
+                    "exit.asm".into(),
+                    "-o".into(),
+                    "exit.o".into(),
+                ],
                 exit_code: Some(0),
                 stdout: String::new(),
                 stderr: String::new(),
@@ -1192,11 +1239,15 @@ SYMBOL TABLE:
             check_report_schema_compatibility(r#"{"schema_version":"0.2"}"#),
             Ok(ReportSchemaCompatibility::CompatibleOlder)
         );
+        assert_eq!(
+            check_report_schema_compatibility(r#"{"schema_version":"0.3"}"#),
+            Ok(ReportSchemaCompatibility::CompatibleOlder)
+        );
     }
 
     #[test]
     fn report_schema_compatibility_rejects_unsupported_versions() {
-        for json in [r#"{"schema_version":"0.4"}"#, r#"{"schema_version":"1.0"}"#] {
+        for json in [r#"{"schema_version":"0.5"}"#, r#"{"schema_version":"1.0"}"#] {
             let error = check_report_schema_compatibility(json).unwrap_err();
             assert!(error.contains("unsupported artifact report schema"));
         }
@@ -1236,7 +1287,9 @@ SYMBOL TABLE:
             ],
             command_records: vec![CommandRecordJson {
                 label: "link".into(),
-                command: format!("linker {root}/fixture.o"),
+                command: format!("linker /OUT:{root}/out/fixture"),
+                program: "linker".into(),
+                arguments: vec![format!("/OUT:{root}/out/fixture")],
                 exit_code: Some(0),
                 stdout: format!("volatile stdout from {root}"),
                 stderr: String::new(),
@@ -1316,6 +1369,11 @@ SYMBOL TABLE:
         let volatile = &json["volatile_metadata"];
 
         assert_eq!(deterministic["target"], report.target);
+        assert_eq!(deterministic["commands"][0]["program"], "linker");
+        assert_eq!(
+            deterministic["commands"][0]["arguments"][0],
+            "/OUT:$EXECUTABLE"
+        );
         assert!(deterministic.get("source_path").is_none());
         assert!(deterministic["executable"].get("raw_sections").is_none());
         assert_eq!(volatile["source_path"], "/tmp/build/src/fixture.asm");
@@ -1342,6 +1400,17 @@ SYMBOL TABLE:
         let mut changed_content = report;
         changed_content.executable.hash.sha256 = "different-hash".into();
         assert_ne!(original, changed_content.canonical_evidence_hash().unwrap());
+    }
+
+    #[test]
+    fn canonical_command_normalizes_windows_sdk_import_library() {
+        assert_eq!(
+            normalize_command_component(
+                r"C:\Program Files (x86)\Windows Kits\10\Lib\10.0.26100.0\um\x64\kernel32.lib",
+                &[],
+            ),
+            "$KERNEL32_IMPORT_LIBRARY"
+        );
     }
 
     // ------------------------------------------------------------------
@@ -1395,6 +1464,14 @@ SYMBOL TABLE:
             CommandRecordJson {
                 label: "assemble".into(),
                 command: format!("nasm -f elf64 {} -o {}", source.display(), obj.display()),
+                program: "nasm".into(),
+                arguments: vec![
+                    "-f".into(),
+                    "elf64".into(),
+                    source.to_string_lossy().into_owned(),
+                    "-o".into(),
+                    obj.to_string_lossy().into_owned(),
+                ],
                 exit_code: ao.exit_code,
                 stdout: String::from_utf8_lossy(&ao.stdout).into_owned(),
                 stderr: String::from_utf8_lossy(&ao.stderr).into_owned(),
@@ -1408,6 +1485,12 @@ SYMBOL TABLE:
             CommandRecordJson {
                 label: "link".into(),
                 command: format!("ld {} -o {}", obj.display(), exe.display()),
+                program: "ld".into(),
+                arguments: vec![
+                    obj.to_string_lossy().into_owned(),
+                    "-o".into(),
+                    exe.to_string_lossy().into_owned(),
+                ],
                 exit_code: lo.exit_code,
                 stdout: String::from_utf8_lossy(&lo.stdout).into_owned(),
                 stderr: String::from_utf8_lossy(&lo.stderr).into_owned(),

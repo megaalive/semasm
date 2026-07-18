@@ -4,6 +4,7 @@ use std::path::{Path, PathBuf};
 use std::process::ExitCode;
 
 use semasm_agent::{harness, ContextBundle, TargetToolchain, TaskPacket};
+use semasm_build::exec;
 use semasm_build::report::{self, CommandRecordJson, ExecutionInfo};
 use semasm_build::{BuildError, Pipeline};
 use semasm_contract::{
@@ -585,7 +586,8 @@ pub(crate) fn do_build(
         out_dir.join("exit")
     };
 
-    let ao = match pipe.assemble_reproducible(source, &obj_path, identity.nasm_format()) {
+    let assemble_spec = pipe.assemble_reproducible_spec(source, &obj_path, identity.nasm_format());
+    let ao = match exec::exec(&assemble_spec) {
         Ok(o) => o,
         Err(e) => {
             eprintln!("assemble error: {e}");
@@ -602,22 +604,17 @@ pub(crate) fn do_build(
     }
 
     // Step 2: link
-    let lo = if identity.object_format == semasm_target::ObjectFormat::PeCoff {
+    let link_spec = if identity.object_format == semasm_target::ObjectFormat::PeCoff {
         let entry = link_entry_of(&obj_path).unwrap_or_else(|| "main".to_string());
-        match pipe.link_pe(&[&obj_path], &exe_path, &entry, "console") {
-            Ok(o) => o,
-            Err(e) => {
-                eprintln!("link error: {e}");
-                return ExitCode::from(1);
-            }
-        }
+        pipe.link_pe_spec(&[&obj_path], &exe_path, &entry, "console")
     } else {
-        match pipe.link_reproducible(&[&obj_path], &exe_path) {
-            Ok(o) => o,
-            Err(e) => {
-                eprintln!("link error: {e}");
-                return ExitCode::from(1);
-            }
+        pipe.link_reproducible_spec(&[&obj_path], &exe_path)
+    };
+    let lo = match exec::exec(&link_spec) {
+        Ok(output) => output,
+        Err(error) => {
+            eprintln!("link error: {error}");
+            return ExitCode::from(1);
         }
     };
     if !lo.success() {
@@ -668,12 +665,9 @@ pub(crate) fn do_build(
     let records = vec![
         CommandRecordJson {
             label: "assemble".into(),
-            command: format!(
-                "{} -O0 -w+error -f elf64 {} -o {}",
-                pipe.toolchain.assembler,
-                source.display(),
-                obj_path.display(),
-            ),
+            command: assemble_spec.to_string(),
+            program: assemble_spec.program.clone(),
+            arguments: assemble_spec.args.clone(),
             exit_code: ao.exit_code,
             stdout: String::from_utf8_lossy(&ao.stdout).into_owned(),
             stderr: String::from_utf8_lossy(&ao.stderr).into_owned(),
@@ -686,12 +680,9 @@ pub(crate) fn do_build(
         },
         CommandRecordJson {
             label: "link".into(),
-            command: format!(
-                "{} --build-id=none --hash-style=sysv -o {} {}",
-                pipe.toolchain.linker,
-                exe_path.display(),
-                obj_path.display(),
-            ),
+            command: link_spec.to_string(),
+            program: link_spec.program.clone(),
+            arguments: link_spec.args.clone(),
             exit_code: lo.exit_code,
             stdout: String::from_utf8_lossy(&lo.stdout).into_owned(),
             stderr: String::from_utf8_lossy(&lo.stderr).into_owned(),
