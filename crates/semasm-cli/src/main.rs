@@ -13,13 +13,13 @@ use std::path::{Path, PathBuf};
 use std::process::ExitCode;
 
 use clap::{Parser, Subcommand, ValueEnum};
-use commands::{do_contract_check, do_explain, do_target_doctor};
+use commands::{do_agent_packet, do_contract_check, do_explain, do_target_doctor};
 #[cfg(feature = "capstone")]
 use output::{
     json_aarch64_abi_report, json_abi_report, json_analysis_report, json_win64_abi_report,
     print_analysis_terminal, unsupported_instruction, UnsupportedInstruction,
 };
-use semasm_agent::{harness, ContextBundle, TargetToolchain, TaskPacket};
+use semasm_agent::harness;
 use semasm_build::report::{self, CommandRecordJson, ExecutionInfo};
 use semasm_build::{BuildError, Pipeline};
 use semasm_contract::format_diagnostics_terminal;
@@ -400,111 +400,6 @@ fn main() -> ExitCode {
     }
 }
 
-/// Convert the build pipeline's `Toolchain` into the agent packet's
-/// `TargetToolchain` (field-compatible, separate types).
-fn to_agent_toolchain(tc: &semasm_build::pipeline::Toolchain) -> TargetToolchain {
-    TargetToolchain {
-        assembler: tc.assembler.clone(),
-        linker: tc.linker.clone(),
-        disassembler: tc.disassembler.clone(),
-        runner: tc.runner.clone(),
-    }
-}
-
-fn do_agent_packet(
-    contract_path: &Path,
-    target_str: &str,
-    source: Option<&Path>,
-    format: OutputFormat,
-) -> ExitCode {
-    // Resolve target identity.
-    let identity = match TargetIdentity::parse_known(target_str) {
-        Ok(id) => id,
-        Err(e) => {
-            eprintln!("error: {e}");
-            return ExitCode::from(2);
-        }
-    };
-
-    // Load + validate the contract.
-    let contract_text = match std::fs::read_to_string(contract_path) {
-        Ok(t) => t,
-        Err(e) => {
-            eprintln!(
-                "{}: error: failed to read file: {e}",
-                contract_path.display()
-            );
-            return ExitCode::from(1);
-        }
-    };
-    let check = semasm_contract::check_str(&contract_text);
-    if !check.ok() {
-        print!(
-            "{}",
-            format_diagnostics_terminal(&contract_path.display().to_string(), &check.diagnostics)
-        );
-        return ExitCode::from(1);
-    }
-    let checked = check.contract.expect("ok() implies Some");
-
-    // Discover toolchain for this target.
-    let pipeline = Pipeline::discover(&identity);
-    let toolchain = to_agent_toolchain(&pipeline.toolchain);
-
-    // Optional existing source.
-    let existing_source = match source {
-        Some(p) => match std::fs::read_to_string(p) {
-            Ok(t) => Some(t),
-            Err(e) => {
-                eprintln!("{}: error: failed to read source: {e}", p.display());
-                return ExitCode::from(1);
-            }
-        },
-        None => None,
-    };
-
-    // Build the context bundle (AGENT-004 will synthesise test vectors).
-    let context = ContextBundle::generate(
-        &checked,
-        &identity,
-        &toolchain,
-        existing_source,
-        Vec::new(),
-        Vec::new(),
-    );
-
-    // Assemble the full packet.
-    let packet = TaskPacket::new(
-        "0.1.0",
-        // RFC 3339 timestamp.
-        chrono_now(),
-        contract_text,
-        checked,
-        identity,
-        toolchain,
-        vec![contract_path.display().to_string()],
-        Vec::new(),
-        context,
-    );
-
-    match format {
-        OutputFormat::Json => match serde_json::to_string_pretty(&packet) {
-            Ok(s) => {
-                println!("{s}");
-                ExitCode::SUCCESS
-            }
-            Err(e) => {
-                eprintln!("failed to serialize packet: {e}");
-                ExitCode::from(1)
-            }
-        },
-        OutputFormat::Terminal => {
-            println!("{}", packet.context.to_markdown());
-            ExitCode::SUCCESS
-        }
-    }
-}
-
 /// Assemble, link, and run an agent-written `.asm` against the
 /// synthesised behavioural test vectors, then evaluate the results.
 #[allow(clippy::too_many_lines)]
@@ -680,71 +575,6 @@ fn do_agent_verify(
     } else {
         ExitCode::from(1)
     }
-}
-
-/// Best-effort RFC 3339 timestamp for the packet `created_at` field.
-fn chrono_now() -> String {
-    // Avoid pulling `chrono` into the binary just for this one field:
-    // fall back to a fixed sentinel only if the platform clock fails.
-    let now = std::time::SystemTime::now()
-        .duration_since(std::time::UNIX_EPOCH)
-        .map_or(0, |d| d.as_secs());
-    // Format as `YYYY-MM-DDTHH:MM:SSZ` using UTC calendar math.
-    // We have only a seconds counter, so approximate with a simple
-    // Gregorian decomposition. Good enough for a created_at stamp.
-    let (y, mo, d, h, mi, s) = epoch_to_utc(now);
-    format!("{y:04}-{mo:02}-{d:02}T{h:02}:{mi:02}:{s:02}Z")
-}
-
-/// Decompose a Unix timestamp (seconds) into UTC calendar fields.
-#[allow(clippy::cast_possible_truncation)]
-fn epoch_to_utc(secs: u64) -> (u32, u32, u32, u32, u32, u32) {
-    const DAY: u64 = 86_400;
-    let days = secs / DAY;
-    let rem = secs % DAY;
-    let h = (rem / 3600) as u32;
-    let mi = ((rem % 3600) / 60) as u32;
-    let s = (rem % 60) as u32;
-
-    // Days since 1970-01-01. Walk years then months.
-    let mut year: u64 = 1970;
-    let mut rest = days;
-    loop {
-        let leap = is_leap(year);
-        let ylen = if leap { 366 } else { 365 };
-        if rest < ylen {
-            break;
-        }
-        rest -= ylen;
-        year += 1;
-    }
-    let month_lengths: [u64; 12] = [
-        31,
-        if is_leap(year) { 29 } else { 28 },
-        31,
-        30,
-        31,
-        30,
-        31,
-        31,
-        30,
-        31,
-        30,
-        31,
-    ];
-    let mut month: u64 = 1;
-    let mut d = rest;
-    while d >= month_lengths[(month - 1) as usize] {
-        d -= month_lengths[(month - 1) as usize];
-        month += 1;
-    }
-    let day = (d + 1) as u32;
-    (year as u32, month as u32, day, h, mi, s)
-}
-
-/// Leap-year test for the proleptic Gregorian calendar.
-fn is_leap(year: u64) -> bool {
-    (year % 4 == 0 && year % 100 != 0) || year % 400 == 0
 }
 
 /// Discover the program entry symbol from a COFF/PE object's exported

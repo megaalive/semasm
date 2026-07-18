@@ -3,12 +3,167 @@
 use std::path::Path;
 use std::process::ExitCode;
 
+use semasm_agent::{ContextBundle, TargetToolchain, TaskPacket};
+use semasm_build::Pipeline;
 use semasm_contract::{
     check_file, explain_code, format_diagnostics_terminal, CheckReportJson, ContractCode,
 };
 use semasm_target::{tools, TargetIdentity};
 
 use crate::OutputFormat;
+
+/// Convert the build pipeline's `Toolchain` into the agent packet's
+/// `TargetToolchain` (field-compatible, separate types).
+fn to_agent_toolchain(tc: &semasm_build::pipeline::Toolchain) -> TargetToolchain {
+    TargetToolchain {
+        assembler: tc.assembler.clone(),
+        linker: tc.linker.clone(),
+        disassembler: tc.disassembler.clone(),
+        runner: tc.runner.clone(),
+    }
+}
+
+pub(crate) fn do_agent_packet(
+    contract_path: &Path,
+    target_str: &str,
+    source: Option<&Path>,
+    format: OutputFormat,
+) -> ExitCode {
+    let identity = match TargetIdentity::parse_known(target_str) {
+        Ok(identity) => identity,
+        Err(error) => {
+            eprintln!("error: {error}");
+            return ExitCode::from(2);
+        }
+    };
+
+    let contract_text = match std::fs::read_to_string(contract_path) {
+        Ok(text) => text,
+        Err(error) => {
+            eprintln!(
+                "{}: error: failed to read file: {error}",
+                contract_path.display()
+            );
+            return ExitCode::from(1);
+        }
+    };
+    let check = semasm_contract::check_str(&contract_text);
+    if !check.ok() {
+        print!(
+            "{}",
+            format_diagnostics_terminal(&contract_path.display().to_string(), &check.diagnostics)
+        );
+        return ExitCode::from(1);
+    }
+    let checked = check.contract.expect("ok() implies Some");
+
+    let pipeline = Pipeline::discover(&identity);
+    let toolchain = to_agent_toolchain(&pipeline.toolchain);
+    let existing_source = match source {
+        Some(path) => match std::fs::read_to_string(path) {
+            Ok(text) => Some(text),
+            Err(error) => {
+                eprintln!("{}: error: failed to read source: {error}", path.display());
+                return ExitCode::from(1);
+            }
+        },
+        None => None,
+    };
+
+    let context = ContextBundle::generate(
+        &checked,
+        &identity,
+        &toolchain,
+        existing_source,
+        Vec::new(),
+        Vec::new(),
+    );
+    let packet = TaskPacket::new(
+        "0.1.0",
+        chrono_now(),
+        contract_text,
+        checked,
+        identity,
+        toolchain,
+        vec![contract_path.display().to_string()],
+        Vec::new(),
+        context,
+    );
+
+    match format {
+        OutputFormat::Json => match serde_json::to_string_pretty(&packet) {
+            Ok(json) => {
+                println!("{json}");
+                ExitCode::SUCCESS
+            }
+            Err(error) => {
+                eprintln!("failed to serialize packet: {error}");
+                ExitCode::from(1)
+            }
+        },
+        OutputFormat::Terminal => {
+            println!("{}", packet.context.to_markdown());
+            ExitCode::SUCCESS
+        }
+    }
+}
+
+/// Best-effort RFC 3339 timestamp for the packet `created_at` field.
+fn chrono_now() -> String {
+    let now = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map_or(0, |duration| duration.as_secs());
+    let (year, month, day, hour, minute, second) = epoch_to_utc(now);
+    format!("{year:04}-{month:02}-{day:02}T{hour:02}:{minute:02}:{second:02}Z")
+}
+
+/// Decompose a Unix timestamp (seconds) into UTC calendar fields.
+#[allow(clippy::cast_possible_truncation)]
+fn epoch_to_utc(secs: u64) -> (u32, u32, u32, u32, u32, u32) {
+    const DAY: u64 = 86_400;
+    let days = secs / DAY;
+    let rem = secs % DAY;
+    let hour = (rem / 3600) as u32;
+    let minute = ((rem % 3600) / 60) as u32;
+    let second = (rem % 60) as u32;
+
+    let mut year: u64 = 1970;
+    let mut rest = days;
+    loop {
+        let year_length = if is_leap(year) { 366 } else { 365 };
+        if rest < year_length {
+            break;
+        }
+        rest -= year_length;
+        year += 1;
+    }
+    let month_lengths: [u64; 12] = [
+        31,
+        if is_leap(year) { 29 } else { 28 },
+        31,
+        30,
+        31,
+        30,
+        31,
+        31,
+        30,
+        31,
+        30,
+        31,
+    ];
+    let mut month: u64 = 1;
+    let mut remaining_days = rest;
+    while remaining_days >= month_lengths[(month - 1) as usize] {
+        remaining_days -= month_lengths[(month - 1) as usize];
+        month += 1;
+    }
+    let day = (remaining_days + 1) as u32;
+    (year as u32, month as u32, day, hour, minute, second)
+}
+
+fn is_leap(year: u64) -> bool {
+    (year % 4 == 0 && year % 100 != 0) || year % 400 == 0
+}
 
 pub(crate) fn do_explain(code: &str) -> ExitCode {
     if let Some(text) = explain_code(code) {
