@@ -352,8 +352,8 @@ fn parse_memory(t: &str, default_width: Width) -> Option<MemOperand> {
     }
     // Split `disp(base)` or just `base`.
     let (disp_str, base_str): (&str, &str) = if let Some(paren) = inner.find('(') {
-        let disp = &inner[..paren].trim();
-        let base = &inner[paren + 1..inner.len() - 1].trim(); // strip `)`
+        let disp = inner[..paren].trim();
+        let base = inner[paren + 1..].strip_suffix(')')?.trim();
         (disp, base)
     } else {
         ("0", inner)
@@ -377,8 +377,8 @@ fn parse_memory_riscv(t: &str, default_width: Width) -> Option<MemOperand> {
     }
     // Split `disp(base)` or just `base`.
     let (disp_str, base_str): (&str, &str) = if let Some(paren) = inner.find('(') {
-        let disp = &inner[..paren].trim();
-        let base = &inner[paren + 1..inner.len() - 1].trim(); // strip `)`
+        let disp = inner[..paren].trim();
+        let base = inner[paren + 1..].strip_suffix(')')?.trim();
         (disp, base)
     } else {
         ("0", inner)
@@ -451,6 +451,12 @@ mod tests {
     fn sd_is_store_with_memory() {
         let l = lower(&dec("sd", &["a0", "8(sp)"])).expect_lowered();
         assert_eq!(l.kind, Kind::Store);
+    }
+
+    #[test]
+    fn malformed_bracketed_memory_does_not_panic() {
+        let l = lower(&dec("ld", &["a0", "[((((((((((((((((((((((((((((((]"])).expect_lowered();
+        assert_eq!(l.operands, vec![Operand::Reg(Gpr::A0.full())]);
     }
 
     #[test]
