@@ -630,6 +630,8 @@ pub enum BuildError {
     Spawn(String, String),
     /// The process could not be polled after starting.
     Poll(String, String),
+    /// A produced artifact was corrupt or unsupported.
+    ObjectParse(String),
     /// Tool output could not establish the requested artifact property.
     Verification(String),
 }
@@ -644,6 +646,7 @@ impl fmt::Display for BuildError {
             Self::Poll(prog, detail) => {
                 write!(f, "failed to poll `{prog}`: {detail}")
             }
+            Self::ObjectParse(detail) => write!(f, "object parsing failed: {detail}"),
             Self::Verification(detail) => write!(f, "verification failed: {detail}"),
         }
     }

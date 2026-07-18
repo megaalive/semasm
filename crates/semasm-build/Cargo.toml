@@ -17,13 +17,13 @@ serde_json = { workspace = true }
 sha2 = { workspace = true }
 semasm-core = { workspace = true }
 semasm-target = { workspace = true }
+semasm-obj = { workspace = true }
 
 [target.'cfg(windows)'.dependencies]
 win32job = { workspace = true }
 
 [dev-dependencies]
 serde_json = { workspace = true }
-semasm-obj = { workspace = true }
 
 [lints]
 workspace = true

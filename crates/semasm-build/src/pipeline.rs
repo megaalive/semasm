@@ -262,27 +262,17 @@ impl Pipeline {
 
     // -- Verify ---------------------------------------------------------
 
-    /// Verify the architecture of a built file using the configured
-    /// disassembler's `-f` (file-header summary) flag.
-    ///
-    /// Both `llvm-objdump` and GNU `objdump` support `-f`.
+    /// Verify a built file through the structured object parser.
     pub fn verify_architecture(&self, path: &Path) -> Result<ArchitectureInfo, BuildError> {
-        let spec = CommandSpec::new(
-            &self.toolchain.disassembler,
-            vec!["-f".into(), path.to_string_lossy().into_owned()],
-        );
-        let output = exec::exec(&spec)?;
-
-        if !output.success() {
-            return Err(BuildError::Verification(format!(
-                "`{} -f` exited {:?}: {}",
-                self.toolchain.disassembler,
-                output.exit_code,
-                String::from_utf8_lossy(&output.stderr).trim()
-            )));
-        }
-
-        parse_objdump_header(&String::from_utf8_lossy(&output.stdout))
+        let bytes = std::fs::read(path)
+            .map_err(|error| BuildError::ObjectParse(format!("{}: {error}", path.display())))?;
+        let info = semasm_obj::parse(&bytes)
+            .map_err(|error| BuildError::ObjectParse(error.to_string()))?;
+        Ok(ArchitectureInfo {
+            format: format!("{:?}", info.format).to_lowercase(),
+            arch: info.architecture_raw,
+            is_executable: info.kind == semasm_obj::ContainerKind::Executable,
+        })
     }
 
     // -- Run ------------------------------------------------------------
@@ -405,6 +395,7 @@ impl Pipeline {
 }
 
 /// Parse the common subset of GNU and LLVM `objdump -f` output.
+#[cfg(test)]
 fn parse_objdump_header(header: &str) -> Result<ArchitectureInfo, BuildError> {
     let format = header
         .lines()
@@ -566,6 +557,20 @@ start address 0x0000000000000000
     fn rejects_unrecognized_objdump_output() {
         let error = parse_objdump_header("objdump: unsupported input").unwrap_err();
         assert!(matches!(error, BuildError::Verification(_)));
+    }
+
+    #[test]
+    fn structured_verification_rejects_corrupt_artifacts() {
+        let path =
+            std::env::temp_dir().join(format!("semasm-corrupt-object-{}", std::process::id()));
+        std::fs::write(&path, b"not an object").expect("write corrupt fixture");
+        let pipeline = Pipeline::discover(&test_target());
+
+        let error = pipeline
+            .verify_architecture(&path)
+            .expect_err("corrupt artifacts must fail closed");
+        assert!(matches!(error, BuildError::ObjectParse(_)));
+        let _ = std::fs::remove_file(path);
     }
 
     #[test]

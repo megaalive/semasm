@@ -12,8 +12,8 @@
 use std::path::Path;
 
 use object::{
-    Architecture, BinaryFormat, Endianness, Object, ObjectSection, ObjectSymbol, RelocationTarget,
-    SectionKind, SymbolKind,
+    Architecture, BinaryFormat, Endianness, Object, ObjectKind, ObjectSection, ObjectSymbol,
+    RelocationTarget, SectionKind, SymbolKind,
 };
 use semasm_target::{Isa, ObjectFormat, TargetIdentity};
 use serde::Serialize;
@@ -51,11 +51,29 @@ pub enum ContainerFormat {
     Unknown,
 }
 
+/// Semantic kind of an object container.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "snake_case")]
+pub enum ContainerKind {
+    /// A relocatable object that still requires linking.
+    Relocatable,
+    /// A directly executable image.
+    Executable,
+    /// A shared library or dynamically linked image.
+    Dynamic,
+    /// A core dump.
+    Core,
+    /// A kind not represented by the portable object API.
+    Unknown,
+}
+
 /// A parsed object file.
 #[derive(Debug, Clone, Serialize)]
 pub struct ObjectInfo {
     /// Container format.
     pub format: ContainerFormat,
+    /// Whether this is relocatable, executable, dynamic, or another kind.
+    pub kind: ContainerKind,
     /// Architecture family (normalised to SemASM's `Isa`).
     pub architecture: Isa,
     /// Raw architecture string from the object.
@@ -130,6 +148,16 @@ fn map_format(f: BinaryFormat) -> ContainerFormat {
     }
 }
 
+fn map_kind(kind: ObjectKind) -> ContainerKind {
+    match kind {
+        ObjectKind::Relocatable => ContainerKind::Relocatable,
+        ObjectKind::Executable => ContainerKind::Executable,
+        ObjectKind::Dynamic => ContainerKind::Dynamic,
+        ObjectKind::Core => ContainerKind::Core,
+        _ => ContainerKind::Unknown,
+    }
+}
+
 fn arch_raw_string(a: Architecture) -> String {
     // `object::Architecture` has no `Display`; use Debug for a stable
     // representation.  This is the raw value reported to the user.
@@ -137,13 +165,15 @@ fn arch_raw_string(a: Architecture) -> String {
 }
 
 #[allow(clippy::match_same_arms)]
-fn map_architecture(a: Architecture) -> Isa {
+fn map_architecture(a: Architecture) -> Result<Isa, ObjectError> {
     match a {
-        Architecture::X86_64 => Isa::X86_64,
-        Architecture::Aarch64 => Isa::AArch64,
-        Architecture::Riscv64 => Isa::Riscv64,
-        Architecture::Riscv32 => Isa::Riscv32,
-        _ => Isa::X86_64, // not portably mappable; caller validates via target.
+        Architecture::X86_64 => Ok(Isa::X86_64),
+        Architecture::Aarch64 => Ok(Isa::AArch64),
+        Architecture::Riscv64 => Ok(Isa::Riscv64),
+        Architecture::Riscv32 => Ok(Isa::Riscv32),
+        unsupported => Err(ObjectError::Unrecognised(format!(
+            "unsupported architecture: {unsupported:?}"
+        ))),
     }
 }
 
@@ -209,7 +239,7 @@ pub fn parse(bytes: &[u8]) -> Result<ObjectInfo, ObjectError> {
     let file = object::File::parse(bytes).map_err(|e| ObjectError::Unrecognised(e.to_string()))?;
 
     let format = map_format(file.format());
-    let architecture = map_architecture(file.architecture());
+    let architecture = map_architecture(file.architecture())?;
     let architecture_raw = arch_raw_string(file.architecture());
     let endian = match file.endianness() {
         Endianness::Little => "little",
@@ -301,6 +331,7 @@ pub fn parse(bytes: &[u8]) -> Result<ObjectInfo, ObjectError> {
 
     Ok(ObjectInfo {
         format,
+        kind: map_kind(file.kind()),
         architecture,
         architecture_raw,
         endian,
