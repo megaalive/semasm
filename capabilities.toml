@@ -60,38 +60,38 @@ id = "aarch64-unknown-linux-gnu"
 description = "AArch64 Linux, AAPCS64 ABI, ELF"
 
 [target.capabilities]
-declared = "declared"
+declared = "verified_in_ci"
 decode = "partial"
 lower = "partial"
 abi_analysis = "verified_in_unit_tests"
-assemble = "unavailable"
-link = "unavailable"
-execute = "unavailable"
-verify = "experimental"
+assemble = "verified_in_ci"
+link = "verified_in_ci"
+execute = "verified_in_ci"
+verify = "verified_in_ci"
 
 [target.evidence]
 unit_tests = ["semasm-decode::tests", "semasm-aarch64::lower", "semasm-aarch64::abi"]
-fixtures = []
-ci_jobs = []
+fixtures = ["fixtures/asm/exit_aarch64.S"]
+ci_jobs = ["e2e (AArch64 Linux)"]
 
 [[target]]
 id = "riscv64gc-unknown-linux-gnu"
 description = "RV64 Linux, RISC-V psABI, ELF"
 
 [target.capabilities]
-declared = "declared"
+declared = "verified_in_ci"
 decode = "declared"
 lower = "partial"
 abi_analysis = "verified_in_unit_tests"
-assemble = "unavailable"
-link = "unavailable"
-execute = "unavailable"
-verify = "experimental"
+assemble = "verified_in_ci"
+link = "verified_in_ci"
+execute = "verified_in_ci"
+verify = "verified_in_ci"
 
 [target.evidence]
 unit_tests = ["semasm-riscv::lower", "semasm-riscv::abi"]
-fixtures = []
-ci_jobs = []
+fixtures = ["fixtures/asm/exit_riscv64.S"]
+ci_jobs = ["e2e (RV64 Linux)"]
 
 [[target]]
 id = "riscv32imac-unknown-none-elf"

@@ -17,7 +17,7 @@ before work advances past a failed item.
 - [x] PR-10 — Capability manifest and generated status
 - [x] PR-11 — Documentation synchronization
 - [x] PR-12 — Structured object verification
-- [ ] PR-13 — Cross-target executable evidence
+- [x] PR-13 — Cross-target executable evidence
 - [ ] PR-14 — CLI modularization
 - [ ] PR-15 — Schema and deterministic report versioning
 - [ ] PR-16 — Crate-boundary ADR and targeted consolidation
@@ -26,5 +26,5 @@ before work advances past a failed item.
 
 ## Current focus
 
-PR-13 is next. Cross-target capability claims must remain unchanged until
-AArch64 and RV64 executable evidence passes in dedicated CI jobs.
+PR-14 is next: split the CLI into command and output modules without changing
+behavior or adding crates.

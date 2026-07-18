@@ -81,8 +81,8 @@ and evidence maturity; they are not a blanket support promise.
 |---|---|---|---|---|---|---|---|
 | `x86_64-unknown-linux-gnu` | partial | partial | unit-tested | experimental | experimental | experimental | experimental |
 | `x86_64-pc-windows-msvc` | partial | partial | unit-tested | experimental | experimental | experimental | experimental |
-| `aarch64-unknown-linux-gnu` | partial | partial | unit-tested | unavailable | unavailable | unavailable | experimental |
-| `riscv64gc-unknown-linux-gnu` | declared | partial | unit-tested | unavailable | unavailable | unavailable | experimental |
+| `aarch64-unknown-linux-gnu` | partial | partial | unit-tested | CI-verified | CI-verified | CI-verified | CI-verified |
+| `riscv64gc-unknown-linux-gnu` | declared | partial | unit-tested | CI-verified | CI-verified | CI-verified | CI-verified |
 | `riscv32imac-unknown-none-elf` | declared | partial | unit-tested | unavailable | unavailable | unavailable | experimental |
 <!-- capabilities:end -->
 
