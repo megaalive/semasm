@@ -1059,6 +1059,8 @@ fn do_build(
             duration_secs: ao.duration.as_secs_f64(),
             timed_out: ao.timed_out,
             success: ao.success(),
+            stdout_capture: ao.stdout_capture.clone(),
+            stderr_capture: ao.stderr_capture.clone(),
         },
         CommandRecordJson {
             label: "link".into(),
@@ -1074,6 +1076,8 @@ fn do_build(
             duration_secs: lo.duration.as_secs_f64(),
             timed_out: lo.timed_out,
             success: lo.success(),
+            stdout_capture: lo.stdout_capture.clone(),
+            stderr_capture: lo.stderr_capture.clone(),
         },
     ];
 

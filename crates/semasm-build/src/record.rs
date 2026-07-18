@@ -5,7 +5,7 @@ use std::time::SystemTime;
 
 use serde::Serialize;
 
-use crate::exec::{CommandOutput, CommandSpec};
+use crate::exec::{CaptureInfo, CommandOutput, CommandSpec};
 
 /// A timestamped, fully-documented command execution, suitable for
 /// inclusion in artifact reports.
@@ -54,6 +54,10 @@ pub struct RecordedOutput {
     pub timed_out: bool,
     /// Whether the exit code indicates success (0).
     pub success: bool,
+    /// Bounded stdout capture metadata.
+    pub stdout_capture: CaptureInfo,
+    /// Bounded stderr capture metadata.
+    pub stderr_capture: CaptureInfo,
 }
 
 impl CommandRecord {
@@ -85,6 +89,8 @@ impl CommandRecord {
                 duration_secs: output.duration.as_secs_f64(),
                 timed_out: output.timed_out,
                 success: output.success(),
+                stdout_capture: output.stdout_capture.clone(),
+                stderr_capture: output.stderr_capture.clone(),
             },
             started_at: epoch,
         }
@@ -115,8 +121,19 @@ mod tests {
             exit_code: Some(0),
             stdout: b"nasm: warning: ...\n".to_vec(),
             stderr: Vec::new(),
+            stdout_capture: capture_info(24),
+            stderr_capture: capture_info(0),
             duration: Duration::from_millis(123),
             timed_out: false,
+        }
+    }
+
+    fn capture_info(bytes: usize) -> CaptureInfo {
+        CaptureInfo {
+            captured_bytes: bytes,
+            total_bytes: bytes,
+            truncated: false,
+            read_error: None,
         }
     }
 
@@ -173,6 +190,8 @@ mod tests {
             exit_code: Some(1),
             stdout: Vec::new(),
             stderr: b"error: something failed\n".to_vec(),
+            stdout_capture: capture_info(0),
+            stderr_capture: capture_info(24),
             duration: Duration::from_millis(50),
             timed_out: false,
         };
@@ -189,6 +208,8 @@ mod tests {
             exit_code: None,
             stdout: b"partial output\n".to_vec(),
             stderr: Vec::new(),
+            stdout_capture: capture_info(15),
+            stderr_capture: capture_info(0),
             duration: Duration::from_secs(30),
             timed_out: true,
         };

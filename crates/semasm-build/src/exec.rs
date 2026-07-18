@@ -8,6 +8,53 @@ use std::process::{Command, ExitStatus, Stdio};
 use std::thread;
 use std::time::{Duration, Instant};
 
+const DEFAULT_CAPTURE_BYTES: usize = 16 * 1024 * 1024;
+
+/// Maximum number of bytes retained from one output stream.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct CaptureLimit {
+    /// Maximum retained byte count. All additional bytes are drained and counted.
+    pub max_bytes: usize,
+}
+
+impl CaptureLimit {
+    /// Construct a stream capture limit.
+    #[must_use]
+    pub const fn new(max_bytes: usize) -> Self {
+        Self { max_bytes }
+    }
+}
+
+impl Default for CaptureLimit {
+    fn default() -> Self {
+        Self::new(DEFAULT_CAPTURE_BYTES)
+    }
+}
+
+/// Metadata describing bounded capture of one output stream.
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize)]
+pub struct CaptureInfo {
+    /// Bytes retained in memory.
+    pub captured_bytes: usize,
+    /// Bytes observed while draining the stream.
+    pub total_bytes: usize,
+    /// Whether observed output exceeded the configured limit.
+    pub truncated: bool,
+    /// Read failure after any successfully observed bytes.
+    pub read_error: Option<String>,
+}
+
+impl CaptureInfo {
+    fn from_capture(captured_bytes: usize, total_bytes: usize, read_error: Option<String>) -> Self {
+        Self {
+            captured_bytes,
+            total_bytes,
+            truncated: total_bytes > captured_bytes,
+            read_error,
+        }
+    }
+}
+
 /// Policy for data connected to the child process's standard input.
 #[derive(Clone, Default)]
 pub enum StdinPolicy {
@@ -92,6 +139,10 @@ pub struct CommandSpec {
     pub environment: EnvironmentPolicy,
     /// Maximum wall-clock time before the process is killed.
     pub timeout: Duration,
+    /// Maximum stdout bytes retained in memory.
+    pub stdout_limit: CaptureLimit,
+    /// Maximum stderr bytes retained in memory.
+    pub stderr_limit: CaptureLimit,
 }
 
 impl CommandSpec {
@@ -106,6 +157,8 @@ impl CommandSpec {
             stdin: StdinPolicy::Null,
             environment: EnvironmentPolicy::Sanitized,
             timeout: Duration::from_secs(30),
+            stdout_limit: CaptureLimit::default(),
+            stderr_limit: CaptureLimit::default(),
         }
     }
 
@@ -157,6 +210,20 @@ impl CommandSpec {
         self.timeout = timeout;
         self
     }
+
+    /// Set independent stdout and stderr capture limits.
+    #[must_use]
+    pub fn with_capture_limits(mut self, stdout: CaptureLimit, stderr: CaptureLimit) -> Self {
+        self.stdout_limit = stdout;
+        self.stderr_limit = stderr;
+        self
+    }
+
+    /// Apply the same capture limit to stdout and stderr.
+    #[must_use]
+    pub fn with_capture_limit(self, limit: CaptureLimit) -> Self {
+        self.with_capture_limits(limit, limit)
+    }
 }
 
 impl fmt::Display for CommandSpec {
@@ -180,6 +247,10 @@ pub struct CommandOutput {
     pub stdout: Vec<u8>,
     /// Captured stderr (binary-safe).
     pub stderr: Vec<u8>,
+    /// Bounded stdout capture metadata.
+    pub stdout_capture: CaptureInfo,
+    /// Bounded stderr capture metadata.
+    pub stderr_capture: CaptureInfo,
     /// Elapsed wall-clock time.
     pub duration: Duration,
     /// Whether the process was killed due to timeout.
@@ -199,26 +270,34 @@ impl CommandOutput {
     pub fn summary(&self) -> String {
         if self.timed_out {
             format!(
-                "TIMEOUT after {:.1}s (stdout={}B, stderr={}B)",
+                "TIMEOUT after {:.1}s (stdout={}, stderr={})",
                 self.duration.as_secs_f64(),
-                self.stdout.len(),
-                self.stderr.len(),
+                capture_summary(&self.stdout_capture),
+                capture_summary(&self.stderr_capture),
             )
         } else if let Some(code) = self.exit_code {
             format!(
-                "exit={code} in {:.1}s (stdout={}B, stderr={}B)",
+                "exit={code} in {:.1}s (stdout={}, stderr={})",
                 self.duration.as_secs_f64(),
-                self.stdout.len(),
-                self.stderr.len(),
+                capture_summary(&self.stdout_capture),
+                capture_summary(&self.stderr_capture),
             )
         } else {
             format!(
-                "KILLED in {:.1}s (stdout={}B, stderr={}B)",
+                "KILLED in {:.1}s (stdout={}, stderr={})",
                 self.duration.as_secs_f64(),
-                self.stdout.len(),
-                self.stderr.len(),
+                capture_summary(&self.stdout_capture),
+                capture_summary(&self.stderr_capture),
             )
         }
+    }
+}
+
+fn capture_summary(info: &CaptureInfo) -> String {
+    if info.truncated {
+        format!("{}/{}B truncated", info.captured_bytes, info.total_bytes)
+    } else {
+        format!("{}B", info.captured_bytes)
     }
 }
 
@@ -363,8 +442,10 @@ pub fn exec(spec: &CommandSpec) -> Result<CommandOutput, BuildError> {
     let stdout_pipe = child.stdout.take().expect("stdout piped");
     let stderr_pipe = child.stderr.take().expect("stderr piped");
 
-    let stdout_handle = thread::spawn(|| drain(stdout_pipe));
-    let stderr_handle = thread::spawn(|| drain(stderr_pipe));
+    let stdout_limit = spec.stdout_limit;
+    let stderr_limit = spec.stderr_limit;
+    let stdout_handle = thread::spawn(move || drain(stdout_pipe, stdout_limit));
+    let stderr_handle = thread::spawn(move || drain(stderr_pipe, stderr_limit));
 
     // Poll with timeout.
     let deadline = start + spec.timeout;
@@ -391,8 +472,18 @@ pub fn exec(spec: &CommandSpec) -> Result<CommandOutput, BuildError> {
     };
 
     let duration = start.elapsed();
-    let stdout = stdout_handle.join().unwrap_or_default();
-    let stderr = stderr_handle.join().unwrap_or_default();
+    let (stdout, stdout_capture) = stdout_handle.join().unwrap_or_else(|_| {
+        (
+            Vec::new(),
+            CaptureInfo::from_capture(0, 0, Some("stdout drain thread panicked".into())),
+        )
+    });
+    let (stderr, stderr_capture) = stderr_handle.join().unwrap_or_else(|_| {
+        (
+            Vec::new(),
+            CaptureInfo::from_capture(0, 0, Some("stderr drain thread panicked".into())),
+        )
+    });
     if let Some(handle) = stdin_handle {
         let _ = handle.join();
     }
@@ -402,15 +493,30 @@ pub fn exec(spec: &CommandSpec) -> Result<CommandOutput, BuildError> {
         exit_code,
         stdout,
         stderr,
+        stdout_capture,
+        stderr_capture,
         duration,
         timed_out,
     })
 }
 
-fn drain(mut r: impl Read) -> Vec<u8> {
-    let mut buf = Vec::new();
-    let _ = r.read_to_end(&mut buf);
-    buf
+fn drain(mut reader: impl Read, limit: CaptureLimit) -> (Vec<u8>, CaptureInfo) {
+    let mut captured = Vec::with_capacity(limit.max_bytes.min(8192));
+    let mut total_bytes = 0usize;
+    let mut chunk = [0u8; 8192];
+    let read_error = loop {
+        match reader.read(&mut chunk) {
+            Ok(0) => break None,
+            Ok(count) => {
+                total_bytes = total_bytes.saturating_add(count);
+                let remaining = limit.max_bytes.saturating_sub(captured.len());
+                captured.extend_from_slice(&chunk[..count.min(remaining)]);
+            }
+            Err(error) => break Some(error.to_string()),
+        }
+    };
+    let info = CaptureInfo::from_capture(captured.len(), total_bytes, read_error);
+    (captured, info)
 }
 
 // ---------------------------------------------------------------------------
@@ -641,6 +747,94 @@ mod tests {
         assert!(!debug.contains("private stdin"));
         assert!(debug.contains("<redacted>"));
         assert!(debug.contains("length: 13"));
+    }
+
+    #[test]
+    fn captures_output_under_limit() {
+        let spec = CommandSpec::new(
+            "python",
+            vec![
+                "-c".into(),
+                "import sys; sys.stdout.buffer.write(b'x' * 1000)".into(),
+            ],
+        )
+        .with_capture_limit(CaptureLimit::new(1024));
+        let output = exec(&spec).unwrap();
+        assert_eq!(output.stdout.len(), 1000);
+        assert_eq!(output.stdout_capture.captured_bytes, 1000);
+        assert_eq!(output.stdout_capture.total_bytes, 1000);
+        assert!(!output.stdout_capture.truncated);
+        assert!(output.stdout_capture.read_error.is_none());
+    }
+
+    #[test]
+    fn exact_capture_limit_is_not_truncated() {
+        let spec = CommandSpec::new(
+            "python",
+            vec![
+                "-c".into(),
+                "import sys; sys.stdout.buffer.write(b'x' * 1024)".into(),
+            ],
+        )
+        .with_capture_limit(CaptureLimit::new(1024));
+        let output = exec(&spec).unwrap();
+        assert_eq!(output.stdout.len(), 1024);
+        assert_eq!(output.stdout_capture.total_bytes, 1024);
+        assert!(!output.stdout_capture.truncated);
+    }
+
+    #[test]
+    fn large_flood_is_drained_but_bounded() {
+        let spec = CommandSpec::new(
+            "python",
+            vec![
+                "-c".into(),
+                "import sys; sys.stdout.buffer.write(b'x' * (1024 * 1024))".into(),
+            ],
+        )
+        .with_capture_limit(CaptureLimit::new(1024));
+        let output = exec(&spec).unwrap();
+        assert!(output.success());
+        assert_eq!(output.stdout.len(), 1024);
+        assert_eq!(output.stdout_capture.captured_bytes, 1024);
+        assert_eq!(output.stdout_capture.total_bytes, 1024 * 1024);
+        assert!(output.stdout_capture.truncated);
+        assert!(output.summary().contains("truncated"));
+    }
+
+    #[test]
+    fn simultaneous_stream_floods_are_independently_bounded() {
+        let spec = CommandSpec::new(
+            "python",
+            vec![
+                "-c".into(),
+                "import sys; sys.stdout.buffer.write(b'o' * 524288); sys.stderr.buffer.write(b'e' * 524288)".into(),
+            ],
+        )
+        .with_capture_limits(CaptureLimit::new(2048), CaptureLimit::new(4096));
+        let output = exec(&spec).unwrap();
+        assert!(output.success());
+        assert_eq!(output.stdout.len(), 2048);
+        assert_eq!(output.stderr.len(), 4096);
+        assert_eq!(output.stdout_capture.total_bytes, 524_288);
+        assert_eq!(output.stderr_capture.total_bytes, 524_288);
+        assert!(output.stdout_capture.truncated);
+        assert!(output.stderr_capture.truncated);
+    }
+
+    #[test]
+    fn invalid_utf8_capture_remains_binary_safe() {
+        let spec = CommandSpec::new(
+            "python",
+            vec![
+                "-c".into(),
+                "import sys; sys.stdout.buffer.write(bytes([255, 0, 254]))".into(),
+            ],
+        );
+        let output = exec(&spec).unwrap();
+        assert_eq!(output.stdout, [255, 0, 254]);
+        assert_eq!(output.stdout_capture.total_bytes, 3);
+        assert!(!output.stdout_capture.truncated);
     }
 
     #[test]

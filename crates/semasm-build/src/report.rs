@@ -11,7 +11,7 @@ use std::path::Path;
 use serde::Serialize;
 use sha2::{Digest, Sha256};
 
-use crate::exec::{self, BuildError, CommandOutput, CommandSpec};
+use crate::exec::{self, BuildError, CaptureInfo, CommandOutput, CommandSpec};
 use crate::pipeline::Pipeline;
 
 // ---------------------------------------------------------------------------
@@ -106,6 +106,10 @@ pub struct ExecutionInfo {
     pub stdout: String,
     /// Stderr as lossy UTF-8.
     pub stderr: String,
+    /// Bounded stdout capture metadata.
+    pub stdout_capture: CaptureInfo,
+    /// Bounded stderr capture metadata.
+    pub stderr_capture: CaptureInfo,
 }
 
 /// Complete build artifact report, fully serialisable as JSON.
@@ -144,6 +148,10 @@ pub struct CommandRecordJson {
     pub timed_out: bool,
     /// Whether it succeeded (exit code 0).
     pub success: bool,
+    /// Bounded stdout capture metadata.
+    pub stdout_capture: CaptureInfo,
+    /// Bounded stderr capture metadata.
+    pub stderr_capture: CaptureInfo,
 }
 
 // ---------------------------------------------------------------------------
@@ -450,6 +458,8 @@ pub fn generate_report(
         timed_out: o.timed_out,
         stdout: String::from_utf8_lossy(&o.stdout).into_owned(),
         stderr: String::from_utf8_lossy(&o.stderr).into_owned(),
+        stdout_capture: o.stdout_capture.clone(),
+        stderr_capture: o.stderr_capture.clone(),
     });
 
     Ok(ArtifactReport {
@@ -497,6 +507,12 @@ impl ArtifactReport {
                 out,
                 "  [{status:4}] {} ({:.1}s, exit={:?})",
                 cmd.command, cmd.duration_secs, cmd.exit_code,
+            );
+            write_capture_notice(
+                &mut out,
+                "         ",
+                &cmd.stdout_capture,
+                &cmd.stderr_capture,
             );
         }
 
@@ -554,6 +570,7 @@ impl ArtifactReport {
                 exec.exit_code,
                 if exec.timed_out { " (TIMEOUT)" } else { "" },
             );
+            write_capture_notice(&mut out, "  ", &exec.stdout_capture, &exec.stderr_capture);
             if !exec.stdout.is_empty() {
                 let _ = writeln!(out, "  stdout: {}", exec.stdout.trim());
             }
@@ -566,6 +583,21 @@ impl ArtifactReport {
     }
 }
 
+fn write_capture_notice(
+    output: &mut String,
+    indent: &str,
+    stdout: &CaptureInfo,
+    stderr: &CaptureInfo,
+) {
+    if stdout.truncated || stderr.truncated {
+        let _ = writeln!(
+            output,
+            "{indent}output truncated: stdout={}/{}, stderr={}/{} bytes",
+            stdout.captured_bytes, stdout.total_bytes, stderr.captured_bytes, stderr.total_bytes,
+        );
+    }
+}
+
 // ---------------------------------------------------------------------------
 // Tests
 // ---------------------------------------------------------------------------
@@ -574,6 +606,24 @@ impl ArtifactReport {
 mod tests {
     use super::*;
     use semasm_target::TargetIdentity;
+
+    fn capture_info(bytes: usize) -> CaptureInfo {
+        CaptureInfo {
+            captured_bytes: bytes,
+            total_bytes: bytes,
+            truncated: false,
+            read_error: None,
+        }
+    }
+
+    fn truncated_capture(captured: usize, total: usize) -> CaptureInfo {
+        CaptureInfo {
+            captured_bytes: captured,
+            total_bytes: total,
+            truncated: true,
+            read_error: None,
+        }
+    }
 
     #[test]
     fn hash_empty_string() {
@@ -729,6 +779,8 @@ SYMBOL TABLE:
                 duration_secs: 0.123,
                 timed_out: false,
                 success: true,
+                stdout_capture: truncated_capture(0, 2048),
+                stderr_capture: truncated_capture(0, 4096),
             }],
             object: None,
             executable: ArtifactFileInfo {
@@ -760,6 +812,8 @@ SYMBOL TABLE:
                 timed_out: false,
                 stdout: String::new(),
                 stderr: String::new(),
+                stdout_capture: capture_info(0),
+                stderr_capture: capture_info(0),
             }),
         };
 
@@ -769,12 +823,14 @@ SYMBOL TABLE:
         assert!(json.contains("nasm"));
         assert!(json.contains("42"));
         assert!(json.contains("_start"));
+        assert!(json.contains("\"truncated\": true"));
 
         // Terminal output
         let term = report.to_terminal();
         assert!(term.contains("_start"));
         assert!(term.contains("42"));
         assert!(term.contains("SHA-256"));
+        assert!(term.contains("output truncated"));
     }
 
     // ------------------------------------------------------------------
@@ -834,6 +890,8 @@ SYMBOL TABLE:
                 duration_secs: ao.duration.as_secs_f64(),
                 timed_out: ao.timed_out,
                 success: ao.success(),
+                stdout_capture: ao.stdout_capture.clone(),
+                stderr_capture: ao.stderr_capture.clone(),
             },
             CommandRecordJson {
                 label: "link".into(),
@@ -844,6 +902,8 @@ SYMBOL TABLE:
                 duration_secs: lo.duration.as_secs_f64(),
                 timed_out: lo.timed_out,
                 success: lo.success(),
+                stdout_capture: lo.stdout_capture.clone(),
+                stderr_capture: lo.stderr_capture.clone(),
             },
         ];
 
