@@ -16,6 +16,7 @@ members = [
     "crates/semasm-riscv",
 ]
 default-members = ["crates/semasm-cli"]
+exclude = ["fuzz"]
 
 [workspace.package]
 version = "0.1.0"

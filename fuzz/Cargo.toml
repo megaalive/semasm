@@ -1,0 +1,61 @@
+[package]
+name = "semasm-fuzz"
+version = "0.0.0"
+publish = false
+edition = "2021"
+
+[package.metadata]
+cargo-fuzz = true
+
+[dependencies]
+libfuzzer-sys = "0.4"
+semasm-aarch64 = { path = "../crates/semasm-aarch64" }
+semasm-build = { path = "../crates/semasm-build" }
+semasm-cfg = { path = "../crates/semasm-cfg" }
+semasm-contract = { path = "../crates/semasm-contract" }
+semasm-decode = { path = "../crates/semasm-decode", features = ["capstone"] }
+semasm-obj = { path = "../crates/semasm-obj" }
+semasm-riscv = { path = "../crates/semasm-riscv" }
+semasm-x86 = { path = "../crates/semasm-x86" }
+
+[[bin]]
+name = "contract"
+path = "fuzz_targets/contract.rs"
+test = false
+doc = false
+
+[[bin]]
+name = "expression"
+path = "fuzz_targets/expression.rs"
+test = false
+doc = false
+
+[[bin]]
+name = "object"
+path = "fuzz_targets/object.rs"
+test = false
+doc = false
+
+[[bin]]
+name = "decoder"
+path = "fuzz_targets/decoder.rs"
+test = false
+doc = false
+
+[[bin]]
+name = "cfg"
+path = "fuzz_targets/cfg.rs"
+test = false
+doc = false
+
+[[bin]]
+name = "lowering"
+path = "fuzz_targets/lowering.rs"
+test = false
+doc = false
+
+[[bin]]
+name = "report"
+path = "fuzz_targets/report.rs"
+test = false
+doc = false
