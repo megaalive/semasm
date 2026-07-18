@@ -19,12 +19,12 @@ before work advances past a failed item.
 - [x] PR-12 — Structured object verification
 - [x] PR-13 — Cross-target executable evidence
 - [x] PR-14 — CLI modularization
-- [ ] PR-15 — Schema and deterministic report versioning
+- [x] PR-15 — Schema and deterministic report versioning
 - [ ] PR-16 — Crate-boundary ADR and targeted consolidation
 - [ ] PR-17 — Negative corpus and fuzz entry points
 - [ ] PR-18 — 0.1 release preparation
 
 ## Current focus
 
-PR-15 is next: version deterministic report schemas and add compatibility
-tests around canonical evidence.
+PR-16 is next: document crate-boundary decisions and consolidate only the
+boundaries whose separation no longer provides a clear ownership benefit.
