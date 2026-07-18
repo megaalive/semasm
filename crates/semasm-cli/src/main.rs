@@ -13,7 +13,10 @@ use std::process::ExitCode;
 
 use clap::{Parser, Subcommand, ValueEnum};
 #[cfg(feature = "capstone")]
-use output::{json_analysis_report, print_analysis_terminal};
+use output::{
+    json_aarch64_abi_report, json_abi_report, json_analysis_report, json_win64_abi_report,
+    print_analysis_terminal, unsupported_instruction, UnsupportedInstruction,
+};
 use semasm_agent::{harness, ContextBundle, TargetToolchain, TaskPacket};
 use semasm_build::report::{self, CommandRecordJson, ExecutionInfo};
 use semasm_build::{BuildError, Pipeline};
@@ -1538,28 +1541,6 @@ fn do_cfg_inspect(path: &Path, base: u64, format: OutputFormat) -> ExitCode {
 }
 
 #[cfg(feature = "capstone")]
-#[derive(Clone, serde::Serialize)]
-struct UnsupportedInstruction {
-    address: u64,
-    bytes: Vec<u8>,
-    mnemonic: String,
-    operands: Vec<String>,
-}
-
-#[cfg(feature = "capstone")]
-fn unsupported_instruction(
-    instruction: &semasm_decode::PhysicalInstruction,
-    mnemonic: String,
-) -> UnsupportedInstruction {
-    UnsupportedInstruction {
-        address: instruction.address,
-        bytes: instruction.bytes.clone(),
-        mnemonic,
-        operands: instruction.operands.clone(),
-    }
-}
-
-#[cfg(feature = "capstone")]
 fn lower_x86_with_evidence(
     instructions: &[semasm_decode::PhysicalInstruction],
 ) -> (
@@ -1622,15 +1603,6 @@ fn analysis_exit_code(clean: bool, complete: bool, allow_incomplete: bool) -> Ex
         ExitCode::SUCCESS
     } else {
         ExitCode::from(1)
-    }
-}
-
-#[cfg(feature = "capstone")]
-fn analysis_status(unsupported: &[UnsupportedInstruction]) -> &'static str {
-    if unsupported.is_empty() {
-        "complete"
-    } else {
-        "incomplete"
     }
 }
 
@@ -1724,67 +1696,6 @@ fn do_abi_inspect(
             }
             analysis_exit_code(report.is_clean(), unsupported.is_empty(), allow_incomplete)
         }
-    }
-}
-
-/// A JSON-friendly view of [`semasm_x86::abi::AbiReport`].
-#[cfg(feature = "capstone")]
-#[derive(serde::Serialize)]
-struct JsonAbiReport {
-    instructions_decoded: usize,
-    instructions_lowered: usize,
-    status: &'static str,
-    unsupported: Vec<UnsupportedInstruction>,
-    is_leaf: bool,
-    has_syscall: bool,
-    final_rsp_delta: i64,
-    call_site_count: usize,
-    max_red_zone_disp: i64,
-    clean: bool,
-    findings: Vec<JsonAbiFinding>,
-}
-
-#[cfg(feature = "capstone")]
-#[derive(serde::Serialize)]
-struct JsonAbiFinding {
-    code: String,
-    severity: String,
-    at: Option<usize>,
-    message: String,
-}
-
-#[cfg(feature = "capstone")]
-fn json_abi_report(
-    r: &semasm_x86::abi::AbiReport,
-    decoded_count: usize,
-    lowered_count: usize,
-    unsupported: &[UnsupportedInstruction],
-) -> JsonAbiReport {
-    JsonAbiReport {
-        instructions_decoded: decoded_count,
-        instructions_lowered: lowered_count,
-        status: analysis_status(unsupported),
-        unsupported: unsupported.to_vec(),
-        is_leaf: r.is_leaf,
-        has_syscall: r.has_syscall,
-        final_rsp_delta: r.final_rsp_delta,
-        call_site_count: r.call_sites.len(),
-        max_red_zone_disp: if r.max_red_zone_disp < 0 {
-            r.max_red_zone_disp
-        } else {
-            0
-        },
-        clean: r.is_clean() && unsupported.is_empty(),
-        findings: r
-            .findings
-            .iter()
-            .map(|f| JsonAbiFinding {
-                code: f.code.to_string(),
-                severity: f.severity_str().to_string(),
-                at: f.at,
-                message: f.message.clone(),
-            })
-            .collect(),
     }
 }
 
@@ -1951,65 +1862,6 @@ fn do_win64_abi_inspect(
     }
 }
 
-/// A JSON-friendly view of [`semasm_x86::abi_win64::AbiReport`].
-#[cfg(feature = "capstone")]
-#[derive(serde::Serialize)]
-struct JsonWin64AbiReport {
-    instructions_decoded: usize,
-    instructions_lowered: usize,
-    status: &'static str,
-    unsupported: Vec<UnsupportedInstruction>,
-    is_leaf: bool,
-    final_rsp_delta: i64,
-    call_site_count: usize,
-    max_below_rsp_disp: i64,
-    clean: bool,
-    findings: Vec<JsonWin64AbiFinding>,
-}
-
-#[cfg(feature = "capstone")]
-#[derive(serde::Serialize)]
-struct JsonWin64AbiFinding {
-    code: String,
-    severity: String,
-    at: Option<usize>,
-    message: String,
-}
-
-#[cfg(feature = "capstone")]
-fn json_win64_abi_report(
-    r: &semasm_x86::abi_win64::AbiReport,
-    decoded_count: usize,
-    lowered_count: usize,
-    unsupported: &[UnsupportedInstruction],
-) -> JsonWin64AbiReport {
-    JsonWin64AbiReport {
-        instructions_decoded: decoded_count,
-        instructions_lowered: lowered_count,
-        status: analysis_status(unsupported),
-        unsupported: unsupported.to_vec(),
-        is_leaf: r.is_leaf,
-        final_rsp_delta: r.final_rsp_delta,
-        call_site_count: r.call_sites.len(),
-        max_below_rsp_disp: if r.max_red_zone_disp < 0 {
-            r.max_red_zone_disp
-        } else {
-            0
-        },
-        clean: r.is_clean() && unsupported.is_empty(),
-        findings: r
-            .findings
-            .iter()
-            .map(|f| JsonWin64AbiFinding {
-                code: f.code.to_string(),
-                severity: f.severity_str().to_string(),
-                at: f.at,
-                message: f.message.clone(),
-            })
-            .collect(),
-    }
-}
-
 /// Decode a raw binary blob, lower it, and run the AAPCS64 ABI
 /// analysis over the (single) function body.
 #[cfg(feature = "capstone")]
@@ -2091,58 +1943,5 @@ fn do_aarch64_abi_inspect(
             }
             analysis_exit_code(report.is_clean(), unsupported.is_empty(), allow_incomplete)
         }
-    }
-}
-
-/// A JSON-friendly view of [`semasm_aarch64::abi::AbiReport`].
-#[cfg(feature = "capstone")]
-#[derive(serde::Serialize)]
-struct JsonAarch64AbiReport {
-    instructions_decoded: usize,
-    instructions_lowered: usize,
-    status: &'static str,
-    unsupported: Vec<UnsupportedInstruction>,
-    is_leaf: bool,
-    final_sp_delta: i64,
-    call_site_count: usize,
-    clean: bool,
-    findings: Vec<JsonAarch64AbiFinding>,
-}
-
-#[cfg(feature = "capstone")]
-#[derive(serde::Serialize)]
-struct JsonAarch64AbiFinding {
-    code: String,
-    severity: String,
-    at: Option<usize>,
-    message: String,
-}
-
-#[cfg(feature = "capstone")]
-fn json_aarch64_abi_report(
-    r: &semasm_aarch64::abi::AbiReport,
-    decoded_count: usize,
-    lowered_count: usize,
-    unsupported: &[UnsupportedInstruction],
-) -> JsonAarch64AbiReport {
-    JsonAarch64AbiReport {
-        instructions_decoded: decoded_count,
-        instructions_lowered: lowered_count,
-        status: analysis_status(unsupported),
-        unsupported: unsupported.to_vec(),
-        is_leaf: r.is_leaf,
-        final_sp_delta: r.final_sp_delta,
-        call_site_count: r.call_sites.len(),
-        clean: r.is_clean() && unsupported.is_empty(),
-        findings: r
-            .findings
-            .iter()
-            .map(|f| JsonAarch64AbiFinding {
-                code: f.code.to_string(),
-                severity: f.severity_str().to_string(),
-                at: f.at,
-                message: f.message.clone(),
-            })
-            .collect(),
     }
 }
