@@ -273,45 +273,16 @@ impl Pipeline {
         );
         let output = exec::exec(&spec)?;
 
-        let stdout = String::from_utf8_lossy(&output.stdout);
-        let header = stdout.trim();
+        if !output.success() {
+            return Err(BuildError::Verification(format!(
+                "`{} -f` exited {:?}: {}",
+                self.toolchain.disassembler,
+                output.exit_code,
+                String::from_utf8_lossy(&output.stderr).trim()
+            )));
+        }
 
-        // Parse typical output:
-        //   llvm-objdump:   "exit:   file format elf64-x86-64"
-        //   GNU objdump:    "exit:     file format elf64-x86-64"
-        //   llvm-objdump:   "architecture: x86_64"
-        //   GNU objdump:    "architecture: i386:x86-64"
-        //
-        // Also detect executable vs relocatable:
-        //   "EXECUTABLE" or "executable" in flags → executable
-        //   "RELOCATABLE" → object file
-
-        let format = header
-            .split("file format")
-            .nth(1)
-            .unwrap_or("?")
-            .trim()
-            .to_string();
-
-        let arch = if header.contains("architecture:") {
-            header
-                .lines()
-                .find_map(|l| l.strip_prefix("architecture:"))
-                .unwrap_or("?")
-                .trim()
-                .to_string()
-        } else {
-            // Fallback: extract from format string
-            format.split('-').nth(1).unwrap_or("?").to_string()
-        };
-
-        let is_executable = header.contains("EXECUTABLE") || header.contains("executable");
-
-        Ok(ArchitectureInfo {
-            format,
-            arch,
-            is_executable,
-        })
+        parse_objdump_header(&String::from_utf8_lossy(&output.stdout))
     }
 
     // -- Run ------------------------------------------------------------
@@ -442,6 +413,51 @@ impl Pipeline {
     }
 }
 
+/// Parse the common subset of GNU and LLVM `objdump -f` output.
+fn parse_objdump_header(header: &str) -> Result<ArchitectureInfo, BuildError> {
+    let format = header
+        .lines()
+        .find_map(|line| {
+            line.split_once("file format")
+                .map(|(_, value)| value.trim())
+        })
+        .filter(|value| !value.is_empty())
+        .ok_or_else(|| {
+            BuildError::Verification("objdump output did not contain a file format".into())
+        })?
+        .to_string();
+
+    let arch = header
+        .lines()
+        .find_map(|line| {
+            line.trim_start()
+                .strip_prefix("architecture:")
+                .map(str::trim)
+                .map(|value| value.split_once(',').map_or(value, |(arch, _)| arch.trim()))
+        })
+        .filter(|value| !value.is_empty())
+        .map_or_else(
+            || {
+                format
+                    .split_once('-')
+                    .map_or_else(|| format.clone(), |(_, value)| value.to_string())
+            },
+            str::to_string,
+        );
+
+    // GNU objdump uses the BFD flag `EXEC_P`; some LLVM versions spell the
+    // file kind as `EXECUTABLE`. Relocatable objects carry neither marker.
+    let is_executable = header
+        .split(|character: char| character.is_whitespace() || character == ',')
+        .any(|token| matches!(token, "EXEC_P" | "EXECUTABLE" | "executable"));
+
+    Ok(ArchitectureInfo {
+        format,
+        arch,
+        is_executable,
+    })
+}
+
 // ---------------------------------------------------------------------------
 // Report
 // ---------------------------------------------------------------------------
@@ -469,6 +485,41 @@ mod tests {
 
     fn test_target() -> TargetIdentity {
         TargetIdentity::x86_64_linux_gnu()
+    }
+
+    #[test]
+    fn parses_gnu_objdump_executable_flag() {
+        let header = r"
+/tmp/exit:     file format elf64-x86-64
+architecture: i386:x86-64, flags 0x00000112:
+EXEC_P, HAS_SYMS, D_PAGED
+start address 0x0000000000401000
+";
+
+        let info = parse_objdump_header(header).unwrap();
+        assert_eq!(info.format, "elf64-x86-64");
+        assert_eq!(info.arch, "i386:x86-64");
+        assert!(info.is_executable);
+    }
+
+    #[test]
+    fn parses_relocatable_object_as_not_executable() {
+        let header = r"
+/tmp/exit.o:     file format elf64-x86-64
+architecture: i386:x86-64, flags 0x00000011:
+HAS_RELOC, HAS_SYMS
+start address 0x0000000000000000
+";
+
+        let info = parse_objdump_header(header).unwrap();
+        assert_eq!(info.format, "elf64-x86-64");
+        assert!(!info.is_executable);
+    }
+
+    #[test]
+    fn rejects_unrecognized_objdump_output() {
+        let error = parse_objdump_header("objdump: unsupported input").unwrap_err();
+        assert!(matches!(error, BuildError::Verification(_)));
     }
 
     #[test]

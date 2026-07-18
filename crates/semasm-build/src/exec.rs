@@ -249,6 +249,8 @@ pub enum BuildError {
     Spawn(String, String),
     /// The process could not be polled after starting.
     Poll(String, String),
+    /// Tool output could not establish the requested artifact property.
+    Verification(String),
 }
 
 impl fmt::Display for BuildError {
@@ -261,6 +263,7 @@ impl fmt::Display for BuildError {
             Self::Poll(prog, detail) => {
                 write!(f, "failed to poll `{prog}`: {detail}")
             }
+            Self::Verification(detail) => write!(f, "verification failed: {detail}"),
         }
     }
 }
