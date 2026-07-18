@@ -2,7 +2,7 @@
 //! [`semasm_asir::OpKind`] shape used by the analysis and ABI passes.
 //!
 //! The decoder (Capstone, in `semasm-decode`) emits
-//! [`PhysicalInstruction`] values whose operands are strings in Capstone's
+//! [`semasm_decode::PhysicalInstruction`] values whose operands are strings in Capstone's
 //! `op_str` style (`x0, [x1, #8]`, `b.eq #imm`, ...). This module
 //! parses that surface for the fixture instruction subset of A64-002 and
 //! classifies each instruction into an [`OpKind`].

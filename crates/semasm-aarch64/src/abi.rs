@@ -1,8 +1,8 @@
 //! AAPCS64 (ARM Architecture Procedure Call Standard 64-bit)
 //! conformance checks over lowered AArch64 instructions.
 //!
-//! This module is the AArch64 counterpart to [`crate::abi`] (System V) and
-//! [`crate::abi_win64`] (Microsoft x64). It turns the register model in
+//! This module is the AArch64 counterpart to the x86 System V and Microsoft
+//! x64 ABI analyzers. It turns the register model in
 //! [`crate`] plus the lowering in [`crate::lower`] into concrete AAPCS64
 //! checks over a single function body (prologue … epilogue).
 //!

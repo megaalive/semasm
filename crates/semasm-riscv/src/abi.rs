@@ -1,8 +1,8 @@
 //! RISC-V LP64 (AArch64 psABI equivalent) ABI conformance checks over
 //! lowered RISC-V instructions.
 //!
-//! This module is the RISC-V counterpart to [`semasm_x86::abi`] (System V)
-//! and [`semasm_x86::abi_win64`] (Microsoft x64). It turns the register model in
+//! This module is the RISC-V counterpart to the x86 System V and Microsoft x64
+//! ABI analyzers. It turns the register model in
 //! [`crate`] plus the lowering in [`crate::lower`] into concrete LP64 checks
 //! over a single function body (prologue … epilogue).
 //!

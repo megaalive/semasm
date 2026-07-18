@@ -1,9 +1,15 @@
 [package]
 name = "semasm-cfg"
-version = "0.1.0"
-edition = "2021"
-license = "MIT"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
 description = "Control-flow graph extraction for SemASM decoded instructions"
+repository.workspace = true
+authors.workspace = true
+readme.workspace = true
+categories.workspace = true
+keywords.workspace = true
 
 [dependencies]
 semasm-decode = { workspace = true }

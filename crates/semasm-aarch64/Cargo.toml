@@ -1,9 +1,15 @@
 [package]
 name = "semasm-aarch64"
-version = "0.1.0"
-edition = "2021"
-license = "MIT"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
 description = "AArch64 register/alias model and AAPCS64 rules for SemASM"
+repository.workspace = true
+authors.workspace = true
+readme.workspace = true
+categories.workspace = true
+keywords.workspace = true
 
 [dependencies]
 serde = { workspace = true, features = ["derive"] }

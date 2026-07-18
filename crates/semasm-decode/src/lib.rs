@@ -33,7 +33,7 @@ pub struct PhysicalInstruction {
     pub write_regs: Vec<String>,
     /// Instruction groups (e.g. `jump`, `call`, `ret`) from the backend.
     pub groups: Vec<String>,
-    /// Whether [`read_regs`], [`write_regs`] and [`groups`] come from real
+    /// Whether [`Self::read_regs`], [`Self::write_regs`] and [`Self::groups`] come from real
     /// backend detail (`true`) or are empty because the backend was
     /// unavailable/without detail (`false`). Consumed honestly by downstream
     /// passes.

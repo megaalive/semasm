@@ -4,10 +4,10 @@
     clippy::match_same_arms
 )]
 //! Lowering of decoded RISC-V instructions into the architecture-neutral
-//! [`crate::asir::OpKind`] shape used by the analysis and ABI passes.
+//! [`semasm_asir::OpKind`] shape used by the analysis and ABI passes.
 //!
 //! The decoder (Capstone, in `semasm-decode`) emits
-//! [`PhysicalInstruction`] values whose operands are strings in Capstone's
+//! [`semasm_decode::PhysicalInstruction`] values whose operands are strings in Capstone's
 //! `op_str` style (`a0, a1`, `8(sp)`, `0x1000`, ...). This module parses that
 //! surface for the fixture instruction subset of RV64-002 and classifies each
 //! instruction into an [`OpKind`].

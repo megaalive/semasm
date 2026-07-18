@@ -1,6 +1,6 @@
 //! Context bundle generator.
 //!
-//! Builds a [`ContextBundle`](crate::ContextBundle) from a validated contract
+//! Builds a [`ContextBundle`] from a validated contract
 //! and target identity, mapping ABI registers, classifying preserved vs
 //! volatile registers, and producing deterministic output.
 
