@@ -5,7 +5,7 @@ use std::time::SystemTime;
 
 use serde::Serialize;
 
-use crate::exec::{CaptureInfo, CommandOutput, CommandSpec};
+use crate::exec::{CaptureInfo, CommandOutput, CommandSpec, TerminationInfo};
 
 /// A timestamped, fully-documented command execution, suitable for
 /// inclusion in artifact reports.
@@ -54,6 +54,8 @@ pub struct RecordedOutput {
     pub timed_out: bool,
     /// Whether the exit code indicates success (0).
     pub success: bool,
+    /// Process-tree termination diagnostics, when applicable.
+    pub termination: Option<TerminationInfo>,
     /// Bounded stdout capture metadata.
     pub stdout_capture: CaptureInfo,
     /// Bounded stderr capture metadata.
@@ -89,6 +91,7 @@ impl CommandRecord {
                 duration_secs: output.duration.as_secs_f64(),
                 timed_out: output.timed_out,
                 success: output.success(),
+                termination: output.termination.clone(),
                 stdout_capture: output.stdout_capture.clone(),
                 stderr_capture: output.stderr_capture.clone(),
             },
@@ -125,6 +128,7 @@ mod tests {
             stderr_capture: capture_info(0),
             duration: Duration::from_millis(123),
             timed_out: false,
+            termination: None,
         }
     }
 
@@ -194,6 +198,7 @@ mod tests {
             stderr_capture: capture_info(24),
             duration: Duration::from_millis(50),
             timed_out: false,
+            termination: None,
         };
         let rec = CommandRecord::now("fail", &sample_spec(), &output);
         assert!(!rec.output.success);
@@ -212,6 +217,7 @@ mod tests {
             stderr_capture: capture_info(0),
             duration: Duration::from_secs(30),
             timed_out: true,
+            termination: None,
         };
         let rec = CommandRecord::now("timeout", &sample_spec(), &output);
         assert!(rec.output.timed_out);

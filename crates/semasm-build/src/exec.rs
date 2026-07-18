@@ -5,8 +5,11 @@ use std::fmt;
 use std::io::{Read, Write};
 use std::path::PathBuf;
 use std::process::{Command, ExitStatus, Stdio};
+use std::sync::mpsc::{self, TryRecvError};
 use std::thread;
 use std::time::{Duration, Instant};
+
+mod platform;
 
 const DEFAULT_CAPTURE_BYTES: usize = 16 * 1024 * 1024;
 
@@ -42,6 +45,37 @@ pub struct CaptureInfo {
     pub truncated: bool,
     /// Read failure after any successfully observed bytes.
     pub read_error: Option<String>,
+}
+
+/// Why SemASM initiated process-tree termination.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize)]
+#[serde(rename_all = "snake_case")]
+pub enum TerminationReason {
+    /// The configured wall-clock timeout elapsed.
+    Timeout,
+}
+
+/// Result of attempting to terminate the complete child process tree.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize)]
+#[serde(rename_all = "snake_case")]
+pub enum TerminationOutcome {
+    /// The tree exited after a graceful termination request.
+    Graceful,
+    /// The tree required forced termination.
+    Forced,
+    /// Complete descendant termination could not be established.
+    Incomplete,
+}
+
+/// Diagnostics for a process-tree termination attempt.
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize)]
+pub struct TerminationInfo {
+    /// Reason termination was initiated.
+    pub reason: TerminationReason,
+    /// Whether termination was graceful, forced, or incomplete.
+    pub outcome: TerminationOutcome,
+    /// Platform-specific diagnostic without child output or environment data.
+    pub detail: String,
 }
 
 impl CaptureInfo {
@@ -255,6 +289,8 @@ pub struct CommandOutput {
     pub duration: Duration,
     /// Whether the process was killed due to timeout.
     pub timed_out: bool,
+    /// Process-tree termination diagnostics, when SemASM initiated termination.
+    pub termination: Option<TerminationInfo>,
 }
 
 impl CommandOutput {
@@ -418,12 +454,22 @@ fn is_secret_name(name: &str) -> bool {
 pub fn exec(spec: &CommandSpec) -> Result<CommandOutput, BuildError> {
     let start = Instant::now();
 
-    let mut child = build_command(spec).spawn().map_err(|e| {
+    let mut command = build_command(spec);
+    platform::configure(&mut command);
+    let mut child = command.spawn().map_err(|e| {
         if e.kind() == std::io::ErrorKind::NotFound {
             BuildError::ProgramNotFound(spec.program.clone())
         } else {
             BuildError::Spawn(spec.program.clone(), e.to_string())
         }
+    })?;
+    let mut process_tree = platform::ProcessTree::attach(&child).map_err(|detail| {
+        let _ = child.kill();
+        let _ = child.wait();
+        BuildError::Spawn(
+            spec.program.clone(),
+            format!("failed to establish process-tree ownership: {detail}"),
+        )
     })?;
 
     let stdin_handle = if let StdinPolicy::Bytes(bytes) = &spec.stdin {
@@ -444,46 +490,63 @@ pub fn exec(spec: &CommandSpec) -> Result<CommandOutput, BuildError> {
 
     let stdout_limit = spec.stdout_limit;
     let stderr_limit = spec.stderr_limit;
-    let stdout_handle = thread::spawn(move || drain(stdout_pipe, stdout_limit));
-    let stderr_handle = thread::spawn(move || drain(stderr_pipe, stderr_limit));
+    let (stdout_sender, stdout_receiver) = mpsc::channel();
+    let (stderr_sender, stderr_receiver) = mpsc::channel();
+    let stdout_handle = thread::spawn(move || {
+        let _ = stdout_sender.send(drain(stdout_pipe, stdout_limit));
+    });
+    let stderr_handle = thread::spawn(move || {
+        let _ = stderr_sender.send(drain(stderr_pipe, stderr_limit));
+    });
 
-    // Poll with timeout.
+    // Poll both the direct child and pipe drains. A launcher can exit while a
+    // descendant keeps inherited pipe handles open, so neither condition alone
+    // establishes completion of the owned process tree.
     let deadline = start + spec.timeout;
-    let (exit_status, exit_code, timed_out) = loop {
-        match child.try_wait() {
-            Ok(Some(status)) => {
-                break (Some(status), status.code(), false);
-            }
-            Ok(None) => {
-                if Instant::now() >= deadline {
-                    let _ = child.kill();
-                    let killed = child.wait().ok();
-                    break (killed, killed.and_then(|s| s.code()), true);
+    let mut direct_status = None;
+    let mut stdout_result = None;
+    let mut stderr_result = None;
+    let (exit_status, exit_code, timed_out, termination) = loop {
+        if direct_status.is_none() {
+            match child.try_wait() {
+                Ok(Some(status)) => direct_status = Some(status),
+                Ok(None) => {}
+                Err(error) => {
+                    let _ = process_tree.terminate(&mut child);
+                    let _ = child.wait();
+                    return Err(BuildError::Poll(spec.program.clone(), error.to_string()));
                 }
-                // Brief sleep to avoid busy-looping.
-                thread::sleep(Duration::from_millis(5));
-            }
-            Err(e) => {
-                let _ = child.kill();
-                let _ = child.wait();
-                return Err(BuildError::Poll(spec.program.clone(), e.to_string()));
             }
         }
+        receive_capture(&stdout_receiver, &mut stdout_result);
+        receive_capture(&stderr_receiver, &mut stderr_result);
+
+        if stdout_result.is_some() && stderr_result.is_some() {
+            if let Some(status) = direct_status {
+                break (Some(status), status.code(), false, None);
+            }
+        }
+        if Instant::now() >= deadline {
+            let termination = process_tree.terminate(&mut child);
+            let status = direct_status.or_else(|| child.wait().ok());
+            break (
+                status,
+                status.and_then(|value| value.code()),
+                true,
+                Some(termination),
+            );
+        }
+        thread::sleep(Duration::from_millis(5));
     };
 
+    let stdout = receive_capture_blocking(stdout_result, &stdout_receiver, "stdout");
+    let stderr = receive_capture_blocking(stderr_result, &stderr_receiver, "stderr");
+    let _ = stdout_handle.join();
+    let _ = stderr_handle.join();
+
     let duration = start.elapsed();
-    let (stdout, stdout_capture) = stdout_handle.join().unwrap_or_else(|_| {
-        (
-            Vec::new(),
-            CaptureInfo::from_capture(0, 0, Some("stdout drain thread panicked".into())),
-        )
-    });
-    let (stderr, stderr_capture) = stderr_handle.join().unwrap_or_else(|_| {
-        (
-            Vec::new(),
-            CaptureInfo::from_capture(0, 0, Some("stderr drain thread panicked".into())),
-        )
-    });
+    let (stdout, stdout_capture) = stdout;
+    let (stderr, stderr_capture) = stderr;
     if let Some(handle) = stdin_handle {
         let _ = handle.join();
     }
@@ -497,6 +560,41 @@ pub fn exec(spec: &CommandSpec) -> Result<CommandOutput, BuildError> {
         stderr_capture,
         duration,
         timed_out,
+        termination,
+    })
+}
+
+type CaptureResult = (Vec<u8>, CaptureInfo);
+
+fn receive_capture(
+    receiver: &mpsc::Receiver<CaptureResult>,
+    destination: &mut Option<CaptureResult>,
+) {
+    if destination.is_some() {
+        return;
+    }
+    match receiver.try_recv() {
+        Ok(result) => *destination = Some(result),
+        Err(TryRecvError::Empty | TryRecvError::Disconnected) => {}
+    }
+}
+
+fn receive_capture_blocking(
+    available: Option<CaptureResult>,
+    receiver: &mpsc::Receiver<CaptureResult>,
+    stream: &str,
+) -> CaptureResult {
+    available.unwrap_or_else(|| {
+        receiver.recv().unwrap_or_else(|_| {
+            (
+                Vec::new(),
+                CaptureInfo::from_capture(
+                    0,
+                    0,
+                    Some(format!("{stream} drain thread stopped without a result")),
+                ),
+            )
+        })
     })
 }
 
@@ -601,9 +699,68 @@ mod tests {
         .with_timeout(Duration::from_millis(50));
         let output = exec(&spec).unwrap();
         assert!(output.timed_out);
+        assert!(output.termination.is_some());
         // On Unix the process is killed by signal → exit_code is None.
         // On Windows TerminateProcess sets an exit code (typically 1).
         assert!(output.duration.as_millis() < 5000);
+    }
+
+    #[test]
+    fn timeout_terminates_spawned_grandchild() {
+        let marker =
+            std::env::temp_dir().join(format!("semasm-grandchild-{}.pid", std::process::id()));
+        let _ = std::fs::remove_file(&marker);
+        let code = "import subprocess,sys,time; child=subprocess.Popen([sys.executable,'-c','import time; time.sleep(60)']); open(sys.argv[1],'w').write(str(child.pid)); time.sleep(60)";
+        let python = if cfg!(windows) { "python" } else { "python3" };
+        let spec = CommandSpec::new(
+            python,
+            vec![
+                "-c".into(),
+                code.into(),
+                marker.to_string_lossy().into_owned(),
+            ],
+        )
+        .with_timeout(Duration::from_secs(2));
+
+        let output = exec(&spec).unwrap();
+        assert!(output.timed_out);
+        let termination = output.termination.expect("termination diagnostics");
+        assert_ne!(termination.outcome, TerminationOutcome::Incomplete);
+
+        let grandchild_pid: u32 = std::fs::read_to_string(&marker)
+            .expect("parent should record grandchild PID before timeout")
+            .parse()
+            .expect("grandchild PID should be numeric");
+        let deadline = Instant::now() + Duration::from_secs(2);
+        while process_exists(grandchild_pid) && Instant::now() < deadline {
+            thread::sleep(Duration::from_millis(20));
+        }
+        assert!(
+            !process_exists(grandchild_pid),
+            "grandchild process {grandchild_pid} survived timeout"
+        );
+        let _ = std::fs::remove_file(marker);
+    }
+
+    #[cfg(unix)]
+    fn process_exists(pid: u32) -> bool {
+        std::process::Command::new("kill")
+            .args(["-0", &pid.to_string()])
+            .stdin(Stdio::null())
+            .stdout(Stdio::null())
+            .stderr(Stdio::null())
+            .status()
+            .is_ok_and(|status| status.success())
+    }
+
+    #[cfg(windows)]
+    fn process_exists(pid: u32) -> bool {
+        std::process::Command::new("tasklist")
+            .args(["/FI", &format!("PID eq {pid}"), "/NH", "/FO", "CSV"])
+            .output()
+            .is_ok_and(|output| {
+                String::from_utf8_lossy(&output.stdout).contains(&format!("\"{pid}\""))
+            })
     }
 
     #[test]

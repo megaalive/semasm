@@ -23,6 +23,7 @@ Every third-party crate must have a written reason. Prefer the Rust standard lib
 | `serde` | `semasm-contract` | Schema derive for contracts and JSON diagnostics |
 | `serde_json` | `semasm-contract`, `semasm-cli` | JSON diagnostic / check reports |
 | `toml` | `semasm-contract` | Contract file format (`*.sem.toml`) |
+| `win32job` | `semasm-build` on Windows only | Safe Job Object ownership so timeouts terminate descendants even after a launcher exits; `std::process` has no process-tree primitive. Version 2.0.3 has no feature flags, async runtime, networking, or native C dependency; it is MIT OR Apache-2.0 and maintained in its public repository. The Windows API bindings increase only Windows compile time and binary size. |
 
 Workspace path crates (`semasm-core`, `semasm-contract`, `semasm-asir`, `semasm-target`) are first-party.
 

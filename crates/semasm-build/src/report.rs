@@ -11,7 +11,7 @@ use std::path::Path;
 use serde::Serialize;
 use sha2::{Digest, Sha256};
 
-use crate::exec::{self, BuildError, CaptureInfo, CommandOutput, CommandSpec};
+use crate::exec::{self, BuildError, CaptureInfo, CommandOutput, CommandSpec, TerminationInfo};
 use crate::pipeline::Pipeline;
 
 // ---------------------------------------------------------------------------
@@ -110,6 +110,8 @@ pub struct ExecutionInfo {
     pub stdout_capture: CaptureInfo,
     /// Bounded stderr capture metadata.
     pub stderr_capture: CaptureInfo,
+    /// Process-tree termination diagnostics, when applicable.
+    pub termination: Option<TerminationInfo>,
 }
 
 /// Complete build artifact report, fully serialisable as JSON.
@@ -152,6 +154,8 @@ pub struct CommandRecordJson {
     pub stdout_capture: CaptureInfo,
     /// Bounded stderr capture metadata.
     pub stderr_capture: CaptureInfo,
+    /// Process-tree termination diagnostics, when applicable.
+    pub termination: Option<TerminationInfo>,
 }
 
 // ---------------------------------------------------------------------------
@@ -460,6 +464,7 @@ pub fn generate_report(
         stderr: String::from_utf8_lossy(&o.stderr).into_owned(),
         stdout_capture: o.stdout_capture.clone(),
         stderr_capture: o.stderr_capture.clone(),
+        termination: o.termination.clone(),
     });
 
     Ok(ArtifactReport {
@@ -514,6 +519,7 @@ impl ArtifactReport {
                 &cmd.stdout_capture,
                 &cmd.stderr_capture,
             );
+            write_termination_notice(&mut out, "         ", cmd.termination.as_ref());
         }
 
         if let Some(ref obj) = self.object {
@@ -571,6 +577,7 @@ impl ArtifactReport {
                 if exec.timed_out { " (TIMEOUT)" } else { "" },
             );
             write_capture_notice(&mut out, "  ", &exec.stdout_capture, &exec.stderr_capture);
+            write_termination_notice(&mut out, "  ", exec.termination.as_ref());
             if !exec.stdout.is_empty() {
                 let _ = writeln!(out, "  stdout: {}", exec.stdout.trim());
             }
@@ -580,6 +587,20 @@ impl ArtifactReport {
         }
 
         out
+    }
+}
+
+fn write_termination_notice(
+    output: &mut String,
+    indent: &str,
+    termination: Option<&TerminationInfo>,
+) {
+    if let Some(termination) = termination {
+        let _ = writeln!(
+            output,
+            "{indent}termination: {:?} ({})",
+            termination.outcome, termination.detail,
+        );
     }
 }
 
@@ -781,6 +802,7 @@ SYMBOL TABLE:
                 success: true,
                 stdout_capture: truncated_capture(0, 2048),
                 stderr_capture: truncated_capture(0, 4096),
+                termination: None,
             }],
             object: None,
             executable: ArtifactFileInfo {
@@ -814,6 +836,7 @@ SYMBOL TABLE:
                 stderr: String::new(),
                 stdout_capture: capture_info(0),
                 stderr_capture: capture_info(0),
+                termination: None,
             }),
         };
 
@@ -892,6 +915,7 @@ SYMBOL TABLE:
                 success: ao.success(),
                 stdout_capture: ao.stdout_capture.clone(),
                 stderr_capture: ao.stderr_capture.clone(),
+                termination: ao.termination.clone(),
             },
             CommandRecordJson {
                 label: "link".into(),
@@ -904,6 +928,7 @@ SYMBOL TABLE:
                 success: lo.success(),
                 stdout_capture: lo.stdout_capture.clone(),
                 stderr_capture: lo.stderr_capture.clone(),
+                termination: lo.termination.clone(),
             },
         ];
 

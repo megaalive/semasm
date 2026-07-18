@@ -1061,6 +1061,7 @@ fn do_build(
             success: ao.success(),
             stdout_capture: ao.stdout_capture.clone(),
             stderr_capture: ao.stderr_capture.clone(),
+            termination: ao.termination.clone(),
         },
         CommandRecordJson {
             label: "link".into(),
@@ -1078,6 +1079,7 @@ fn do_build(
             success: lo.success(),
             stdout_capture: lo.stdout_capture.clone(),
             stderr_capture: lo.stderr_capture.clone(),
+            termination: lo.termination.clone(),
         },
     ];
 
