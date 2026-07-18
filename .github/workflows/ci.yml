@@ -69,6 +69,23 @@ jobs:
           cargo test -p semasm-build -- --ignored --nocapture
           cargo test -p semasm-obj -- --ignored --nocapture
 
+      - name: Verify canonical evidence across output roots
+        shell: bash
+        run: |
+          set -euo pipefail
+          first_root="$(mktemp -d)"
+          second_root="$(mktemp -d)"
+          trap 'rm -rf "$first_root" "$second_root"' EXIT
+          cargo run -q -p semasm-cli -- build fixtures/asm/exit.asm \
+            --target x86_64-unknown-linux-gnu --out-dir "$first_root" \
+            --no-run --format json > "$first_root/report.json"
+          cargo run -q -p semasm-cli -- build fixtures/asm/exit.asm \
+            --target x86_64-unknown-linux-gnu --out-dir "$second_root" \
+            --no-run --format json > "$second_root/report.json"
+          first_hash="$(jq -er '.deterministic_evidence_sha256' "$first_root/report.json")"
+          second_hash="$(jq -er '.deterministic_evidence_sha256' "$second_root/report.json")"
+          test "$first_hash" = "$second_hash"
+
   windows-e2e:
     name: e2e (x86-64 Windows)
     runs-on: windows-latest
