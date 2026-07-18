@@ -18,7 +18,7 @@ before work advances past a failed item.
 - [x] PR-11 — Documentation synchronization
 - [x] PR-12 — Structured object verification
 - [x] PR-13 — Cross-target executable evidence
-- [ ] PR-14 — CLI modularization
+- [x] PR-14 — CLI modularization
 - [ ] PR-15 — Schema and deterministic report versioning
 - [ ] PR-16 — Crate-boundary ADR and targeted consolidation
 - [ ] PR-17 — Negative corpus and fuzz entry points
@@ -26,5 +26,5 @@ before work advances past a failed item.
 
 ## Current focus
 
-PR-14 is next: split the CLI into command and output modules without changing
-behavior or adding crates.
+PR-15 is next: version deterministic report schemas and add compatibility
+tests around canonical evidence.
