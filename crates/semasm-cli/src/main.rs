@@ -133,6 +133,9 @@ enum Commands {
         /// Output format.
         #[arg(long, value_enum, default_value_t = OutputFormat::Terminal)]
         format: OutputFormat,
+        /// Permit a successful exit when some decoded instructions cannot be lowered.
+        #[arg(long)]
+        allow_incomplete: bool,
     },
     /// Forward data-flow analysis over a function body (decode + lower +
     /// control-flow graph + abstract interpretation).
@@ -159,6 +162,9 @@ enum Commands {
         /// Output format.
         #[arg(long, value_enum, default_value_t = OutputFormat::Terminal)]
         format: OutputFormat,
+        /// Permit a successful exit when some decoded instructions cannot be lowered.
+        #[arg(long)]
+        allow_incomplete: bool,
     },
     /// Check a function body against the AAPCS64 ABI
     /// (decode + lower + ABI analysis).
@@ -172,6 +178,9 @@ enum Commands {
         /// Output format.
         #[arg(long, value_enum, default_value_t = OutputFormat::Terminal)]
         format: OutputFormat,
+        /// Permit a successful exit when some decoded instructions cannot be lowered.
+        #[arg(long)]
+        allow_incomplete: bool,
     },
 }
 
@@ -323,7 +332,12 @@ fn main() -> ExitCode {
             do_cfg_inspect(&path, base, format)
         }
         #[cfg(feature = "capstone")]
-        Some(Commands::Abi { path, base, format }) => {
+        Some(Commands::Abi {
+            path,
+            base,
+            format,
+            allow_incomplete,
+        }) => {
             let base = match parse_base(&base) {
                 Ok(b) => b,
                 Err(e) => {
@@ -331,7 +345,7 @@ fn main() -> ExitCode {
                     return ExitCode::from(2);
                 }
             };
-            do_abi_inspect(&path, base, format)
+            do_abi_inspect(&path, base, format, allow_incomplete)
         }
         #[cfg(feature = "capstone")]
         Some(Commands::Analyze { path, base, format }) => {
@@ -345,7 +359,12 @@ fn main() -> ExitCode {
             do_analyze_inspect(&path, base, format)
         }
         #[cfg(feature = "capstone")]
-        Some(Commands::Win64Abi { path, base, format }) => {
+        Some(Commands::Win64Abi {
+            path,
+            base,
+            format,
+            allow_incomplete,
+        }) => {
             let base = match parse_base(&base) {
                 Ok(b) => b,
                 Err(e) => {
@@ -353,10 +372,15 @@ fn main() -> ExitCode {
                     return ExitCode::from(2);
                 }
             };
-            do_win64_abi_inspect(&path, base, format)
+            do_win64_abi_inspect(&path, base, format, allow_incomplete)
         }
         #[cfg(feature = "capstone")]
-        Some(Commands::Aarch64Abi { path, base, format }) => {
+        Some(Commands::Aarch64Abi {
+            path,
+            base,
+            format,
+            allow_incomplete,
+        }) => {
             let base = match parse_base(&base) {
                 Ok(b) => b,
                 Err(e) => {
@@ -364,7 +388,7 @@ fn main() -> ExitCode {
                     return ExitCode::from(2);
                 }
             };
-            do_aarch64_abi_inspect(&path, base, format)
+            do_aarch64_abi_inspect(&path, base, format, allow_incomplete)
         }
     }
 }
@@ -1285,6 +1309,36 @@ type = "usize"
 
         let _ = std::fs::remove_dir_all(&dir);
     }
+
+    #[cfg(feature = "capstone")]
+    #[test]
+    fn unsupported_lowering_retains_instruction_evidence() {
+        let instruction = semasm_decode::PhysicalInstruction {
+            address: 0x0040_1000,
+            bytes: vec![0xc5, 0xf8, 0x77],
+            mnemonic: "vzeroupper".to_string(),
+            operands: Vec::new(),
+            read_regs: Vec::new(),
+            write_regs: Vec::new(),
+            groups: Vec::new(),
+            detail_available: true,
+        };
+
+        let (lowered, unsupported) = lower_x86_with_evidence(&[instruction]);
+        assert!(lowered.is_empty());
+        assert_eq!(unsupported.len(), 1);
+        assert_eq!(unsupported[0].address, 0x0040_1000);
+        assert_eq!(unsupported[0].bytes, [0xc5, 0xf8, 0x77]);
+        assert_eq!(unsupported[0].mnemonic, "vzeroupper");
+    }
+
+    #[cfg(feature = "capstone")]
+    #[test]
+    fn incomplete_analysis_requires_explicit_opt_in() {
+        assert_ne!(analysis_exit_code(true, false, false), ExitCode::SUCCESS);
+        assert_eq!(analysis_exit_code(true, false, true), ExitCode::SUCCESS);
+        assert_ne!(analysis_exit_code(false, true, true), ExitCode::SUCCESS);
+    }
 }
 
 /// Inspect an object file and emit its normalised view.
@@ -1478,10 +1532,112 @@ fn do_cfg_inspect(path: &Path, base: u64, format: OutputFormat) -> ExitCode {
     }
 }
 
+#[cfg(feature = "capstone")]
+#[derive(Clone, serde::Serialize)]
+struct UnsupportedInstruction {
+    address: u64,
+    bytes: Vec<u8>,
+    mnemonic: String,
+    operands: Vec<String>,
+}
+
+#[cfg(feature = "capstone")]
+fn unsupported_instruction(
+    instruction: &semasm_decode::PhysicalInstruction,
+    mnemonic: String,
+) -> UnsupportedInstruction {
+    UnsupportedInstruction {
+        address: instruction.address,
+        bytes: instruction.bytes.clone(),
+        mnemonic,
+        operands: instruction.operands.clone(),
+    }
+}
+
+#[cfg(feature = "capstone")]
+fn lower_x86_with_evidence(
+    instructions: &[semasm_decode::PhysicalInstruction],
+) -> (
+    Vec<semasm_x86::lower::LoweredInstr>,
+    Vec<UnsupportedInstruction>,
+) {
+    let mut lowered = Vec::with_capacity(instructions.len());
+    let mut unsupported = Vec::new();
+    for instruction in instructions {
+        match semasm_x86::lower::lower(instruction) {
+            semasm_x86::lower::Lowering::Lowered(value) => lowered.push(value),
+            semasm_x86::lower::Lowering::Unsupported { mnemonic } => {
+                unsupported.push(unsupported_instruction(instruction, mnemonic));
+            }
+        }
+    }
+    (lowered, unsupported)
+}
+
+#[cfg(feature = "capstone")]
+fn lower_aarch64_with_evidence(
+    instructions: &[semasm_decode::PhysicalInstruction],
+) -> (
+    Vec<semasm_aarch64::lower::LoweredInstr>,
+    Vec<UnsupportedInstruction>,
+) {
+    let mut lowered = Vec::with_capacity(instructions.len());
+    let mut unsupported = Vec::new();
+    for instruction in instructions {
+        match semasm_aarch64::lower::lower(instruction) {
+            semasm_aarch64::lower::Lowering::Lowered(value) => lowered.push(value),
+            semasm_aarch64::lower::Lowering::Unsupported { mnemonic } => {
+                unsupported.push(unsupported_instruction(instruction, mnemonic));
+            }
+        }
+    }
+    (lowered, unsupported)
+}
+
+#[cfg(feature = "capstone")]
+fn print_incomplete_terminal(unsupported: &[UnsupportedInstruction], allow_incomplete: bool) {
+    println!("instructions unsupported: {}", unsupported.len());
+    for instruction in unsupported {
+        println!(
+            "[ANALYSIS_INCOMPLETE] {:#x}: {} {} (bytes: {:02x?})",
+            instruction.address,
+            instruction.mnemonic,
+            instruction.operands.join(", "),
+            instruction.bytes
+        );
+    }
+    if !unsupported.is_empty() && allow_incomplete {
+        println!("incomplete analysis explicitly allowed by --allow-incomplete");
+    }
+}
+
+#[cfg(feature = "capstone")]
+fn analysis_exit_code(clean: bool, complete: bool, allow_incomplete: bool) -> ExitCode {
+    if clean && (complete || allow_incomplete) {
+        ExitCode::SUCCESS
+    } else {
+        ExitCode::from(1)
+    }
+}
+
+#[cfg(feature = "capstone")]
+fn analysis_status(unsupported: &[UnsupportedInstruction]) -> &'static str {
+    if unsupported.is_empty() {
+        "complete"
+    } else {
+        "incomplete"
+    }
+}
+
 /// Decode a raw binary blob, lower it, and run the System V AMD64 ABI
 /// analysis over the (single) function body.
 #[cfg(feature = "capstone")]
-fn do_abi_inspect(path: &Path, base: u64, format: OutputFormat) -> ExitCode {
+fn do_abi_inspect(
+    path: &Path,
+    base: u64,
+    format: OutputFormat,
+    allow_incomplete: bool,
+) -> ExitCode {
     let code = match std::fs::read(path) {
         Ok(b) => b,
         Err(e) => {
@@ -1505,24 +1661,21 @@ fn do_abi_inspect(path: &Path, base: u64, format: OutputFormat) -> ExitCode {
         }
     };
 
-    // Lower every decoded instruction; Unsupported ones are dropped (explicit
-    // "not modelled" signal) before the ABI walk.
-    let lowered: Vec<semasm_x86::lower::LoweredInstr> = instrs
-        .iter()
-        .filter_map(|p| match semasm_x86::lower::lower(p) {
-            semasm_x86::lower::Lowering::Lowered(l) => Some(l),
-            semasm_x86::lower::Lowering::Unsupported { .. } => None,
-        })
-        .collect();
+    let (lowered, unsupported) = lower_x86_with_evidence(&instrs);
 
     let report = semasm_x86::abi::analyze(&lowered);
 
     match format {
         OutputFormat::Json => {
-            match serde_json::to_string_pretty(&json_abi_report(&report, lowered.len())) {
+            match serde_json::to_string_pretty(&json_abi_report(
+                &report,
+                instrs.len(),
+                lowered.len(),
+                &unsupported,
+            )) {
                 Ok(s) => {
                     println!("{s}");
-                    ExitCode::SUCCESS
+                    analysis_exit_code(report.is_clean(), unsupported.is_empty(), allow_incomplete)
                 }
                 Err(e) => {
                     eprintln!("failed to serialize JSON: {e}");
@@ -1531,7 +1684,9 @@ fn do_abi_inspect(path: &Path, base: u64, format: OutputFormat) -> ExitCode {
             }
         }
         OutputFormat::Terminal => {
+            println!("instructions decoded: {}", instrs.len());
             println!("instructions lowered: {}", lowered.len());
+            print_incomplete_terminal(&unsupported, allow_incomplete);
             println!("leaf function:       {}", report.is_leaf);
             println!("contains syscall:    {}", report.has_syscall);
             println!("final RSP delta:    {}", report.final_rsp_delta);
@@ -1545,7 +1700,7 @@ fn do_abi_inspect(path: &Path, base: u64, format: OutputFormat) -> ExitCode {
                 }
             );
             println!();
-            if report.findings.is_empty() {
+            if report.findings.is_empty() && unsupported.is_empty() {
                 println!("ABI: clean — no System V AMD64 violations detected ✓");
             } else {
                 for f in &report.findings {
@@ -1562,11 +1717,7 @@ fn do_abi_inspect(path: &Path, base: u64, format: OutputFormat) -> ExitCode {
                     println!("        {}", f.message);
                 }
             }
-            if report.is_clean() {
-                ExitCode::SUCCESS
-            } else {
-                ExitCode::from(1)
-            }
+            analysis_exit_code(report.is_clean(), unsupported.is_empty(), allow_incomplete)
         }
     }
 }
@@ -1575,7 +1726,10 @@ fn do_abi_inspect(path: &Path, base: u64, format: OutputFormat) -> ExitCode {
 #[cfg(feature = "capstone")]
 #[derive(serde::Serialize)]
 struct JsonAbiReport {
+    instructions_decoded: usize,
     instructions_lowered: usize,
+    status: &'static str,
+    unsupported: Vec<UnsupportedInstruction>,
     is_leaf: bool,
     has_syscall: bool,
     final_rsp_delta: i64,
@@ -1595,9 +1749,17 @@ struct JsonAbiFinding {
 }
 
 #[cfg(feature = "capstone")]
-fn json_abi_report(r: &semasm_x86::abi::AbiReport, lowered_count: usize) -> JsonAbiReport {
+fn json_abi_report(
+    r: &semasm_x86::abi::AbiReport,
+    decoded_count: usize,
+    lowered_count: usize,
+    unsupported: &[UnsupportedInstruction],
+) -> JsonAbiReport {
     JsonAbiReport {
+        instructions_decoded: decoded_count,
         instructions_lowered: lowered_count,
+        status: analysis_status(unsupported),
+        unsupported: unsupported.to_vec(),
         is_leaf: r.is_leaf,
         has_syscall: r.has_syscall,
         final_rsp_delta: r.final_rsp_delta,
@@ -1607,7 +1769,7 @@ fn json_abi_report(r: &semasm_x86::abi::AbiReport, lowered_count: usize) -> Json
         } else {
             0
         },
-        clean: r.is_clean(),
+        clean: r.is_clean() && unsupported.is_empty(),
         findings: r
             .findings
             .iter()
@@ -1749,7 +1911,12 @@ fn json_analysis_report(r: &semasm_x86::analysis::AnalysisReport) -> JsonAnalysi
 /// Decode a raw binary blob, lower it, and run the Microsoft x64 ABI
 /// analysis over the (single) function body.
 #[cfg(feature = "capstone")]
-fn do_win64_abi_inspect(path: &Path, base: u64, format: OutputFormat) -> ExitCode {
+fn do_win64_abi_inspect(
+    path: &Path,
+    base: u64,
+    format: OutputFormat,
+    allow_incomplete: bool,
+) -> ExitCode {
     let code = match std::fs::read(path) {
         Ok(b) => b,
         Err(e) => {
@@ -1773,24 +1940,21 @@ fn do_win64_abi_inspect(path: &Path, base: u64, format: OutputFormat) -> ExitCod
         }
     };
 
-    // Lower every decoded instruction; Unsupported ones are dropped (explicit
-    // "not modelled" signal) before the ABI walk.
-    let lowered: Vec<semasm_x86::lower::LoweredInstr> = instrs
-        .iter()
-        .filter_map(|p| match semasm_x86::lower::lower(p) {
-            semasm_x86::lower::Lowering::Lowered(l) => Some(l),
-            semasm_x86::lower::Lowering::Unsupported { .. } => None,
-        })
-        .collect();
+    let (lowered, unsupported) = lower_x86_with_evidence(&instrs);
 
     let report = semasm_x86::abi_win64::analyze(&lowered);
 
     match format {
         OutputFormat::Json => {
-            match serde_json::to_string_pretty(&json_win64_abi_report(&report, lowered.len())) {
+            match serde_json::to_string_pretty(&json_win64_abi_report(
+                &report,
+                instrs.len(),
+                lowered.len(),
+                &unsupported,
+            )) {
                 Ok(s) => {
                     println!("{s}");
-                    ExitCode::SUCCESS
+                    analysis_exit_code(report.is_clean(), unsupported.is_empty(), allow_incomplete)
                 }
                 Err(e) => {
                     eprintln!("failed to serialize JSON: {e}");
@@ -1799,7 +1963,9 @@ fn do_win64_abi_inspect(path: &Path, base: u64, format: OutputFormat) -> ExitCod
             }
         }
         OutputFormat::Terminal => {
+            println!("instructions decoded: {}", instrs.len());
             println!("instructions lowered: {}", lowered.len());
+            print_incomplete_terminal(&unsupported, allow_incomplete);
             println!("leaf function:       {}", report.is_leaf);
             println!("final RSP delta:    {}", report.final_rsp_delta);
             println!("call sites:          {}", report.call_sites.len());
@@ -1812,7 +1978,7 @@ fn do_win64_abi_inspect(path: &Path, base: u64, format: OutputFormat) -> ExitCod
                 }
             );
             println!();
-            if report.findings.is_empty() {
+            if report.findings.is_empty() && unsupported.is_empty() {
                 println!("WIN64 ABI: clean — no Microsoft x64 violations detected");
             } else {
                 for f in &report.findings {
@@ -1829,11 +1995,7 @@ fn do_win64_abi_inspect(path: &Path, base: u64, format: OutputFormat) -> ExitCod
                     println!("        {}", f.message);
                 }
             }
-            if report.is_clean() {
-                ExitCode::SUCCESS
-            } else {
-                ExitCode::from(1)
-            }
+            analysis_exit_code(report.is_clean(), unsupported.is_empty(), allow_incomplete)
         }
     }
 }
@@ -1842,7 +2004,10 @@ fn do_win64_abi_inspect(path: &Path, base: u64, format: OutputFormat) -> ExitCod
 #[cfg(feature = "capstone")]
 #[derive(serde::Serialize)]
 struct JsonWin64AbiReport {
+    instructions_decoded: usize,
     instructions_lowered: usize,
+    status: &'static str,
+    unsupported: Vec<UnsupportedInstruction>,
     is_leaf: bool,
     final_rsp_delta: i64,
     call_site_count: usize,
@@ -1863,10 +2028,15 @@ struct JsonWin64AbiFinding {
 #[cfg(feature = "capstone")]
 fn json_win64_abi_report(
     r: &semasm_x86::abi_win64::AbiReport,
+    decoded_count: usize,
     lowered_count: usize,
+    unsupported: &[UnsupportedInstruction],
 ) -> JsonWin64AbiReport {
     JsonWin64AbiReport {
+        instructions_decoded: decoded_count,
         instructions_lowered: lowered_count,
+        status: analysis_status(unsupported),
+        unsupported: unsupported.to_vec(),
         is_leaf: r.is_leaf,
         final_rsp_delta: r.final_rsp_delta,
         call_site_count: r.call_sites.len(),
@@ -1875,7 +2045,7 @@ fn json_win64_abi_report(
         } else {
             0
         },
-        clean: r.is_clean(),
+        clean: r.is_clean() && unsupported.is_empty(),
         findings: r
             .findings
             .iter()
@@ -1892,7 +2062,12 @@ fn json_win64_abi_report(
 /// Decode a raw binary blob, lower it, and run the AAPCS64 ABI
 /// analysis over the (single) function body.
 #[cfg(feature = "capstone")]
-fn do_aarch64_abi_inspect(path: &Path, base: u64, format: OutputFormat) -> ExitCode {
+fn do_aarch64_abi_inspect(
+    path: &Path,
+    base: u64,
+    format: OutputFormat,
+    allow_incomplete: bool,
+) -> ExitCode {
     let code = match std::fs::read(path) {
         Ok(b) => b,
         Err(e) => {
@@ -1916,24 +2091,21 @@ fn do_aarch64_abi_inspect(path: &Path, base: u64, format: OutputFormat) -> ExitC
         }
     };
 
-    // Lower every decoded instruction; Unsupported ones are dropped before
-    // the ABI walk.
-    let lowered: Vec<semasm_aarch64::lower::LoweredInstr> = instrs
-        .iter()
-        .filter_map(|p| match semasm_aarch64::lower::lower(p) {
-            semasm_aarch64::lower::Lowering::Lowered(l) => Some(l),
-            semasm_aarch64::lower::Lowering::Unsupported { .. } => None,
-        })
-        .collect();
+    let (lowered, unsupported) = lower_aarch64_with_evidence(&instrs);
 
     let report = semasm_aarch64::abi::analyze(&lowered);
 
     match format {
         OutputFormat::Json => {
-            match serde_json::to_string_pretty(&json_aarch64_abi_report(&report, lowered.len())) {
+            match serde_json::to_string_pretty(&json_aarch64_abi_report(
+                &report,
+                instrs.len(),
+                lowered.len(),
+                &unsupported,
+            )) {
                 Ok(s) => {
                     println!("{s}");
-                    ExitCode::SUCCESS
+                    analysis_exit_code(report.is_clean(), unsupported.is_empty(), allow_incomplete)
                 }
                 Err(e) => {
                     eprintln!("failed to serialize JSON: {e}");
@@ -1942,12 +2114,14 @@ fn do_aarch64_abi_inspect(path: &Path, base: u64, format: OutputFormat) -> ExitC
             }
         }
         OutputFormat::Terminal => {
+            println!("instructions decoded: {}", instrs.len());
             println!("instructions lowered: {}", lowered.len());
+            print_incomplete_terminal(&unsupported, allow_incomplete);
             println!("leaf function:       {}", report.is_leaf);
             println!("final SP delta:      {}", report.final_sp_delta);
             println!("call sites:          {}", report.call_sites.len());
             println!();
-            if report.findings.is_empty() {
+            if report.findings.is_empty() && unsupported.is_empty() {
                 println!("AAPCS64 ABI: clean — no AArch64 violations detected");
             } else {
                 for f in &report.findings {
@@ -1964,11 +2138,7 @@ fn do_aarch64_abi_inspect(path: &Path, base: u64, format: OutputFormat) -> ExitC
                     println!("        {}", f.message);
                 }
             }
-            if report.is_clean() {
-                ExitCode::SUCCESS
-            } else {
-                ExitCode::from(1)
-            }
+            analysis_exit_code(report.is_clean(), unsupported.is_empty(), allow_incomplete)
         }
     }
 }
@@ -1977,7 +2147,10 @@ fn do_aarch64_abi_inspect(path: &Path, base: u64, format: OutputFormat) -> ExitC
 #[cfg(feature = "capstone")]
 #[derive(serde::Serialize)]
 struct JsonAarch64AbiReport {
+    instructions_decoded: usize,
     instructions_lowered: usize,
+    status: &'static str,
+    unsupported: Vec<UnsupportedInstruction>,
     is_leaf: bool,
     final_sp_delta: i64,
     call_site_count: usize,
@@ -1997,14 +2170,19 @@ struct JsonAarch64AbiFinding {
 #[cfg(feature = "capstone")]
 fn json_aarch64_abi_report(
     r: &semasm_aarch64::abi::AbiReport,
+    decoded_count: usize,
     lowered_count: usize,
+    unsupported: &[UnsupportedInstruction],
 ) -> JsonAarch64AbiReport {
     JsonAarch64AbiReport {
+        instructions_decoded: decoded_count,
         instructions_lowered: lowered_count,
+        status: analysis_status(unsupported),
+        unsupported: unsupported.to_vec(),
         is_leaf: r.is_leaf,
         final_sp_delta: r.final_sp_delta,
         call_site_count: r.call_sites.len(),
-        clean: r.is_clean(),
+        clean: r.is_clean() && unsupported.is_empty(),
         findings: r
             .findings
             .iter()
