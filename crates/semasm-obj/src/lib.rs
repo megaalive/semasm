@@ -139,6 +139,56 @@ pub struct RelocationInfo {
     pub is_relative: bool,
 }
 
+/// Bytes and virtual address of an executable object section.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct CodeSection {
+    /// Section name as stored in the object container.
+    pub name: String,
+    /// Virtual address assigned by the container (often zero in relocatable objects).
+    pub address: u64,
+    /// Exact section contents.
+    pub bytes: Vec<u8>,
+}
+
+/// Read executable sections from an object after validating its target identity.
+pub fn read_code_sections(
+    path: &Path,
+    target: &TargetIdentity,
+) -> Result<Vec<CodeSection>, ObjectError> {
+    let bytes =
+        std::fs::read(path).map_err(|error| ObjectError::Io(path.display().to_string(), error))?;
+    let _ = read_for_target(path, target)?;
+    code_sections(&bytes)
+}
+
+/// Extract executable sections from object bytes without invoking external tools.
+pub fn code_sections(bytes: &[u8]) -> Result<Vec<CodeSection>, ObjectError> {
+    let file =
+        object::File::parse(bytes).map_err(|error| ObjectError::Unrecognised(error.to_string()))?;
+    let mut sections = Vec::new();
+    for section in file.sections() {
+        if section.kind() != SectionKind::Text {
+            continue;
+        }
+        let data = section
+            .data()
+            .map_err(|error| ObjectError::Unrecognised(error.to_string()))?;
+        if !data.is_empty() {
+            sections.push(CodeSection {
+                name: section.name().unwrap_or("").to_string(),
+                address: section.address(),
+                bytes: data.to_vec(),
+            });
+        }
+    }
+    sections.sort_by(|left, right| {
+        left.address
+            .cmp(&right.address)
+            .then_with(|| left.name.cmp(&right.name))
+    });
+    Ok(sections)
+}
+
 fn map_format(f: BinaryFormat) -> ContainerFormat {
     match f {
         BinaryFormat::Elf => ContainerFormat::Elf,
