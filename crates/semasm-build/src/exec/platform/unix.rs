@@ -17,6 +17,9 @@ pub(crate) fn configure(command: &mut Command) {
 }
 
 impl ProcessTree {
+    // Keep the fallible signature aligned with the Windows implementation so
+    // callers cannot accidentally omit process-tree setup error handling.
+    #[allow(clippy::unnecessary_wraps)]
     pub(crate) fn attach(child: &Child) -> Result<Self, String> {
         Ok(Self {
             process_group: format!("-{}", child.id()),
