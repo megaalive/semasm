@@ -44,15 +44,20 @@ cargo doc --workspace --no-deps
 
 A five-minute assembly demo will land with later vertical slices (see the project plan / ROADMAP). Until then, this repository is scaffolding only.
 
-## Planned targets (not supported yet)
+## Target capability evidence
 
-| Identity | Notes |
-|---|---|
-| `x86_64-unknown-linux-gnu` | System V, ELF — first hosted slice |
-| `x86_64-pc-windows-msvc` | Windows x64, PE/COFF |
-| `aarch64-unknown-linux-gnu` | AAPCS64, ELF |
-| `riscv64gc-unknown-linux-gnu` | RISC-V psABI, ELF |
-| `riscv32imac-unknown-none-elf` (QEMU virt) | bare-metal IoT profile |
+The table is generated from `capabilities.toml`. Levels describe implementation
+and evidence maturity; they are not a blanket support promise.
+
+<!-- capabilities:start -->
+| Identity | Decode | Lower | ABI | Assemble | Link | Execute | Verify |
+|---|---|---|---|---|---|---|---|
+| `x86_64-unknown-linux-gnu` | partial | partial | unit-tested | experimental | experimental | experimental | experimental |
+| `x86_64-pc-windows-msvc` | partial | partial | unit-tested | experimental | experimental | experimental | experimental |
+| `aarch64-unknown-linux-gnu` | partial | partial | unit-tested | unavailable | unavailable | unavailable | experimental |
+| `riscv64gc-unknown-linux-gnu` | declared | partial | unit-tested | unavailable | unavailable | unavailable | experimental |
+| `riscv32imac-unknown-none-elf` | declared | partial | unit-tested | unavailable | unavailable | unavailable | experimental |
+<!-- capabilities:end -->
 
 ## Why semantic metadata?
 

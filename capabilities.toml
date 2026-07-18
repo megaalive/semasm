@@ -1,0 +1,113 @@
+schema_version = "0.1"
+
+[workspace]
+crates = [
+    "semasm-core",
+    "semasm-contract",
+    "semasm-asir",
+    "semasm-target",
+    "semasm-build",
+    "semasm-agent",
+    "semasm-cli",
+    "semasm-obj",
+    "semasm-decode",
+    "semasm-cfg",
+    "semasm-x86",
+    "semasm-aarch64",
+    "semasm-riscv",
+]
+
+[[target]]
+id = "x86_64-unknown-linux-gnu"
+description = "x86-64 Linux, System V ABI, ELF"
+
+[target.capabilities]
+declared = "verified_in_unit_tests"
+decode = "partial"
+lower = "partial"
+abi_analysis = "verified_in_unit_tests"
+assemble = "experimental"
+link = "experimental"
+execute = "experimental"
+verify = "experimental"
+
+[target.evidence]
+unit_tests = ["semasm-target::tests", "semasm-x86::abi", "semasm-build::pipeline"]
+fixtures = ["fixtures/asm/exit.asm", "fixtures/asm/count_byte.asm"]
+ci_jobs = []
+
+[[target]]
+id = "x86_64-pc-windows-msvc"
+description = "x86-64 Windows, Microsoft x64 ABI, PE/COFF"
+
+[target.capabilities]
+declared = "verified_in_unit_tests"
+decode = "partial"
+lower = "partial"
+abi_analysis = "verified_in_unit_tests"
+assemble = "experimental"
+link = "experimental"
+execute = "experimental"
+verify = "experimental"
+
+[target.evidence]
+unit_tests = ["semasm-target::tests", "semasm-x86::abi_win64", "semasm-obj::tests"]
+fixtures = ["fixtures/asm/hello_win64.asm", "fixtures/asm/win64_clean.asm"]
+ci_jobs = []
+
+[[target]]
+id = "aarch64-unknown-linux-gnu"
+description = "AArch64 Linux, AAPCS64 ABI, ELF"
+
+[target.capabilities]
+declared = "declared"
+decode = "partial"
+lower = "partial"
+abi_analysis = "verified_in_unit_tests"
+assemble = "unavailable"
+link = "unavailable"
+execute = "unavailable"
+verify = "experimental"
+
+[target.evidence]
+unit_tests = ["semasm-decode::tests", "semasm-aarch64::lower", "semasm-aarch64::abi"]
+fixtures = []
+ci_jobs = []
+
+[[target]]
+id = "riscv64gc-unknown-linux-gnu"
+description = "RV64 Linux, RISC-V psABI, ELF"
+
+[target.capabilities]
+declared = "declared"
+decode = "declared"
+lower = "partial"
+abi_analysis = "verified_in_unit_tests"
+assemble = "unavailable"
+link = "unavailable"
+execute = "unavailable"
+verify = "experimental"
+
+[target.evidence]
+unit_tests = ["semasm-riscv::lower", "semasm-riscv::abi"]
+fixtures = []
+ci_jobs = []
+
+[[target]]
+id = "riscv32imac-unknown-none-elf"
+description = "RV32 bare-metal, RISC-V psABI, ELF"
+
+[target.capabilities]
+declared = "declared"
+decode = "declared"
+lower = "partial"
+abi_analysis = "verified_in_unit_tests"
+assemble = "unavailable"
+link = "unavailable"
+execute = "unavailable"
+verify = "experimental"
+
+[target.evidence]
+unit_tests = ["semasm-riscv::lower", "semasm-riscv::abi"]
+fixtures = []
+ci_jobs = []

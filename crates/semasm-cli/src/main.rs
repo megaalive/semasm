@@ -254,20 +254,18 @@ fn main() -> ExitCode {
             ExitCode::SUCCESS
         }
         Some(Commands::Status) => {
-            println!("semasm {SEMASM_VERSION}");
-            println!("phase: VS-06 Windows x64 target (PE/COFF, Microsoft x64 ABI)");
-            println!(
-                "status: contract check, agent packets/verify, obj inspect (ELF+PE), \
-                 decode, cfg, System V + Microsoft x64 ABI analysis available; \
-                 Windows PE build/run on a Windows host"
-            );
-            println!(
-                "crates: semasm-core, semasm-contract, semasm-asir, semasm-target, \
-                 semasm-build, semasm-agent, semasm-obj, semasm-decode, semasm-cfg, \
-                 semasm-x86"
-            );
-            println!("note: generated programs do not link SemASM by default");
-            ExitCode::SUCCESS
+            match semasm_target::capability::CapabilityManifest::parse(include_str!(
+                "../../../capabilities.toml"
+            )) {
+                Ok(manifest) => {
+                    print!("{}", manifest.render_status(SEMASM_VERSION));
+                    ExitCode::SUCCESS
+                }
+                Err(error) => {
+                    eprintln!("error: failed to load embedded capability manifest: {error}");
+                    ExitCode::from(1)
+                }
+            }
         }
         Some(Commands::Explain { code }) => do_explain(&code),
         Some(Commands::Target { action }) => match action {

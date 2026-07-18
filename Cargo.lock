@@ -456,6 +456,7 @@ dependencies = [
  "schemars",
  "semasm-core",
  "serde",
+ "toml",
 ]
 
 [[package]]
