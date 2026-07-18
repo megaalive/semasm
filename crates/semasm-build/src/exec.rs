@@ -298,7 +298,7 @@ impl CommandOutput {
     /// terminated by timeout (checked separately).
     #[must_use]
     pub fn success(&self) -> bool {
-        self.exit_code == Some(0)
+        !self.timed_out && self.exit_code == Some(0)
     }
 
     /// Human-readable summary for logs and reports.
@@ -702,6 +702,10 @@ mod tests {
         .with_timeout(Duration::from_millis(50));
         let output = exec(&spec).unwrap();
         assert!(output.timed_out);
+        assert!(
+            !output.success(),
+            "a timed-out command cannot be successful"
+        );
         assert!(output.termination.is_some());
         // On Unix the process is killed by signal → exit_code is None.
         // On Windows TerminateProcess sets an exit code (typically 1).
@@ -723,7 +727,7 @@ mod tests {
                 marker.to_string_lossy().into_owned(),
             ],
         )
-        .with_timeout(Duration::from_secs(2));
+        .with_timeout(Duration::from_secs(10));
 
         let output = exec(&spec).unwrap();
         assert!(output.timed_out);
