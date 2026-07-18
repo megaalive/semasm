@@ -810,13 +810,15 @@ SYMBOL TABLE:
         let target = TargetIdentity::x86_64_linux_gnu();
         let pipe = Pipeline::discover(&target);
 
-        let source = Path::new("fixtures/asm/exit.asm");
+        let source = Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("../..")
+            .join("fixtures/asm/exit.asm");
         let out_dir = std::env::temp_dir().join("semasm-report-test-e2e");
         let _ = std::fs::create_dir_all(&out_dir);
         let obj = out_dir.join("exit.o");
         let exe = out_dir.join("exit");
 
-        let (ao, lo) = assemble_and_link(&pipe, source, &obj, &exe).expect("assemble+link");
+        let (ao, lo) = assemble_and_link(&pipe, &source, &obj, &exe).expect("assemble+link");
 
         // Run (if QEMU available)
         let run_out = pipe.run(&exe).ok();
@@ -845,7 +847,7 @@ SYMBOL TABLE:
             },
         ];
 
-        let report = generate_report(&pipe, source, Some(&obj), &exe, records, run_out.as_ref())
+        let report = generate_report(&pipe, &source, Some(&obj), &exe, records, run_out.as_ref())
             .expect("generate_report");
 
         // Verify report structure

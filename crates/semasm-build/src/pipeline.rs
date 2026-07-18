@@ -487,6 +487,12 @@ mod tests {
         TargetIdentity::x86_64_linux_gnu()
     }
 
+    fn workspace_fixture(relative: &str) -> std::path::PathBuf {
+        Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("../..")
+            .join(relative)
+    }
+
     #[test]
     fn parses_gnu_objdump_executable_flag() {
         let header = r"
@@ -549,12 +555,12 @@ start address 0x0000000000000000
         let target = test_target();
         let pipe = Pipeline::discover(&target);
 
-        let source = Path::new("fixtures/asm/exit.asm");
+        let source = workspace_fixture("fixtures/asm/exit.asm");
         let out_dir = std::env::temp_dir().join("semasm-build-test");
         let _ = std::fs::create_dir_all(&out_dir);
         let obj = out_dir.join("exit.o");
 
-        let result = pipe.assemble(source, &obj, "elf64");
+        let result = pipe.assemble(&source, &obj, "elf64");
         assert!(result.is_ok(), "assemble failed: {:?}", result.err());
         let output = result.unwrap();
         assert!(
@@ -574,7 +580,7 @@ start address 0x0000000000000000
         let target = test_target();
         let pipe = Pipeline::discover(&target);
 
-        let source = Path::new("fixtures/asm/exit.asm");
+        let source = workspace_fixture("fixtures/asm/exit.asm");
         let out_dir = std::env::temp_dir().join("semasm-build-test-e2e");
         let _ = std::fs::create_dir_all(&out_dir);
         let obj = out_dir.join("exit.o");
@@ -582,7 +588,7 @@ start address 0x0000000000000000
 
         // Assemble
         let ao = pipe
-            .assemble_reproducible(source, &obj, "elf64")
+            .assemble_reproducible(&source, &obj, "elf64")
             .expect("assemble");
         assert!(ao.success(), "assemble failed");
         assert!(obj.exists());
@@ -626,12 +632,12 @@ start address 0x0000000000000000
         let target = test_target();
         let pipe = Pipeline::discover(&target);
 
-        let source = Path::new("fixtures/asm/exit.asm");
+        let source = workspace_fixture("fixtures/asm/exit.asm");
         let out_dir = std::env::temp_dir().join("semasm-build-test-obj");
         let _ = std::fs::create_dir_all(&out_dir);
         let obj = out_dir.join("exit.o");
 
-        pipe.assemble(source, &obj, "elf64").expect("assemble");
+        pipe.assemble(&source, &obj, "elf64").expect("assemble");
 
         let arch = pipe.verify_architecture(&obj).expect("verify");
         assert!(!arch.is_executable, "object file should NOT be executable");
@@ -644,6 +650,10 @@ start address 0x0000000000000000
     fn build_windows_pe_and_run() {
         use semasm_obj::ContainerFormat;
         use semasm_target::TargetIdentity;
+
+        if !cfg!(windows) || !tool_available("lld-link") {
+            return;
+        }
 
         let target = TargetIdentity::x86_64_windows_msvc();
         let pipe = Pipeline::discover(&target);
