@@ -393,22 +393,13 @@ impl Pipeline {
 
         let arch = self.verify_architecture(exe_path)?;
 
-        let run_out = self.run(exe_path).ok();
-
-        if let (Some(expected), Some(ref run)) = (expected_exit, &run_out) {
-            if run.exit_code != Some(expected) {
-                return Err(BuildError::Spawn(
-                    "run".into(),
-                    format!("expected exit code {expected}, got {:?}", run.exit_code),
-                ));
-            }
-        }
+        let execution = classify_execution(expected_exit, self.run(exe_path))?;
 
         Ok(BuildReport {
             assemble: assemble_out,
             link: link_out,
             architecture: arch,
-            run: run_out,
+            execution,
         })
     }
 }
@@ -471,8 +462,57 @@ pub struct BuildReport {
     pub link: CommandOutput,
     /// Architecture verification info.
     pub architecture: ArchitectureInfo,
-    /// Run step output (if runner was available).
-    pub run: Option<CommandOutput>,
+    /// Explicit outcome of the run step.
+    pub execution: ExecutionState,
+}
+
+/// Explicit execution state for a build artifact.
+#[derive(Debug, Clone)]
+pub enum ExecutionState {
+    /// Execution was deliberately omitted by the requested profile.
+    NotRequested,
+    /// No suitable runner was available.
+    Unavailable {
+        /// Why no runner could be invoked.
+        reason: String,
+    },
+    /// The runner completed and produced an output record.
+    Succeeded {
+        /// Captured runner output.
+        output: CommandOutput,
+    },
+    /// The runner was available but invocation failed.
+    Failed {
+        /// Invocation failure suitable for reports.
+        error: String,
+    },
+}
+
+fn classify_execution(
+    expected_exit: Option<i32>,
+    result: Result<CommandOutput, BuildError>,
+) -> Result<ExecutionState, BuildError> {
+    match result {
+        Ok(output) => {
+            if let Some(expected) = expected_exit {
+                if output.exit_code != Some(expected) {
+                    return Err(BuildError::Spawn(
+                        "run".into(),
+                        format!("expected exit code {expected}, got {:?}", output.exit_code),
+                    ));
+                }
+            }
+            Ok(ExecutionState::Succeeded { output })
+        }
+        Err(error) if expected_exit.is_some() => Err(BuildError::Spawn(
+            "run".into(),
+            format!("required execution failed: {error}"),
+        )),
+        Err(BuildError::ProgramNotFound(reason)) => Ok(ExecutionState::Unavailable { reason }),
+        Err(error) => Ok(ExecutionState::Failed {
+            error: error.to_string(),
+        }),
+    }
 }
 
 // ---------------------------------------------------------------------------
@@ -537,6 +577,44 @@ start address 0x0000000000000000
         assert_eq!(pipe.toolchain.assembler, "nasm");
         assert!(!pipe.toolchain.linker.is_empty());
         assert!(!pipe.toolchain.disassembler.is_empty());
+    }
+
+    #[test]
+    fn required_execution_rejects_unavailable_runner() {
+        let result = classify_execution(
+            Some(42),
+            Err(BuildError::ProgramNotFound("qemu-x86_64".into())),
+        );
+        let error = result.expect_err("expected exit code must require execution");
+        assert!(error.to_string().contains("required execution failed"));
+        assert!(error.to_string().contains("qemu-x86_64"));
+    }
+
+    #[test]
+    fn optional_execution_records_unavailable_runner() {
+        let state =
+            classify_execution(None, Err(BuildError::ProgramNotFound("qemu-x86_64".into())))
+                .expect("optional execution should retain an explicit state");
+        assert!(matches!(
+            state,
+            ExecutionState::Unavailable { reason } if reason == "qemu-x86_64"
+        ));
+    }
+
+    #[test]
+    fn optional_execution_records_runner_failure() {
+        let state = classify_execution(
+            None,
+            Err(BuildError::Poll(
+                "qemu-x86_64".into(),
+                "probe failed".into(),
+            )),
+        )
+        .expect("optional execution should retain an explicit state");
+        assert!(matches!(
+            state,
+            ExecutionState::Failed { error } if error.contains("probe failed")
+        ));
     }
 
     // ------------------------------------------------------------------
