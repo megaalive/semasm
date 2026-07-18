@@ -1,30 +1,45 @@
 # Changelog
 
-All notable changes to this project will be documented in this file.
-
-The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
-and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html)
-once the first release is tagged. Until then, the API is unstable.
+All notable changes are documented here. The format follows
+[Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and version numbers
+follow [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+## [0.1.0] - 2026-07-18
+
 ### Added
 
-- Cargo workspace bootstrap with crates: `semasm-core`, `semasm-contract`, `semasm-asir`, `semasm-target`, `semasm-cli`.
-- `semasm --version` / `semasm version` and `semasm status` commands.
-- Repository governance documents, dual licensing, CI skeleton, and mdBook stub.
-- Core types: diagnostics, errors, spans, IDs; ASIR and target identity shells.
-- **VS-01:** portable contract schema, semantic type parser, expression subset, codes `CTR001`–`CTR007`.
-- `semasm contract check <path>` with terminal and JSON output.
-- `semasm --explain CTR003` / `semasm explain CTR003`.
-- Fixture `fixtures/contracts/write_all.sem.toml` and compatibility policy in `crates/semasm-contract/COMPATIBILITY.md`.
-- **TARGET-002:** `semasm target doctor <target>` command probes host PATH for required tooling (assembler, linker, disassembler, runner) and reports found versions or install hints. Terminal and JSON output supported.
-- `semasm-target::tools` module with `ToolKind`, `ToolProbe`, `ToolSlot`, `DoctorReport`, and fallback chains (`ld.lld`→`ld.bfd`, `llvm-objdump`→`objdump`).
-- **BUILD-001:** `semasm-build` crate with safe process execution wrapper (`exec`), serialisable command records (`record`), timeout, environment allowlist, and working-directory control.
-- **BUILD-002:** Build pipeline module (`pipeline`) with `assemble`, `link`, `verify_architecture`, and `run` steps. Auto-discovers toolchain via `semasm target doctor`. Deterministic build flags for reproducible output.
-- Fixture `fixtures/asm/exit.asm` — minimal Linux x86-64 `exit(42)` via `__NR_exit`.
-- **REPORT-001:** Artifact report module (`report`) with SHA-256 hashing, objdump section/symbol/dynamic parsing, tool version probing, and JSON/terminal output. Includes `generate_report()` function and `to_terminal()`/`to_json_pretty()` methods.
+- Portable semantic-contract parsing, validation, stable diagnostics, and JSON
+  reports.
+- Target identities, capability manifest, generated status output, and
+  toolchain discovery for Linux x86-64, Windows x86-64, AArch64, and RISC-V.
+- Hardened subprocess execution with controlled stdin/environment, bounded
+  capture, timeouts, and process-tree termination.
+- Reproducible assembly/link pipelines, structured object verification, and
+  explicit execution evidence.
+- Versioned artifact reports with canonical deterministic evidence hashes and
+  separated volatile metadata.
+- Physical decoding, CFG extraction, partial lowering, and ABI analysis for the
+  support levels recorded in `capabilities.toml`.
+- Provider-neutral agent task packets and incomplete-analysis propagation.
+- Linux, Windows, AArch64, and RV64 end-to-end CI evidence.
+- Adversarial parser/object corpus and isolated bounded fuzz entry points.
 
-### Notes
+### Security
 
-- No architecture backends or assembly demos yet (VS-02+).
+- Commands are executed without shell concatenation and secret-like environment
+  values are excluded from reports by default.
+- Output floods and descendant processes are bounded by explicit policy.
+
+### Compatibility
+
+- All public surfaces remain pre-1.0 and may evolve in later minor releases.
+- Artifact-report JSON uses schema `0.4` and the policy in
+  `docs/REPORT_SCHEMA_POLICY.md`.
+- Contract TOML uses schema `0.1` and rejects unknown fields.
+- CLI exit codes and other JSON compatibility commitments are documented in
+  `docs/CLI_COMPATIBILITY.md`.
+
+[Unreleased]: https://github.com/megaalive/semasm/compare/v0.1.0...HEAD
+[0.1.0]: https://github.com/megaalive/semasm/releases/tag/v0.1.0

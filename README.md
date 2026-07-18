@@ -48,8 +48,8 @@ cargo run -p semasm-cli -- build fixtures/asm/exit.asm \
 ```
 
 Run it only on Linux or WSL with Rust, NASM, a compatible ELF linker, and any
-runner reported by `target doctor`. This path is not yet executed by a named CI
-job, so it is an exploratory check rather than published support evidence.
+runner reported by `target doctor`. The equivalent scenario is exercised by the
+named Linux end-to-end CI job.
 
 Quality gates used in CI:
 
@@ -62,14 +62,17 @@ cargo doc --workspace --no-deps
 
 ## What SemASM does not yet prove
 
-- No target is currently marked `CI-verified` or `release-qualified`.
-- Ordinary workspace tests do not execute the ignored external-tool scenarios.
+- Support maturity is per capability; a target is not globally "supported"
+  merely because some rows are `CI-verified`.
+- External-tool scenarios run in dedicated CI jobs rather than ordinary unit
+  test jobs.
 - A decoder or lowering implementation may cover only part of an ISA.
-- Cross-host reproducibility and AArch64/RISC-V execution are not established.
-- Current ABI commands can drop unsupported instructions. Until that is fixed,
-  `clean` means no violation was found in the modeled subset; it does **not**
-  prove the whole input was modeled. Unsupported instructions must be treated
-  as incomplete evidence by users and automation.
+- Canonical report reproducibility is checked across independent output roots;
+  this does not promise byte-identical artifacts from every toolchain.
+- AArch64 and RV64 have structural and QEMU CI evidence where recorded in the
+  capability manifest.
+- ABI commands propagate unsupported instructions as incomplete evidence;
+  callers must not treat incomplete analysis as a clean full verification.
 
 ## Target capability evidence
 
@@ -123,6 +126,10 @@ audit; crate count is not itself evidence of capability maturity.
 ## Contributing
 
 See [CONTRIBUTING.md](CONTRIBUTING.md). English is required for source, comments, docs, and issues. Prefer small vertical slices that produce executable evidence over large abstract frameworks.
+
+Release compatibility and gates are documented in
+[docs/CLI_COMPATIBILITY.md](docs/CLI_COMPATIBILITY.md) and
+[docs/RELEASE_CHECKLIST.md](docs/RELEASE_CHECKLIST.md).
 
 ## License
 

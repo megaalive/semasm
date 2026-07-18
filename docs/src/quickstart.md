@@ -28,12 +28,13 @@ cargo run -p semasm-cli -- build fixtures/asm/exit.asm \
   --out-dir target/e2e-linux
 ```
 
-This is not yet a named CI evidence job. A local success must not be recorded as
-`CI-verified` in `capabilities.toml`.
+The equivalent scenario runs in the named Linux end-to-end CI job. A local
+success still must not change `capabilities.toml`; capability transitions need
+repository CI evidence.
 
 ## Reading analysis results
 
-Current architecture coverage is partial. Until incompleteness propagation is
-implemented, a `clean` ABI result means only that the modeled instructions
-produced no finding. An unsupported instruction can currently be omitted from
-the analysis, so `clean` must not be interpreted as full verification.
+Current architecture coverage is partial. Unsupported instructions propagate as
+incomplete evidence, so a result is complete only when its coverage fields say
+all supplied instructions were modeled. Incomplete output must not be
+interpreted as full verification.
