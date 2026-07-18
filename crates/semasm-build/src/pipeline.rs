@@ -543,12 +543,6 @@ start address 0x0000000000000000
     // Integration tests (gated: require nasm on PATH)
     // ------------------------------------------------------------------
 
-    #[allow(dead_code)]
-    fn tool_available(name: &str) -> bool {
-        let spec = CommandSpec::new(name, vec!["--version".into()]);
-        exec::exec(&spec).is_ok_and(|o| o.success())
-    }
-
     #[test]
     #[ignore = "requires nasm on PATH"]
     fn assemble_exit_fixture() {
@@ -611,16 +605,17 @@ start address 0x0000000000000000
             arch.format, arch.arch
         );
 
-        // Run (only if QEMU available)
-        if pipe.toolchain.runner.is_some() {
-            let ro = pipe.run(&exe).expect("run");
-            assert_eq!(
-                ro.exit_code,
-                Some(42),
-                "expected exit code 42, got {:?}",
-                ro.exit_code
-            );
-        }
+        assert!(
+            pipe.toolchain.runner.is_some(),
+            "Linux E2E requires a native or emulated runner"
+        );
+        let ro = pipe.run(&exe).expect("run");
+        assert_eq!(
+            ro.exit_code,
+            Some(42),
+            "expected exit code 42, got {:?}",
+            ro.exit_code
+        );
 
         // Clean up
         let _ = std::fs::remove_dir_all(&out_dir);
@@ -645,22 +640,19 @@ start address 0x0000000000000000
         let _ = std::fs::remove_dir_all(&out_dir);
     }
 
+    #[cfg(windows)]
     #[test]
     #[ignore = "requires nasm + lld-link on PATH (Windows host)"]
     fn build_windows_pe_and_run() {
         use semasm_obj::ContainerFormat;
         use semasm_target::TargetIdentity;
 
-        if !cfg!(windows) || !tool_available("lld-link") {
-            return;
-        }
-
         let target = TargetIdentity::x86_64_windows_msvc();
         let pipe = Pipeline::discover(&target);
-        if pipe.toolchain.runner.is_none() {
-            // Native execution only works on a Windows host.
-            return;
-        }
+        assert!(
+            pipe.toolchain.runner.is_some(),
+            "Windows E2E requires a native runner"
+        );
 
         // Resolve the fixture relative to the workspace root so the test works
         // regardless of the crate's build directory.
