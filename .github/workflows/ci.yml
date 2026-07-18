@@ -40,8 +40,35 @@ jobs:
       - name: Doc
         run: cargo doc --workspace --no-deps
 
-      - name: CLI version
-        run: cargo run -p semasm-cli -- --version
+      - name: Contributor quickstart
+        run: |
+          cargo run -q -p semasm-cli -- --version
+          cargo run -q -p semasm-cli -- status
+          cargo run -q -p semasm-cli -- contract check fixtures/contracts/write_all.sem.toml
+
+      - name: Prepare source packages
+        if: matrix.os == 'ubuntu-latest'
+        run: cargo package --workspace --no-verify --allow-dirty
+
+  msrv:
+    name: MSRV (1.85)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install MSRV toolchain
+        uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: "1.85"
+
+      - name: Cache Cargo
+        uses: Swatinem/rust-cache@v2
+
+      - name: Check workspace on MSRV
+        run: cargo +1.85 check --workspace --all-targets --locked
+
+      - name: Test workspace on MSRV
+        run: cargo +1.85 test --workspace --no-default-features --locked
 
   linux-e2e:
     name: e2e (x86-64 Linux)
@@ -179,6 +206,9 @@ jobs:
 
       - name: Test (capstone feature)
         run: cargo test --workspace --all-features
+
+      - name: Compile fuzz targets
+        run: cargo check --manifest-path fuzz/Cargo.toml --bins --locked
 
       - name: CLI decode smoke
         run: |
