@@ -472,12 +472,6 @@ mod tests {
     // the parser is exercised against genuine container bytes rather than a
     // hand-built (and fragile) ELF header.
     fn build_minimal_elf() -> Vec<u8> {
-        use semasm_build::Pipeline;
-        use semasm_target::TargetIdentity;
-
-        let target = TargetIdentity::x86_64_linux_gnu();
-        let pipe = Pipeline::discover(&target);
-
         let dir = std::env::temp_dir().join(format!(
             "semasm-obj-test-{}-{}",
             std::process::id(),
@@ -492,10 +486,14 @@ mod tests {
         )
         .expect("write asm");
 
-        let out = pipe
-            .assemble(&src, &obj, "elf64")
-            .expect("assemble fixture");
-        assert!(out.success(), "assembler must succeed");
+        let status = std::process::Command::new("nasm")
+            .args(["-f", "elf64"])
+            .arg(&src)
+            .arg("-o")
+            .arg(&obj)
+            .status()
+            .expect("launch nasm");
+        assert!(status.success(), "assembler must succeed");
 
         let bytes = std::fs::read(&obj).expect("read object");
         let _ = std::fs::remove_dir_all(&dir);
@@ -505,12 +503,6 @@ mod tests {
     // Assemble a real, minimal PE/COFF object (win64) with the workspace
     // toolchain so the parser is exercised against genuine container bytes.
     fn build_minimal_win64() -> Vec<u8> {
-        use semasm_build::Pipeline;
-        use semasm_target::TargetIdentity;
-
-        let target = TargetIdentity::x86_64_windows_msvc();
-        let pipe = Pipeline::discover(&target);
-
         let dir = std::env::temp_dir().join(format!(
             "semasm-obj-test-{}-{}",
             std::process::id(),
@@ -521,10 +513,14 @@ mod tests {
         let obj = dir.join("exit.obj");
         std::fs::write(&src, "BITS 64\nsection .text\n; minimal ret\nret\n").expect("write asm");
 
-        let out = pipe
-            .assemble(&src, &obj, target.nasm_format())
-            .expect("assemble fixture");
-        assert!(out.success(), "assembler must succeed");
+        let status = std::process::Command::new("nasm")
+            .args(["-f", "win64"])
+            .arg(&src)
+            .arg("-o")
+            .arg(&obj)
+            .status()
+            .expect("launch nasm");
+        assert!(status.success(), "assembler must succeed");
 
         let bytes = std::fs::read(&obj).expect("read object");
         let _ = std::fs::remove_dir_all(&dir);
