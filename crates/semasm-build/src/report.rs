@@ -194,10 +194,27 @@ pub enum ReportSchemaCompatibility {
     Current,
     /// The report uses an older minor revision from the same major line.
     CompatibleOlder,
+    /// A newer minor revision accepted through explicit reader opt-in.
+    ForwardOptIn,
+}
+
+/// Controls artifact-report schema compatibility checks.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub struct ReportReadOptions {
+    /// Permit newer minor revisions from the same major schema line.
+    pub allow_newer_minor: bool,
 }
 
 /// Check whether serialized artifact-report JSON is readable by this version.
 pub fn check_report_schema_compatibility(json: &str) -> Result<ReportSchemaCompatibility, String> {
+    check_report_schema_compatibility_with_options(json, ReportReadOptions::default())
+}
+
+/// Check report compatibility using explicit forward-read policy.
+pub fn check_report_schema_compatibility_with_options(
+    json: &str,
+    options: ReportReadOptions,
+) -> Result<ReportSchemaCompatibility, String> {
     let document: serde_json::Value =
         serde_json::from_str(json).map_err(|error| format!("invalid report JSON: {error}"))?;
     let version = document
@@ -207,7 +224,15 @@ pub fn check_report_schema_compatibility(json: &str) -> Result<ReportSchemaCompa
     let actual = parse_schema_version(version)?;
     let supported = parse_schema_version(ARTIFACT_REPORT_SCHEMA_VERSION)?;
 
-    if actual.0 != supported.0 || actual.1 > supported.1 {
+    if actual.0 != supported.0 {
+        return Err(format!(
+            "unsupported artifact report schema '{version}'; reader supports '{ARTIFACT_REPORT_SCHEMA_VERSION}'"
+        ));
+    }
+    if actual.1 > supported.1 {
+        if options.allow_newer_minor {
+            return Ok(ReportSchemaCompatibility::ForwardOptIn);
+        }
         return Err(format!(
             "unsupported artifact report schema '{version}'; reader supports '{ARTIFACT_REPORT_SCHEMA_VERSION}'"
         ));
@@ -1251,6 +1276,21 @@ SYMBOL TABLE:
             let error = check_report_schema_compatibility(json).unwrap_err();
             assert!(error.contains("unsupported artifact report schema"));
         }
+    }
+
+    #[test]
+    fn report_schema_forward_minor_requires_explicit_opt_in() {
+        let options = ReportReadOptions {
+            allow_newer_minor: true,
+        };
+        assert_eq!(
+            check_report_schema_compatibility_with_options(r#"{"schema_version":"0.5"}"#, options,),
+            Ok(ReportSchemaCompatibility::ForwardOptIn)
+        );
+        let major_error =
+            check_report_schema_compatibility_with_options(r#"{"schema_version":"1.0"}"#, options)
+                .unwrap_err();
+        assert!(major_error.contains("unsupported artifact report schema"));
     }
 
     #[test]
