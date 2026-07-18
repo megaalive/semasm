@@ -173,6 +173,32 @@ impl TargetIdentity {
         }
     }
 
+    /// AArch64 Linux using AAPCS64 and ELF.
+    #[must_use]
+    pub fn aarch64_linux_gnu() -> Self {
+        Self {
+            name: "aarch64-unknown-linux-gnu".to_string(),
+            isa: Isa::AArch64,
+            abi: Abi::Aapcs64,
+            object_format: ObjectFormat::Elf,
+            dialect: Dialect::GasUnified,
+            profile: ExecutionProfile::HostedMinimal,
+        }
+    }
+
+    /// RV64 Linux using the RISC-V psABI and ELF.
+    #[must_use]
+    pub fn riscv64_linux_gnu() -> Self {
+        Self {
+            name: "riscv64gc-unknown-linux-gnu".to_string(),
+            isa: Isa::Riscv64,
+            abi: Abi::Riscv,
+            object_format: ObjectFormat::Elf,
+            dialect: Dialect::GasUnified,
+            profile: ExecutionProfile::HostedMinimal,
+        }
+    }
+
     /// Parse a known target name. Unknown names return [`Error::NotFound`].
     ///
     /// Full target registry and kits arrive in later slices.
@@ -180,6 +206,8 @@ impl TargetIdentity {
         match name {
             "x86_64-unknown-linux-gnu" | "x86_64-linux-gnu" => Ok(Self::x86_64_linux_gnu()),
             "x86_64-pc-windows-msvc" | "x86_64-windows-msvc" => Ok(Self::x86_64_windows_msvc()),
+            "aarch64-unknown-linux-gnu" | "aarch64-linux-gnu" => Ok(Self::aarch64_linux_gnu()),
+            "riscv64gc-unknown-linux-gnu" | "riscv64-linux-gnu" => Ok(Self::riscv64_linux_gnu()),
             other => Err(Error::not_found(format!(
                 "unknown or unsupported target `{other}` (planned targets are not yet registered)"
             ))),
@@ -248,6 +276,16 @@ mod tests {
         assert_eq!(t.abi, Abi::WindowsX64);
         assert_eq!(t.object_format, ObjectFormat::PeCoff);
         assert_eq!(t, TargetIdentity::x86_64_windows_msvc());
+    }
+
+    #[test]
+    fn parses_cross_linux_targets() {
+        let arm = TargetIdentity::parse_known("aarch64-unknown-linux-gnu").unwrap();
+        assert_eq!(arm.isa, Isa::AArch64);
+        assert_eq!(arm.abi, Abi::Aapcs64);
+        let riscv = TargetIdentity::parse_known("riscv64gc-unknown-linux-gnu").unwrap();
+        assert_eq!(riscv.isa, Isa::Riscv64);
+        assert_eq!(riscv.abi, Abi::Riscv);
     }
 
     #[test]
