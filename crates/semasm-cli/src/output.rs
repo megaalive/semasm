@@ -2,6 +2,11 @@
 
 /// Print an x86 analysis report in human-readable form.
 pub(crate) fn print_analysis_terminal(r: &semasm_x86::analysis::AnalysisReport) {
+    println!("status:              {:?}", r.status);
+    println!(
+        "semantic coverage:   {}/{} modeled ({} unknown)",
+        r.coverage.modeled, r.coverage.total, r.coverage.unknown
+    );
     println!("fixpoint iterations: {}", r.iterations);
     println!("blocks analysed:      {}", r.block_out.len());
     println!("memory accesses:       {}", r.mem_accesses.len());
@@ -18,11 +23,20 @@ pub(crate) fn print_analysis_terminal(r: &semasm_x86::analysis::AnalysisReport) 
 /// A JSON-friendly view of [`semasm_x86::analysis::AnalysisReport`].
 #[derive(serde::Serialize)]
 pub(crate) struct JsonAnalysisReport {
+    status: &'static str,
+    coverage: JsonAnalysisCoverage,
     iterations: usize,
     converged: bool,
     block_count: usize,
     mem_access_count: usize,
     notes: Vec<JsonAnalysisNote>,
+}
+
+#[derive(serde::Serialize)]
+struct JsonAnalysisCoverage {
+    total: usize,
+    modeled: usize,
+    unknown: usize,
 }
 
 #[derive(serde::Serialize)]
@@ -34,6 +48,16 @@ struct JsonAnalysisNote {
 
 pub(crate) fn json_analysis_report(r: &semasm_x86::analysis::AnalysisReport) -> JsonAnalysisReport {
     JsonAnalysisReport {
+        status: match r.status {
+            semasm_x86::analysis::AnalysisStatus::Verified => "verified",
+            semasm_x86::analysis::AnalysisStatus::Incomplete => "incomplete",
+            semasm_x86::analysis::AnalysisStatus::Failed => "failed",
+        },
+        coverage: JsonAnalysisCoverage {
+            total: r.coverage.total,
+            modeled: r.coverage.modeled,
+            unknown: r.coverage.unknown,
+        },
         iterations: r.iterations,
         converged: r.converged,
         block_count: r.block_out.len(),

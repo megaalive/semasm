@@ -185,6 +185,10 @@ pub struct AnalysisNote {
 /// Result of the forward analysis.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct AnalysisReport {
+    /// Trust status of the result. Unknown semantics can never be verified.
+    pub status: AnalysisStatus,
+    /// Instruction-level semantic coverage.
+    pub coverage: AnalysisCoverage,
     /// Number of fixpoint iterations performed.
     pub iterations: usize,
     /// Whether the worklist converged (always true for this monotone
@@ -198,6 +202,28 @@ pub struct AnalysisReport {
     pub mem_accesses: Vec<MemAccess>,
     /// Reporting notes.
     pub notes: Vec<AnalysisNote>,
+}
+
+/// Trust classification for an abstract-interpretation result.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum AnalysisStatus {
+    /// Every instruction had modeled semantics and the fixpoint converged.
+    Verified,
+    /// At least one instruction had unknown semantics.
+    Incomplete,
+    /// The safety-bound stopped the fixpoint before convergence.
+    Failed,
+}
+
+/// Explicit semantic coverage of an analysis input.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct AnalysisCoverage {
+    /// Total instructions presented to the analysis.
+    pub total: usize,
+    /// Instructions whose operation was modeled.
+    pub modeled: usize,
+    /// Instructions conservatively invalidated as unknown.
+    pub unknown: usize,
 }
 
 /// A recorded memory access.
@@ -538,10 +564,12 @@ pub fn analyze(lowered: &[LoweredInstr], blocks: &[BlockRange]) -> AnalysisRepor
     let mut iterations = 0;
     let mut seen = HashSet::new();
 
+    let mut converged = true;
     while let Some(bi) = worklist.pop_front() {
         iterations += 1;
         if iterations > blocks.len() * 4 + 16 {
             // Safety bound; monotone join guarantees termination well before.
+            converged = false;
             break;
         }
         let (in_state, out_state) =
@@ -620,9 +648,26 @@ pub fn analyze(lowered: &[LoweredInstr], blocks: &[BlockRange]) -> AnalysisRepor
         }
     }
 
+    let unknown = lowered
+        .iter()
+        .filter(|instruction| instruction.kind == OpKind::Unknown)
+        .count();
+    let status = if !converged {
+        AnalysisStatus::Failed
+    } else if unknown > 0 {
+        AnalysisStatus::Incomplete
+    } else {
+        AnalysisStatus::Verified
+    };
     AnalysisReport {
+        status,
+        coverage: AnalysisCoverage {
+            total: lowered.len(),
+            modeled: lowered.len() - unknown,
+            unknown,
+        },
         iterations,
-        converged: true,
+        converged,
         block_in,
         block_out,
         mem_accesses,
@@ -648,7 +693,9 @@ pub fn analyze_linear(lowered: &[LoweredInstr]) -> AnalysisReport {
 
 #[cfg(test)]
 mod tests {
-    use super::{analyze, analyze_linear, AbsVal, BlockRange, CmpContext, MemProvenance};
+    use super::{
+        analyze, analyze_linear, AbsVal, AnalysisStatus, BlockRange, CmpContext, MemProvenance,
+    };
     use crate::lower::{LoweredInstr, MemOperand, Operand};
     use crate::{Gp, Register, Storage, Width};
     use semasm_asir::OpKind as Kind;
@@ -862,6 +909,10 @@ mod tests {
         assert_eq!(out.cmp, CmpContext::None);
         assert!(!out.rsp_known);
         assert!(!out.memory_known);
+        assert_eq!(report.status, AnalysisStatus::Incomplete);
+        assert_eq!(report.coverage.total, 3);
+        assert_eq!(report.coverage.modeled, 2);
+        assert_eq!(report.coverage.unknown, 1);
         assert!(report
             .notes
             .iter()
