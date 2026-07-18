@@ -1,11 +1,79 @@
 //! Safe process execution with timeout, output capture, and environment control.
 
+use std::collections::BTreeMap;
 use std::fmt;
-use std::io::Read;
+use std::io::{Read, Write};
 use std::path::PathBuf;
 use std::process::{Command, ExitStatus, Stdio};
 use std::thread;
 use std::time::{Duration, Instant};
+
+/// Policy for data connected to the child process's standard input.
+#[derive(Clone, Default)]
+pub enum StdinPolicy {
+    /// Connect stdin to the null device so reads immediately return EOF.
+    #[default]
+    Null,
+    /// Write the provided bytes, then close stdin.
+    Bytes(Vec<u8>),
+    /// Explicitly inherit the parent's interactive stdin.
+    Inherit,
+}
+
+impl fmt::Debug for StdinPolicy {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::Null => formatter.write_str("Null"),
+            Self::Bytes(bytes) => formatter
+                .debug_struct("Bytes")
+                .field("length", &bytes.len())
+                .finish(),
+            Self::Inherit => formatter.write_str("Inherit"),
+        }
+    }
+}
+
+/// Policy controlling which environment variables a child receives.
+#[derive(Clone, Default)]
+pub enum EnvironmentPolicy {
+    /// Inherit only the cross-platform baseline required to locate and run tools.
+    #[default]
+    Sanitized,
+    /// Inherit only the named variables.
+    Allowlist(Vec<String>),
+    /// Use only the provided names and values.
+    Explicit(BTreeMap<String, String>),
+    /// Explicit debugging opt-in to the complete parent environment.
+    InheritAll,
+}
+
+impl fmt::Debug for EnvironmentPolicy {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        formatter.write_str(&self.report_label())
+    }
+}
+
+impl EnvironmentPolicy {
+    /// Redacted policy description suitable for reports.
+    #[must_use]
+    pub fn report_label(&self) -> String {
+        match self {
+            Self::Sanitized => "sanitized".to_string(),
+            Self::Allowlist(names) => format!("allowlist:{}", redacted_names(names)),
+            Self::Explicit(values) => format!(
+                "explicit:{}",
+                redacted_names(&values.keys().cloned().collect::<Vec<_>>())
+            ),
+            Self::InheritAll => "inherit-all".to_string(),
+        }
+    }
+
+    /// Whether the policy prevents full parent-environment inheritance.
+    #[must_use]
+    pub const fn is_restricted(&self) -> bool {
+        !matches!(self, Self::InheritAll)
+    }
+}
 
 /// Constraints for a single process invocation.
 ///
@@ -18,23 +86,25 @@ pub struct CommandSpec {
     pub args: Vec<String>,
     /// Optional working directory.
     pub working_dir: Option<PathBuf>,
-    /// Environment allowlist: when `Some`, only these variables are inherited.
-    /// When `None`, the full current environment is passed through.
-    pub env_allowlist: Option<Vec<String>>,
+    /// Standard-input policy. Defaults to [`StdinPolicy::Null`].
+    pub stdin: StdinPolicy,
+    /// Environment policy. Defaults to [`EnvironmentPolicy::Sanitized`].
+    pub environment: EnvironmentPolicy,
     /// Maximum wall-clock time before the process is killed.
     pub timeout: Duration,
 }
 
 impl CommandSpec {
-    /// Create a new command with a default 30-second timeout and no
-    /// environment restrictions.
+    /// Create a command with null stdin, a sanitized environment, and a
+    /// default 30-second timeout.
     #[must_use]
     pub fn new(program: impl Into<String>, args: Vec<String>) -> Self {
         Self {
             program: program.into(),
             args,
             working_dir: None,
-            env_allowlist: None,
+            stdin: StdinPolicy::Null,
+            environment: EnvironmentPolicy::Sanitized,
             timeout: Duration::from_secs(30),
         }
     }
@@ -49,7 +119,35 @@ impl CommandSpec {
     /// Restrict the environment to the given variables.
     #[must_use]
     pub fn with_env_allowlist(mut self, vars: Vec<String>) -> Self {
-        self.env_allowlist = Some(vars);
+        self.environment = EnvironmentPolicy::Allowlist(vars);
+        self
+    }
+
+    /// Use an explicit environment without inheriting parent values.
+    #[must_use]
+    pub fn with_environment(mut self, values: BTreeMap<String, String>) -> Self {
+        self.environment = EnvironmentPolicy::Explicit(values);
+        self
+    }
+
+    /// Deliberately inherit the complete parent environment for debugging.
+    #[must_use]
+    pub fn inherit_full_environment(mut self) -> Self {
+        self.environment = EnvironmentPolicy::InheritAll;
+        self
+    }
+
+    /// Provide controlled bytes on stdin, then close the stream.
+    #[must_use]
+    pub fn with_stdin_bytes(mut self, bytes: Vec<u8>) -> Self {
+        self.stdin = StdinPolicy::Bytes(bytes);
+        self
+    }
+
+    /// Deliberately inherit interactive stdin.
+    #[must_use]
+    pub fn inherit_stdin(mut self) -> Self {
+        self.stdin = StdinPolicy::Inherit;
         self
     }
 
@@ -134,25 +232,90 @@ fn build_command(spec: &CommandSpec) -> Command {
         .stdout(Stdio::piped())
         .stderr(Stdio::piped());
 
+    cmd.stdin(match &spec.stdin {
+        StdinPolicy::Null => Stdio::null(),
+        StdinPolicy::Bytes(_) => Stdio::piped(),
+        StdinPolicy::Inherit => Stdio::inherit(),
+    });
+
     if let Some(dir) = &spec.working_dir {
         cmd.current_dir(dir);
     }
 
-    match &spec.env_allowlist {
-        None => {
-            // Full environment inherited (default Rust behaviour).
-        }
-        Some(allowlist) => {
+    match &spec.environment {
+        EnvironmentPolicy::Sanitized => apply_sanitized_environment(&mut cmd),
+        EnvironmentPolicy::Allowlist(allowlist) => {
             cmd.env_clear();
             for var in allowlist {
-                if let Ok(val) = std::env::var(var) {
-                    cmd.env(var, val);
+                if let Some(value) = std::env::var_os(var) {
+                    cmd.env(var, value);
                 }
             }
         }
+        EnvironmentPolicy::Explicit(values) => {
+            cmd.env_clear();
+            cmd.envs(values);
+        }
+        EnvironmentPolicy::InheritAll => {}
     }
 
     cmd
+}
+
+fn apply_sanitized_environment(cmd: &mut Command) {
+    cmd.env_clear();
+    for name in [
+        "PATH",
+        "SYSTEMROOT",
+        "WINDIR",
+        "SYSTEMDRIVE",
+        "PROGRAMDATA",
+        "ALLUSERSPROFILE",
+        "PATHEXT",
+        "COMSPEC",
+    ] {
+        if let Some(value) = std::env::var_os(name) {
+            cmd.env(name, value);
+        }
+    }
+
+    let temporary = std::env::temp_dir();
+    cmd.env("TMP", &temporary).env("TEMP", &temporary);
+    #[cfg(not(windows))]
+    cmd.env("TMPDIR", &temporary)
+        .env("LC_ALL", "C")
+        .env("LANG", "C");
+}
+
+fn redacted_names(names: &[String]) -> String {
+    names
+        .iter()
+        .map(|name| {
+            if is_secret_name(name) {
+                "<redacted>"
+            } else {
+                name.as_str()
+            }
+        })
+        .collect::<Vec<_>>()
+        .join(",")
+}
+
+fn is_secret_name(name: &str) -> bool {
+    let upper = name.to_ascii_uppercase();
+    [
+        "TOKEN",
+        "SECRET",
+        "PASSWORD",
+        "PASSWD",
+        "CREDENTIAL",
+        "AUTH",
+        "COOKIE",
+        "API_KEY",
+        "PRIVATE_KEY",
+    ]
+    .iter()
+    .any(|marker| upper.contains(marker))
 }
 
 // ---------------------------------------------------------------------------
@@ -183,6 +346,17 @@ pub fn exec(spec: &CommandSpec) -> Result<CommandOutput, BuildError> {
             BuildError::Spawn(spec.program.clone(), e.to_string())
         }
     })?;
+
+    let stdin_handle = if let StdinPolicy::Bytes(bytes) = &spec.stdin {
+        let bytes = bytes.clone();
+        child.stdin.take().map(|mut stdin| {
+            thread::spawn(move || {
+                let _ = stdin.write_all(&bytes);
+            })
+        })
+    } else {
+        None
+    };
 
     // Drain pipes in background threads to prevent deadlocks when the
     // child fills a pipe buffer.
@@ -219,6 +393,9 @@ pub fn exec(spec: &CommandSpec) -> Result<CommandOutput, BuildError> {
     let duration = start.elapsed();
     let stdout = stdout_handle.join().unwrap_or_default();
     let stderr = stderr_handle.join().unwrap_or_default();
+    if let Some(handle) = stdin_handle {
+        let _ = handle.join();
+    }
 
     Ok(CommandOutput {
         exit_status,
@@ -364,6 +541,106 @@ mod tests {
         assert!(out.contains("PATH"));
         // Unrelated vars should NOT appear.
         assert!(!out.contains("SYSTEMROOT"));
+    }
+
+    #[test]
+    fn default_stdin_is_immediate_eof() {
+        let spec = CommandSpec::new(
+            "python",
+            vec![
+                "-c".into(),
+                "import sys; data=sys.stdin.buffer.read(); print(len(data))".into(),
+            ],
+        )
+        .with_timeout(Duration::from_secs(2));
+        let output = exec(&spec).unwrap();
+        assert!(output.success(), "exec failed: {}", output.summary());
+        assert_eq!(String::from_utf8_lossy(&output.stdout).trim(), "0");
+    }
+
+    #[test]
+    fn controlled_stdin_bytes_are_delivered() {
+        let spec = CommandSpec::new(
+            "python",
+            vec![
+                "-c".into(),
+                "import sys; sys.stdout.buffer.write(sys.stdin.buffer.read())".into(),
+            ],
+        )
+        .with_stdin_bytes(b"controlled input".to_vec());
+        let output = exec(&spec).unwrap();
+        assert!(output.success());
+        assert_eq!(output.stdout, b"controlled input");
+    }
+
+    #[test]
+    fn sanitized_environment_excludes_parent_secrets() {
+        let variable = "SEMASM_TEST_SECRET_TOKEN";
+        std::env::set_var(variable, "must-not-leak");
+        let spec = CommandSpec::new(
+            "python",
+            vec![
+                "-c".into(),
+                format!("import os; print(os.environ.get('{variable}', 'absent'))"),
+            ],
+        );
+        let output = exec(&spec).unwrap();
+        std::env::remove_var(variable);
+        assert!(output.success());
+        assert_eq!(String::from_utf8_lossy(&output.stdout).trim(), "absent");
+    }
+
+    #[test]
+    fn full_environment_inheritance_is_explicit() {
+        let variable = "SEMASM_TEST_INHERITED_VALUE";
+        std::env::set_var(variable, "visible-by-opt-in");
+        let spec = CommandSpec::new(
+            "python",
+            vec![
+                "-c".into(),
+                format!("import os; print(os.environ.get('{variable}', 'absent'))"),
+            ],
+        )
+        .inherit_full_environment();
+        let output = exec(&spec).unwrap();
+        std::env::remove_var(variable);
+        assert!(output.success());
+        assert_eq!(
+            String::from_utf8_lossy(&output.stdout).trim(),
+            "visible-by-opt-in"
+        );
+    }
+
+    #[test]
+    fn explicit_environment_does_not_inherit_parent() {
+        let values = BTreeMap::from([("SEMASM_EXPLICIT".into(), "yes".into())]);
+        let spec = CommandSpec::new("tool", vec![]).with_environment(values);
+        let command = build_command(&spec);
+        let environment: BTreeMap<_, _> = command
+            .get_envs()
+            .map(|(name, value)| (name.to_owned(), value.map(ToOwned::to_owned)))
+            .collect();
+        assert_eq!(
+            environment.get(std::ffi::OsStr::new("SEMASM_EXPLICIT")),
+            Some(&Some(std::ffi::OsString::from("yes")))
+        );
+        assert!(!environment.contains_key(std::ffi::OsStr::new("PATH")));
+    }
+
+    #[test]
+    fn debug_output_redacts_environment_values_and_stdin() {
+        let spec = CommandSpec::new("tool", vec![])
+            .with_environment(BTreeMap::from([(
+                "SERVICE_API_TOKEN".into(),
+                "super-secret-value".into(),
+            )]))
+            .with_stdin_bytes(b"private stdin".to_vec());
+        let debug = format!("{spec:?}");
+        assert!(!debug.contains("super-secret-value"));
+        assert!(!debug.contains("SERVICE_API_TOKEN"));
+        assert!(!debug.contains("private stdin"));
+        assert!(debug.contains("<redacted>"));
+        assert!(debug.contains("length: 13"));
     }
 
     #[test]

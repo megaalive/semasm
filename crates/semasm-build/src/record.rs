@@ -32,6 +32,8 @@ pub struct RecordedCommand {
     pub working_dir: Option<PathBuf>,
     /// Whether the environment was restricted.
     pub env_restricted: bool,
+    /// Redacted environment policy; variable values are never recorded.
+    pub environment_policy: String,
     /// Timeout in seconds.
     pub timeout_secs: f64,
 }
@@ -72,7 +74,8 @@ impl CommandRecord {
                 program: spec.program.clone(),
                 args: spec.args.clone(),
                 working_dir: spec.working_dir.clone(),
-                env_restricted: spec.env_allowlist.is_some(),
+                env_restricted: spec.environment.is_restricted(),
+                environment_policy: spec.environment.report_label(),
                 timeout_secs: spec.timeout.as_secs_f64(),
             },
             output: RecordedOutput {
@@ -127,6 +130,7 @@ mod tests {
         assert_eq!(rec.command.program, "nasm");
         assert_eq!(rec.command.args, vec!["-f", "elf64", "exit.asm"]);
         assert!(rec.command.env_restricted);
+        assert_eq!(rec.command.environment_policy, "allowlist:PATH");
         assert!((rec.command.timeout_secs - 15.0).abs() < 1e-9);
         assert_eq!(rec.output.exit_code, Some(0));
         assert!(rec.output.stdout.contains("nasm: warning"));
@@ -195,11 +199,22 @@ mod tests {
     }
 
     #[test]
-    fn record_no_env_restriction() {
+    fn record_sanitized_environment() {
         let spec = CommandSpec::new("true", vec![]);
         let output = sample_output();
         let rec = CommandRecord::now("open", &spec, &output);
-        assert!(!rec.command.env_restricted);
+        assert!(rec.command.env_restricted);
+        assert_eq!(rec.command.environment_policy, "sanitized");
+    }
+
+    #[test]
+    fn record_redacts_secret_environment_names() {
+        let spec = CommandSpec::new("true", vec![])
+            .with_env_allowlist(vec!["PATH".into(), "SERVICE_API_TOKEN".into()]);
+        let output = sample_output();
+        let rec = CommandRecord::now("redacted", &spec, &output);
+        assert_eq!(rec.command.environment_policy, "allowlist:PATH,<redacted>");
+        assert!(!rec.command.environment_policy.contains("TOKEN"));
     }
 
     #[test]
