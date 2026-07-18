@@ -9,6 +9,7 @@ use semasm_build::{BuildError, Pipeline};
 use semasm_contract::{
     check_file, explain_code, format_diagnostics_terminal, CheckReportJson, ContractCode,
 };
+use semasm_obj::ObjectError;
 use semasm_target::{tools, TargetIdentity};
 
 use crate::OutputFormat;
@@ -741,5 +742,66 @@ pub(crate) fn do_build(
         ExitCode::from(1)
     } else {
         ExitCode::SUCCESS
+    }
+}
+/// Inspect an object file and emit its normalised view.
+#[allow(clippy::items_after_test_module)]
+pub(crate) fn do_obj_inspect(path: &Path, target: Option<&str>, format: OutputFormat) -> ExitCode {
+    let info = match target {
+        Some(t) => {
+            let identity = match TargetIdentity::parse_known(t) {
+                Ok(id) => id,
+                Err(e) => {
+                    eprintln!("error: {e}");
+                    return ExitCode::from(2);
+                }
+            };
+            match semasm_obj::read_for_target(path, &identity) {
+                Ok(i) => i,
+                Err(ObjectError::ArchitectureMismatch { actual, expected }) => {
+                    eprintln!("error: architecture mismatch: object `{actual}` but target requires `{expected}`");
+                    return ExitCode::from(2);
+                }
+                Err(e) => {
+                    eprintln!("error: {e}");
+                    return ExitCode::from(1);
+                }
+            }
+        }
+        None => match semasm_obj::read(path) {
+            Ok(i) => i,
+            Err(e) => {
+                eprintln!("error: {e}");
+                return ExitCode::from(1);
+            }
+        },
+    };
+
+    match format {
+        OutputFormat::Json => match info.to_json() {
+            Ok(s) => {
+                println!("{s}");
+                ExitCode::SUCCESS
+            }
+            Err(e) => {
+                eprintln!("failed to serialize JSON: {e}");
+                ExitCode::from(1)
+            }
+        },
+        OutputFormat::Terminal => {
+            println!("format:      {:?}", info.format);
+            println!(
+                "architecture: {} ({})",
+                info.architecture, info.architecture_raw
+            );
+            println!("endian:      {}", info.endian);
+            println!("entry:       {:#x}", info.entry);
+            println!("sections:    {}", info.sections.len());
+            println!("symbols:     {}", info.symbols.len());
+            println!("relocations: {}", info.relocations.len());
+            println!("imports:     {}", info.imports.len());
+            println!("exports:     {}", info.exports.len());
+            ExitCode::SUCCESS
+        }
     }
 }

@@ -9,12 +9,15 @@ mod commands;
 #[cfg(feature = "capstone")]
 mod output;
 
-use std::path::{Path, PathBuf};
+#[cfg(feature = "capstone")]
+use std::path::Path;
+use std::path::PathBuf;
 use std::process::ExitCode;
 
 use clap::{Parser, Subcommand, ValueEnum};
 use commands::{
-    do_agent_packet, do_agent_verify, do_build, do_contract_check, do_explain, do_target_doctor,
+    do_agent_packet, do_agent_verify, do_build, do_contract_check, do_explain, do_obj_inspect,
+    do_target_doctor,
 };
 #[cfg(feature = "capstone")]
 use output::{
@@ -24,8 +27,6 @@ use output::{
 use semasm_core::SEMASM_VERSION;
 #[cfg(feature = "capstone")]
 use semasm_decode::{self, DecodeError};
-use semasm_obj::{self, ObjectError};
-use semasm_target::TargetIdentity;
 
 /// Semantic infrastructure for assembly programs (build-time tooling only).
 #[derive(Debug, Parser)]
@@ -582,70 +583,9 @@ type = "usize"
     }
 }
 
-/// Inspect an object file and emit its normalised view.
-#[allow(clippy::items_after_test_module)]
-fn do_obj_inspect(path: &Path, target: Option<&str>, format: OutputFormat) -> ExitCode {
-    let info = match target {
-        Some(t) => {
-            let identity = match TargetIdentity::parse_known(t) {
-                Ok(id) => id,
-                Err(e) => {
-                    eprintln!("error: {e}");
-                    return ExitCode::from(2);
-                }
-            };
-            match semasm_obj::read_for_target(path, &identity) {
-                Ok(i) => i,
-                Err(ObjectError::ArchitectureMismatch { actual, expected }) => {
-                    eprintln!("error: architecture mismatch: object `{actual}` but target requires `{expected}`");
-                    return ExitCode::from(2);
-                }
-                Err(e) => {
-                    eprintln!("error: {e}");
-                    return ExitCode::from(1);
-                }
-            }
-        }
-        None => match semasm_obj::read(path) {
-            Ok(i) => i,
-            Err(e) => {
-                eprintln!("error: {e}");
-                return ExitCode::from(1);
-            }
-        },
-    };
-
-    match format {
-        OutputFormat::Json => match info.to_json() {
-            Ok(s) => {
-                println!("{s}");
-                ExitCode::SUCCESS
-            }
-            Err(e) => {
-                eprintln!("failed to serialize JSON: {e}");
-                ExitCode::from(1)
-            }
-        },
-        OutputFormat::Terminal => {
-            println!("format:      {:?}", info.format);
-            println!(
-                "architecture: {} ({})",
-                info.architecture, info.architecture_raw
-            );
-            println!("endian:      {}", info.endian);
-            println!("entry:       {:#x}", info.entry);
-            println!("sections:    {}", info.sections.len());
-            println!("symbols:     {}", info.symbols.len());
-            println!("relocations: {}", info.relocations.len());
-            println!("imports:     {}", info.imports.len());
-            println!("exports:     {}", info.exports.len());
-            ExitCode::SUCCESS
-        }
-    }
-}
-
 /// Parse a `--base` value, accepting decimal or `0x`-prefixed hex.
 #[cfg(feature = "capstone")]
+#[allow(clippy::items_after_test_module)]
 fn parse_base(s: &str) -> Result<u64, String> {
     let trimmed = s.trim();
     if let Some(hex) = trimmed
