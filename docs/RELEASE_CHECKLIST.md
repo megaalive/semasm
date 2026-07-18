@@ -27,8 +27,10 @@ gate blocks release.
 ## Packaging
 
 - [ ] `scripts/verify-release.ps1` or `scripts/verify-release.sh` passes.
-- [ ] `cargo package --workspace --allow-dirty` succeeds before tagging (omit
-      `--allow-dirty` on the clean release checkout).
+- [ ] `cargo package --workspace --no-verify --allow-dirty` succeeds before
+      tagging (omit `--allow-dirty` on the clean release checkout). Registry
+      verification is deferred until workspace crates are published in
+      dependency order; the 0.1 GitHub release distributes CLI archives.
 - [ ] Linux and Windows CLI archives are produced from the tag.
 - [ ] `SHA256SUMS` contains every archive and verifies successfully.
 - [ ] Release notes state partial architecture coverage and pre-1.0 API status.
