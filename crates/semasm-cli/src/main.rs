@@ -10,8 +10,8 @@ use std::process::ExitCode;
 
 use clap::{Parser, Subcommand, ValueEnum};
 use semasm_agent::{harness, ContextBundle, TargetToolchain, TaskPacket};
-use semasm_build::report::{self, CommandRecordJson};
-use semasm_build::Pipeline;
+use semasm_build::report::{self, CommandRecordJson, ExecutionInfo};
+use semasm_build::{BuildError, Pipeline};
 use semasm_contract::{
     check_file, explain_code, format_diagnostics_terminal, CheckReportJson, ContractCode,
 };
@@ -1033,14 +1033,23 @@ fn do_build(
         return ExitCode::from(1);
     }
 
-    // Step 4: run (optional)
-    let run_output = if no_run {
-        None
-    } else if let Ok(o) = pipe.run(&exe_path) {
-        Some(o)
+    // Step 4: run unless explicitly disabled. Preserve failures in the report
+    // and return a non-zero status after emitting the available evidence.
+    let (execution, execution_failed) = if no_run {
+        (ExecutionInfo::NotRequested, false)
     } else {
-        eprintln!("warning: runner not available (install qemu-user for this target)");
-        None
+        match pipe.run(&exe_path) {
+            Ok(output) => (ExecutionInfo::succeeded(&output), false),
+            Err(BuildError::ProgramNotFound(reason)) => {
+                eprintln!("execution unavailable: {reason}");
+                (ExecutionInfo::unavailable(reason), true)
+            }
+            Err(error) => {
+                let error = error.to_string();
+                eprintln!("execution failed: {error}");
+                (ExecutionInfo::failed(error), true)
+            }
+        }
     };
 
     // Step 5: generate report
@@ -1089,7 +1098,7 @@ fn do_build(
         Some(&obj_path),
         &exe_path,
         records,
-        run_output.as_ref(),
+        execution,
     ) {
         Ok(r) => r,
         Err(e) => {
@@ -1117,7 +1126,11 @@ fn do_build(
         let _ = std::fs::remove_dir_all(&tmp_dir);
     }
 
-    ExitCode::SUCCESS
+    if execution_failed {
+        ExitCode::from(1)
+    } else {
+        ExitCode::SUCCESS
+    }
 }
 
 #[cfg(test)]

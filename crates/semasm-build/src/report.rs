@@ -95,23 +95,71 @@ pub struct ArtifactFileInfo {
     pub raw_private_headers: String,
 }
 
-/// Execution result from the runner (QEMU).
+/// Explicit execution evidence for an artifact.
 #[derive(Debug, Clone, Serialize)]
-pub struct ExecutionInfo {
-    /// Exit code, or `null` when killed / timed out.
-    pub exit_code: Option<i32>,
-    /// Whether the process was killed by timeout.
-    pub timed_out: bool,
-    /// Stdout as lossy UTF-8.
-    pub stdout: String,
-    /// Stderr as lossy UTF-8.
-    pub stderr: String,
-    /// Bounded stdout capture metadata.
-    pub stdout_capture: CaptureInfo,
-    /// Bounded stderr capture metadata.
-    pub stderr_capture: CaptureInfo,
-    /// Process-tree termination diagnostics, when applicable.
-    pub termination: Option<TerminationInfo>,
+#[serde(tag = "status", rename_all = "snake_case")]
+pub enum ExecutionInfo {
+    /// Execution was deliberately disabled.
+    NotRequested,
+    /// No suitable runner was available.
+    Unavailable {
+        /// Why no runner could be invoked.
+        reason: String,
+    },
+    /// The runner was available but invocation failed.
+    Failed {
+        /// Invocation failure suitable for reports.
+        error: String,
+    },
+    /// The runner completed and produced output.
+    Succeeded {
+        /// Exit code, or `null` when killed or signalled.
+        exit_code: Option<i32>,
+        /// Whether the process was killed by timeout.
+        timed_out: bool,
+        /// Stdout as lossy UTF-8.
+        stdout: String,
+        /// Stderr as lossy UTF-8.
+        stderr: String,
+        /// Bounded stdout capture metadata.
+        stdout_capture: CaptureInfo,
+        /// Bounded stderr capture metadata.
+        stderr_capture: CaptureInfo,
+        /// Process-tree termination diagnostics, when applicable.
+        termination: Option<TerminationInfo>,
+    },
+}
+
+impl ExecutionInfo {
+    /// Record that no suitable runner was available.
+    #[must_use]
+    pub fn unavailable(reason: impl Into<String>) -> Self {
+        Self::Unavailable {
+            reason: reason.into(),
+        }
+    }
+
+    /// Record that runner invocation failed.
+    #[must_use]
+    pub fn failed(error: impl Into<String>) -> Self {
+        Self::Failed {
+            error: error.into(),
+        }
+    }
+
+    /// Convert captured command output into successful execution evidence.
+    #[must_use]
+    pub fn succeeded(output: &CommandOutput) -> Self {
+        Self::Succeeded {
+            exit_code: output.exit_code,
+            timed_out: output.timed_out,
+            stdout: String::from_utf8_lossy(&output.stdout).into_owned(),
+            stderr: String::from_utf8_lossy(&output.stderr).into_owned(),
+            stdout_capture: output.stdout_capture.clone(),
+            stderr_capture: output.stderr_capture.clone(),
+            termination: output.termination.clone(),
+        }
+    }
 }
 
 /// Complete build artifact report, fully serialisable as JSON.
@@ -127,8 +175,8 @@ pub struct ArtifactReport {
     pub object: Option<ArtifactFileInfo>,
     /// Final executable info.
     pub executable: ArtifactFileInfo,
-    /// Execution result, if available.
-    pub execution: Option<ExecutionInfo>,
+    /// Explicit execution evidence.
+    pub execution: ExecutionInfo,
 }
 
 /// A JSON-friendly version of [`crate::record::CommandRecord`].
@@ -368,14 +416,14 @@ fn probe_tool_version(tool: &str) -> Option<String> {
 ///   single-step formats).
 /// * `exe_path` — path to the linked executable.
 /// * `command_records` — list of command records from the build steps.
-/// * `run_output` — optional output from the runner step.
+/// * `execution` — explicit runner evidence.
 pub fn generate_report(
     pipeline: &Pipeline,
     source: &Path,
     obj_path: Option<&Path>,
     exe_path: &Path,
     command_records: Vec<CommandRecordJson>,
-    run_output: Option<&CommandOutput>,
+    execution: ExecutionInfo,
 ) -> Result<ArtifactReport, BuildError> {
     // 1. Source info
     let source_hash = hash_file(source)?;
@@ -455,17 +503,6 @@ pub fn generate_report(
         raw_symbols: exe_raw_symbols,
         raw_private_headers: exe_raw_private,
     };
-
-    // 5. Execution info
-    let execution = run_output.map(|o| ExecutionInfo {
-        exit_code: o.exit_code,
-        timed_out: o.timed_out,
-        stdout: String::from_utf8_lossy(&o.stdout).into_owned(),
-        stderr: String::from_utf8_lossy(&o.stderr).into_owned(),
-        stdout_capture: o.stdout_capture.clone(),
-        stderr_capture: o.stderr_capture.clone(),
-        termination: o.termination.clone(),
-    });
 
     Ok(ArtifactReport {
         source: source_info,
@@ -568,25 +605,44 @@ impl ArtifactReport {
             }
         }
 
-        if let Some(ref exec) = self.execution {
-            let _ = writeln!(out);
-            let _ = writeln!(
-                out,
-                "Execution:  exit={:?}{}",
-                exec.exit_code,
-                if exec.timed_out { " (TIMEOUT)" } else { "" },
-            );
-            write_capture_notice(&mut out, "  ", &exec.stdout_capture, &exec.stderr_capture);
-            write_termination_notice(&mut out, "  ", exec.termination.as_ref());
-            if !exec.stdout.is_empty() {
-                let _ = writeln!(out, "  stdout: {}", exec.stdout.trim());
-            }
-            if !exec.stderr.is_empty() {
-                let _ = writeln!(out, "  stderr: {}", exec.stderr.trim());
-            }
-        }
+        write_execution(&mut out, &self.execution);
 
         out
+    }
+}
+
+fn write_execution(output: &mut String, execution: &ExecutionInfo) {
+    let _ = writeln!(output);
+    match execution {
+        ExecutionInfo::NotRequested => {
+            let _ = writeln!(output, "Execution:  not requested");
+        }
+        ExecutionInfo::Unavailable { reason } => {
+            let _ = writeln!(output, "Execution:  unavailable ({reason})");
+        }
+        ExecutionInfo::Failed { error } => {
+            let _ = writeln!(output, "Execution:  failed ({error})");
+        }
+        ExecutionInfo::Succeeded {
+            exit_code,
+            timed_out,
+            stdout,
+            stderr,
+            stdout_capture,
+            stderr_capture,
+            termination,
+        } => {
+            let timeout = if *timed_out { " (TIMEOUT)" } else { "" };
+            let _ = writeln!(output, "Execution:  exit={exit_code:?}{timeout}");
+            write_capture_notice(output, "  ", stdout_capture, stderr_capture);
+            write_termination_notice(output, "  ", termination.as_ref());
+            if !stdout.is_empty() {
+                let _ = writeln!(output, "  stdout: {}", stdout.trim());
+            }
+            if !stderr.is_empty() {
+                let _ = writeln!(output, "  stderr: {}", stderr.trim());
+            }
+        }
     }
 }
 
@@ -751,7 +807,7 @@ SYMBOL TABLE:
                 raw_symbols: String::new(),
                 raw_private_headers: String::new(),
             },
-            execution: None,
+            execution: ExecutionInfo::NotRequested,
         };
         let terminal = report.to_terminal();
         assert!(terminal.contains("Artifact Report"));
@@ -759,6 +815,7 @@ SYMBOL TABLE:
         assert!(terminal.contains("NASM 2.16"));
         assert!(terminal.contains("test"));
         assert!(terminal.contains("1234"));
+        assert!(terminal.contains("Execution:  not requested"));
     }
 
     #[test]
@@ -829,7 +886,7 @@ SYMBOL TABLE:
                 raw_symbols: String::new(),
                 raw_private_headers: String::new(),
             },
-            execution: Some(ExecutionInfo {
+            execution: ExecutionInfo::Succeeded {
                 exit_code: Some(42),
                 timed_out: false,
                 stdout: String::new(),
@@ -837,7 +894,7 @@ SYMBOL TABLE:
                 stdout_capture: capture_info(0),
                 stderr_capture: capture_info(0),
                 termination: None,
-            }),
+            },
         };
 
         // JSON round-trip
@@ -847,6 +904,7 @@ SYMBOL TABLE:
         assert!(json.contains("42"));
         assert!(json.contains("_start"));
         assert!(json.contains("\"truncated\": true"));
+        assert!(json.contains("\"status\": \"succeeded\""));
 
         // Terminal output
         let term = report.to_terminal();
@@ -932,7 +990,13 @@ SYMBOL TABLE:
             },
         ];
 
-        let report = generate_report(&pipe, &source, Some(&obj), &exe, records, run_out.as_ref())
+        let execution = run_out.as_ref().map_or_else(
+            || ExecutionInfo::Unavailable {
+                reason: "runner unavailable".into(),
+            },
+            ExecutionInfo::succeeded,
+        );
+        let report = generate_report(&pipe, &source, Some(&obj), &exe, records, execution)
             .expect("generate_report");
 
         // Verify report structure
@@ -945,10 +1009,13 @@ SYMBOL TABLE:
         assert!(obj_info.sections.iter().any(|s| s.name == ".text"));
         assert!(obj_info.symbols.iter().any(|s| s.name == "_start"));
 
-        assert!(report.execution.is_some());
-        if let Some(ref exec) = report.execution {
-            assert_eq!(exec.exit_code, Some(42));
-        }
+        assert!(matches!(
+            &report.execution,
+            ExecutionInfo::Succeeded {
+                exit_code: Some(42),
+                ..
+            }
+        ));
 
         // JSON serialisation
         let json = report.to_json_pretty().unwrap();
