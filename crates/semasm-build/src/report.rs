@@ -14,6 +14,9 @@ use sha2::{Digest, Sha256};
 use crate::exec::{self, BuildError, CaptureInfo, CommandOutput, CommandSpec, TerminationInfo};
 use crate::pipeline::Pipeline;
 
+/// Current serialized artifact-report schema.
+pub const ARTIFACT_REPORT_SCHEMA_VERSION: &str = "0.1";
+
 // ---------------------------------------------------------------------------
 // Data types
 // ---------------------------------------------------------------------------
@@ -165,6 +168,8 @@ impl ExecutionInfo {
 /// Complete build artifact report, fully serialisable as JSON.
 #[derive(Debug, Clone, Serialize)]
 pub struct ArtifactReport {
+    /// Serialized schema identity used for compatibility checks.
+    pub schema_version: &'static str,
     /// Source file information.
     pub source: SourceInfo,
     /// Tool versions used in the build.
@@ -177,6 +182,56 @@ pub struct ArtifactReport {
     pub executable: ArtifactFileInfo,
     /// Explicit execution evidence.
     pub execution: ExecutionInfo,
+}
+
+/// Compatibility of an artifact report with this reader.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ReportSchemaCompatibility {
+    /// The report uses the current schema.
+    Current,
+    /// The report uses an older minor revision from the same major line.
+    CompatibleOlder,
+}
+
+/// Check whether serialized artifact-report JSON is readable by this version.
+pub fn check_report_schema_compatibility(json: &str) -> Result<ReportSchemaCompatibility, String> {
+    let document: serde_json::Value =
+        serde_json::from_str(json).map_err(|error| format!("invalid report JSON: {error}"))?;
+    let version = document
+        .get("schema_version")
+        .and_then(serde_json::Value::as_str)
+        .ok_or_else(|| "artifact report is missing string field 'schema_version'".to_string())?;
+    let actual = parse_schema_version(version)?;
+    let supported = parse_schema_version(ARTIFACT_REPORT_SCHEMA_VERSION)?;
+
+    if actual.0 != supported.0 || actual.1 > supported.1 {
+        return Err(format!(
+            "unsupported artifact report schema '{version}'; reader supports '{ARTIFACT_REPORT_SCHEMA_VERSION}'"
+        ));
+    }
+    if actual == supported {
+        Ok(ReportSchemaCompatibility::Current)
+    } else {
+        Ok(ReportSchemaCompatibility::CompatibleOlder)
+    }
+}
+
+fn parse_schema_version(version: &str) -> Result<(u64, u64), String> {
+    let (major, minor) = version
+        .split_once('.')
+        .ok_or_else(|| format!("invalid schema version '{version}'; expected MAJOR.MINOR"))?;
+    if minor.contains('.') {
+        return Err(format!(
+            "invalid schema version '{version}'; expected MAJOR.MINOR"
+        ));
+    }
+    let major = major
+        .parse()
+        .map_err(|_| format!("invalid schema version '{version}'; expected MAJOR.MINOR"))?;
+    let minor = minor
+        .parse()
+        .map_err(|_| format!("invalid schema version '{version}'; expected MAJOR.MINOR"))?;
+    Ok((major, minor))
 }
 
 /// A JSON-friendly version of [`crate::record::CommandRecord`].
@@ -505,6 +560,7 @@ pub fn generate_report(
     };
 
     Ok(ArtifactReport {
+        schema_version: ARTIFACT_REPORT_SCHEMA_VERSION,
         source: source_info,
         tool_versions,
         command_records,
@@ -527,6 +583,7 @@ impl ArtifactReport {
         let mut out = String::new();
 
         let _ = writeln!(out, "=== Artifact Report ===");
+        let _ = writeln!(out, "Schema:      {}", self.schema_version);
         let _ = writeln!(out);
 
         let _ = writeln!(
@@ -782,6 +839,7 @@ SYMBOL TABLE:
     #[test]
     fn report_terminal_includes_header() {
         let report = ArtifactReport {
+            schema_version: ARTIFACT_REPORT_SCHEMA_VERSION,
             source: SourceInfo {
                 path: "test.asm".into(),
                 hash: FileHash {
@@ -838,6 +896,7 @@ SYMBOL TABLE:
     #[test]
     fn report_to_json_roundtrip() {
         let report = ArtifactReport {
+            schema_version: ARTIFACT_REPORT_SCHEMA_VERSION,
             source: SourceInfo {
                 path: "exit.asm".into(),
                 hash: FileHash {
@@ -912,6 +971,39 @@ SYMBOL TABLE:
         assert!(term.contains("42"));
         assert!(term.contains("SHA-256"));
         assert!(term.contains("output truncated"));
+    }
+
+    #[test]
+    fn report_schema_compatibility_accepts_current_and_older_minor() {
+        let current = format!(r#"{{"schema_version":"{ARTIFACT_REPORT_SCHEMA_VERSION}"}}"#);
+        assert_eq!(
+            check_report_schema_compatibility(&current),
+            Ok(ReportSchemaCompatibility::Current)
+        );
+        assert_eq!(
+            check_report_schema_compatibility(r#"{"schema_version":"0.0"}"#),
+            Ok(ReportSchemaCompatibility::CompatibleOlder)
+        );
+    }
+
+    #[test]
+    fn report_schema_compatibility_rejects_unsupported_versions() {
+        for json in [r#"{"schema_version":"0.2"}"#, r#"{"schema_version":"1.0"}"#] {
+            let error = check_report_schema_compatibility(json).unwrap_err();
+            assert!(error.contains("unsupported artifact report schema"));
+        }
+    }
+
+    #[test]
+    fn report_schema_compatibility_rejects_missing_or_malformed_versions() {
+        let missing = check_report_schema_compatibility("{}").unwrap_err();
+        assert!(missing.contains("missing string field 'schema_version'"));
+
+        for version in ["0", "0.1.0", "latest"] {
+            let json = format!(r#"{{"schema_version":"{version}"}}"#);
+            let error = check_report_schema_compatibility(&json).unwrap_err();
+            assert!(error.contains("expected MAJOR.MINOR"));
+        }
     }
 
     // ------------------------------------------------------------------
