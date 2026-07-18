@@ -13,16 +13,14 @@ use std::path::{Path, PathBuf};
 use std::process::ExitCode;
 
 use clap::{Parser, Subcommand, ValueEnum};
-use commands::{do_agent_packet, do_contract_check, do_explain, do_target_doctor};
+use commands::{do_agent_packet, do_agent_verify, do_contract_check, do_explain, do_target_doctor};
 #[cfg(feature = "capstone")]
 use output::{
     json_aarch64_abi_report, json_abi_report, json_analysis_report, json_win64_abi_report,
     print_analysis_terminal, unsupported_instruction, UnsupportedInstruction,
 };
-use semasm_agent::harness;
 use semasm_build::report::{self, CommandRecordJson, ExecutionInfo};
 use semasm_build::{BuildError, Pipeline};
-use semasm_contract::format_diagnostics_terminal;
 use semasm_core::SEMASM_VERSION;
 #[cfg(feature = "capstone")]
 use semasm_decode::{self, DecodeError};
@@ -397,183 +395,6 @@ fn main() -> ExitCode {
             };
             do_aarch64_abi_inspect(&path, base, format, allow_incomplete)
         }
-    }
-}
-
-/// Assemble, link, and run an agent-written `.asm` against the
-/// synthesised behavioural test vectors, then evaluate the results.
-#[allow(clippy::too_many_lines)]
-fn do_agent_verify(
-    source: &Path,
-    contract_path: &Path,
-    target_str: &str,
-    format: OutputFormat,
-) -> ExitCode {
-    // Resolve target + toolchain.
-    let identity = match TargetIdentity::parse_known(target_str) {
-        Ok(id) => id,
-        Err(e) => {
-            eprintln!("error: {e}");
-            return ExitCode::from(2);
-        }
-    };
-    let pipeline = Pipeline::discover(&identity);
-    if !pipeline.all_tools_found() {
-        eprintln!("error: toolchain incomplete for target `{target_str}`");
-        eprintln!("  run `semasm target doctor {target_str}` for details");
-        eprintln!(
-            "  (assembler, linker, disassembler, and a runner such as qemu-x86_64 are required)"
-        );
-        return ExitCode::from(1);
-    }
-
-    // Load + validate the contract.
-    let contract_text = match std::fs::read_to_string(contract_path) {
-        Ok(t) => t,
-        Err(e) => {
-            eprintln!("{}: error: {e}", contract_path.display());
-            return ExitCode::from(1);
-        }
-    };
-    let check = semasm_contract::check_str(&contract_text);
-    if !check.ok() {
-        print!(
-            "{}",
-            format_diagnostics_terminal(&contract_path.display().to_string(), &check.diagnostics)
-        );
-        return ExitCode::from(1);
-    }
-    let checked = check.contract.expect("ok() implies Some");
-
-    // Synthesise vectors + generate the harness source.
-    let vectors = harness::synthesize_vectors(&checked);
-    if vectors.is_empty() {
-        eprintln!(
-            "error: no test vectors synthesised for `{}`; \
-             the routine shape is not yet supported by the harness",
-            checked.name
-        );
-        return ExitCode::from(1);
-    }
-    let harness_src = harness::generate_harness(&checked.name, &vectors);
-    let routine_symbol = checked.name.clone();
-
-    // Prepare a scratch directory.
-    let dir = std::env::temp_dir().join(format!("semasm-verify-{}", std::process::id()));
-    if let Err(e) = std::fs::create_dir_all(&dir) {
-        eprintln!("error: cannot create scratch dir: {e}");
-        return ExitCode::from(1);
-    }
-    let routine_obj = dir.join("routine.o");
-    let harness_obj = dir.join("harness.o");
-    let exe = dir.join("harness");
-
-    // Assemble the routine.
-    match pipeline.assemble_reproducible(source, &routine_obj, "elf64") {
-        Ok(o) if o.success() => {}
-        Ok(o) => {
-            eprintln!(
-                "assemble routine failed: {}",
-                String::from_utf8_lossy(&o.stderr)
-            );
-            let _ = std::fs::remove_dir_all(&dir);
-            return ExitCode::from(1);
-        }
-        Err(e) => {
-            eprintln!("assemble routine error: {e}");
-            let _ = std::fs::remove_dir_all(&dir);
-            return ExitCode::from(1);
-        }
-    }
-
-    // Assemble the harness.
-    let harness_path = dir.join("harness.asm");
-    if let Err(e) = std::fs::write(&harness_path, &harness_src) {
-        eprintln!("error: cannot write harness source: {e}");
-        let _ = std::fs::remove_dir_all(&dir);
-        return ExitCode::from(1);
-    }
-    match pipeline.assemble_reproducible(&harness_path, &harness_obj, "elf64") {
-        Ok(o) if o.success() => {}
-        Ok(o) => {
-            eprintln!(
-                "assemble harness failed: {}",
-                String::from_utf8_lossy(&o.stderr)
-            );
-            let _ = std::fs::remove_dir_all(&dir);
-            return ExitCode::from(1);
-        }
-        Err(e) => {
-            eprintln!("assemble harness error: {e}");
-            let _ = std::fs::remove_dir_all(&dir);
-            return ExitCode::from(1);
-        }
-    }
-
-    // Link both objects.
-    match pipeline.link_reproducible(&[&routine_obj, &harness_obj], &exe) {
-        Ok(o) if o.success() => {}
-        Ok(o) => {
-            eprintln!("link failed: {}", String::from_utf8_lossy(&o.stderr));
-            let _ = std::fs::remove_dir_all(&dir);
-            return ExitCode::from(1);
-        }
-        Err(e) => {
-            eprintln!("link error: {e}");
-            let _ = std::fs::remove_dir_all(&dir);
-            return ExitCode::from(1);
-        }
-    }
-
-    // Run under the configured runner.
-    let run = match pipeline.run(&exe) {
-        Ok(o) => o,
-        Err(e) => {
-            eprintln!("run error: {e}");
-            let _ = std::fs::remove_dir_all(&dir);
-            return ExitCode::from(1);
-        }
-    };
-
-    let report = harness::evaluate(&run.stdout, &vectors);
-
-    // Clean up scratch.
-    let _ = std::fs::remove_dir_all(&dir);
-
-    match format {
-        OutputFormat::Json => match serde_json::to_string_pretty(&report) {
-            Ok(s) => println!("{s}"),
-            Err(e) => {
-                eprintln!("failed to serialize report: {e}");
-                return ExitCode::from(1);
-            }
-        },
-        OutputFormat::Terminal => {
-            println!("Routine: {routine_symbol}");
-            println!("Vectors: {}", report.cases.len());
-            println!();
-            for (i, c) in report.cases.iter().enumerate() {
-                let status = if c.passed { "PASS" } else { "FAIL" };
-                println!(
-                    "{i}. [{status}] {}  expected={} observed={}",
-                    c.name, c.expected, c.observed
-                );
-            }
-            println!(
-                "\nResult: {}",
-                if report.all_passed {
-                    "all vectors passed"
-                } else {
-                    "one or more vectors failed"
-                }
-            );
-        }
-    }
-
-    if report.all_passed {
-        ExitCode::SUCCESS
-    } else {
-        ExitCode::from(1)
     }
 }
 

@@ -3,7 +3,7 @@
 use std::path::Path;
 use std::process::ExitCode;
 
-use semasm_agent::{ContextBundle, TargetToolchain, TaskPacket};
+use semasm_agent::{harness, ContextBundle, TargetToolchain, TaskPacket};
 use semasm_build::Pipeline;
 use semasm_contract::{
     check_file, explain_code, format_diagnostics_terminal, CheckReportJson, ContractCode,
@@ -163,6 +163,172 @@ fn epoch_to_utc(secs: u64) -> (u32, u32, u32, u32, u32, u32) {
 
 fn is_leap(year: u64) -> bool {
     (year % 4 == 0 && year % 100 != 0) || year % 400 == 0
+}
+
+/// Assemble, link, and run an agent-written `.asm` against the
+/// synthesised behavioural test vectors, then evaluate the results.
+#[allow(clippy::too_many_lines)]
+pub(crate) fn do_agent_verify(
+    source: &Path,
+    contract_path: &Path,
+    target_str: &str,
+    format: OutputFormat,
+) -> ExitCode {
+    let identity = match TargetIdentity::parse_known(target_str) {
+        Ok(identity) => identity,
+        Err(error) => {
+            eprintln!("error: {error}");
+            return ExitCode::from(2);
+        }
+    };
+    let pipeline = Pipeline::discover(&identity);
+    if !pipeline.all_tools_found() {
+        eprintln!("error: toolchain incomplete for target `{target_str}`");
+        eprintln!("  run `semasm target doctor {target_str}` for details");
+        eprintln!(
+            "  (assembler, linker, disassembler, and a runner such as qemu-x86_64 are required)"
+        );
+        return ExitCode::from(1);
+    }
+
+    let contract_text = match std::fs::read_to_string(contract_path) {
+        Ok(text) => text,
+        Err(error) => {
+            eprintln!("{}: error: {error}", contract_path.display());
+            return ExitCode::from(1);
+        }
+    };
+    let check = semasm_contract::check_str(&contract_text);
+    if !check.ok() {
+        print!(
+            "{}",
+            format_diagnostics_terminal(&contract_path.display().to_string(), &check.diagnostics)
+        );
+        return ExitCode::from(1);
+    }
+    let checked = check.contract.expect("ok() implies Some");
+
+    let vectors = harness::synthesize_vectors(&checked);
+    if vectors.is_empty() {
+        eprintln!(
+            "error: no test vectors synthesised for `{}`; \
+             the routine shape is not yet supported by the harness",
+            checked.name
+        );
+        return ExitCode::from(1);
+    }
+    let harness_source = harness::generate_harness(&checked.name, &vectors);
+    let routine_symbol = checked.name.clone();
+
+    let directory = std::env::temp_dir().join(format!("semasm-verify-{}", std::process::id()));
+    if let Err(error) = std::fs::create_dir_all(&directory) {
+        eprintln!("error: cannot create scratch dir: {error}");
+        return ExitCode::from(1);
+    }
+    let routine_object = directory.join("routine.o");
+    let harness_object = directory.join("harness.o");
+    let executable = directory.join("harness");
+
+    match pipeline.assemble_reproducible(source, &routine_object, "elf64") {
+        Ok(output) if output.success() => {}
+        Ok(output) => {
+            eprintln!(
+                "assemble routine failed: {}",
+                String::from_utf8_lossy(&output.stderr)
+            );
+            let _ = std::fs::remove_dir_all(&directory);
+            return ExitCode::from(1);
+        }
+        Err(error) => {
+            eprintln!("assemble routine error: {error}");
+            let _ = std::fs::remove_dir_all(&directory);
+            return ExitCode::from(1);
+        }
+    }
+
+    let harness_path = directory.join("harness.asm");
+    if let Err(error) = std::fs::write(&harness_path, &harness_source) {
+        eprintln!("error: cannot write harness source: {error}");
+        let _ = std::fs::remove_dir_all(&directory);
+        return ExitCode::from(1);
+    }
+    match pipeline.assemble_reproducible(&harness_path, &harness_object, "elf64") {
+        Ok(output) if output.success() => {}
+        Ok(output) => {
+            eprintln!(
+                "assemble harness failed: {}",
+                String::from_utf8_lossy(&output.stderr)
+            );
+            let _ = std::fs::remove_dir_all(&directory);
+            return ExitCode::from(1);
+        }
+        Err(error) => {
+            eprintln!("assemble harness error: {error}");
+            let _ = std::fs::remove_dir_all(&directory);
+            return ExitCode::from(1);
+        }
+    }
+
+    match pipeline.link_reproducible(&[&routine_object, &harness_object], &executable) {
+        Ok(output) if output.success() => {}
+        Ok(output) => {
+            eprintln!("link failed: {}", String::from_utf8_lossy(&output.stderr));
+            let _ = std::fs::remove_dir_all(&directory);
+            return ExitCode::from(1);
+        }
+        Err(error) => {
+            eprintln!("link error: {error}");
+            let _ = std::fs::remove_dir_all(&directory);
+            return ExitCode::from(1);
+        }
+    }
+
+    let run = match pipeline.run(&executable) {
+        Ok(output) => output,
+        Err(error) => {
+            eprintln!("run error: {error}");
+            let _ = std::fs::remove_dir_all(&directory);
+            return ExitCode::from(1);
+        }
+    };
+    let report = harness::evaluate(&run.stdout, &vectors);
+    let _ = std::fs::remove_dir_all(&directory);
+
+    match format {
+        OutputFormat::Json => match serde_json::to_string_pretty(&report) {
+            Ok(json) => println!("{json}"),
+            Err(error) => {
+                eprintln!("failed to serialize report: {error}");
+                return ExitCode::from(1);
+            }
+        },
+        OutputFormat::Terminal => {
+            println!("Routine: {routine_symbol}");
+            println!("Vectors: {}", report.cases.len());
+            println!();
+            for (index, case) in report.cases.iter().enumerate() {
+                let status = if case.passed { "PASS" } else { "FAIL" };
+                println!(
+                    "{index}. [{status}] {}  expected={} observed={}",
+                    case.name, case.expected, case.observed
+                );
+            }
+            println!(
+                "\nResult: {}",
+                if report.all_passed {
+                    "all vectors passed"
+                } else {
+                    "one or more vectors failed"
+                }
+            );
+        }
+    }
+
+    if report.all_passed {
+        ExitCode::SUCCESS
+    } else {
+        ExitCode::from(1)
+    }
 }
 
 pub(crate) fn do_explain(code: &str) -> ExitCode {
