@@ -20,6 +20,14 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      - name: Install nasm (ubuntu)
+        if: runner.os == 'Linux'
+        run: sudo apt-get install -y nasm
+
+      - name: Install nasm (windows)
+        if: runner.os == 'Windows'
+        run: choco install nasm
+
       - name: Install Rust toolchain
         uses: dtolnay/rust-toolchain@stable
         with:
@@ -48,6 +56,9 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+
+      - name: Install nasm
+        run: sudo apt-get install -y nasm
 
       - name: Install Rust toolchain
         uses: dtolnay/rust-toolchain@stable
