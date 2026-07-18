@@ -93,6 +93,53 @@ jobs:
       - name: Run Windows PE build, inspect, and execute scenario
         run: cargo test -p semasm-build pipeline::tests::build_windows_pe_and_run -- --ignored --exact --nocapture
 
+  cross-target-e2e:
+    name: e2e (${{ matrix.name }})
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: AArch64 Linux
+            prefix: aarch64-linux-gnu
+            package: binutils-aarch64-linux-gnu
+            runner: qemu-aarch64
+            target: aarch64-unknown-linux-gnu
+            source: fixtures/asm/exit_aarch64.S
+          - name: RV64 Linux
+            prefix: riscv64-linux-gnu
+            package: binutils-riscv64-linux-gnu
+            runner: qemu-riscv64
+            target: riscv64gc-unknown-linux-gnu
+            source: fixtures/asm/exit_riscv64.S
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install cross-target tools
+        run: sudo apt-get update && sudo apt-get install -y ${{ matrix.package }} qemu-user
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Cache cargo
+        uses: Swatinem/rust-cache@v2
+
+      - name: Assemble, link, inspect, and execute
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p target/cross-evidence
+          object="target/cross-evidence/${{ matrix.prefix }}.o"
+          executable="target/cross-evidence/${{ matrix.prefix }}"
+          ${{ matrix.prefix }}-as "${{ matrix.source }}" -o "$object"
+          ${{ matrix.prefix }}-ld -static -e _start "$object" -o "$executable"
+          cargo run -q -p semasm-cli -- obj "$executable" --target "${{ matrix.target }}" --format json
+          set +e
+          ${{ matrix.runner }} "$executable"
+          status=$?
+          set -e
+          test "$status" -eq 42
+
   decode:
     name: decode (capstone)
     runs-on: ubuntu-latest
