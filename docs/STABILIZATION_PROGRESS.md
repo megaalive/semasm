@@ -21,10 +21,12 @@ before work advances past a failed item.
 - [x] PR-14 — CLI modularization
 - [x] PR-15 — Schema and deterministic report versioning
 - [ ] PR-16 — Crate-boundary ADR and targeted consolidation
-- [ ] PR-17 — Negative corpus and fuzz entry points
-- [ ] PR-18 — 0.1 release preparation
+- [x] PR-17 — Negative corpus and fuzz entry points
+- [x] PR-18 — 0.1 release preparation
 
 ## Current focus
 
-PR-16 is next: document crate-boundary decisions and consolidate only the
-boundaries whose separation no longer provides a clear ownership benefit.
+PR-16 remains: document crate-boundary decisions and consolidate only the
+boundaries whose separation no longer provides a clear ownership benefit. The
+0.1 release workflow is prepared but must only be triggered from a reviewed
+`v0.1.0` tag after every checklist gate is green.
