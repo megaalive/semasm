@@ -1274,11 +1274,20 @@ fn check_x86_read_only_buffer_leaf(
 }
 
 /// True when the first operand is memory and the mnemonic writes that destination.
+///
+/// Frame-pointer stores (`[rbp ± disp]`) are ignored: compilers spill params to
+/// the frame without writing the contract's read-only buffer region.
 #[cfg(feature = "capstone")]
 fn is_x86_explicit_memory_write(instruction: &semasm_x86::lower::LoweredInstr) -> bool {
     use semasm_x86::lower::Operand;
+    use semasm_x86::{Gp, Storage};
 
-    if !matches!(instruction.operands.first(), Some(Operand::Mem(_))) {
+    let Some(Operand::Mem(mem)) = instruction.operands.first() else {
+        return false;
+    };
+    if matches!(mem.base, Some(base) if matches!(base.storage, Storage::Gp(Gp::Rbp)))
+        && mem.index.is_none()
+    {
         return false;
     }
     matches!(

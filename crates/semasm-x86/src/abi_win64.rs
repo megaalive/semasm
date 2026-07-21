@@ -272,6 +272,21 @@ struct Step {
     below_rsp_disp: Option<i64>,
 }
 
+/// True when this is `mov rsp, rbp` (frame restore).
+fn is_mov_rsp_from_rbp(ins: &LoweredInstr) -> bool {
+    if !matches!(ins.mnemonic.as_str(), "mov" | "movabs") {
+        return false;
+    }
+    match (ins.operands.first(), ins.operands.get(1)) {
+        (Some(Operand::Reg(dst)), Some(Operand::Reg(src)))
+            if is_rsp(*dst) && matches!(src.storage, Storage::Gp(Gp::Rbp)) =>
+        {
+            true
+        }
+        _ => false,
+    }
+}
+
 /// Classify one lowered instruction into its effect on the ABI walk.
 fn step(ins: &LoweredInstr) -> Step {
     let mut s = Step {
@@ -362,6 +377,13 @@ pub fn analyze(instrs: &[LoweredInstr]) -> AbiReport {
     let mut max_below_rsp_disp: i64 = 0;
 
     for (i, ins) in instrs.iter().enumerate() {
+        // Standard frame epilogue: `mov rsp, rbp` restores RSP to the post-`push rbp`
+        // depth (delta 8). HlaX64 and many compilers use this instead of `add rsp, N`.
+        if is_mov_rsp_from_rbp(ins) {
+            rsp_delta = 8;
+            continue;
+        }
+
         let state = StackState {
             rsp_delta,
             rsp_align: ((ENTRY_RSP_MOD + rsp_delta) % STACK_ALIGN + STACK_ALIGN) % STACK_ALIGN,
