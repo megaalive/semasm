@@ -77,6 +77,13 @@
           "description": "Contract path or basename supplied to verify.",
           "type": "string"
         },
+        "contract_ensures": {
+          "description": "Raw `ensures` expressions from the contract (may be weaker than the claim).",
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
         "contract_hash": {
           "description": "Short SHA-256 of contract bytes.",
           "type": "string"
@@ -88,6 +95,10 @@
         "id": {
           "description": "Stable oracle id (`builtin.buffer.count_equal_u8`, …).",
           "type": "string"
+        },
+        "proof_basis": {
+          "description": "How equality/behavior was proven for this shape.",
+          "$ref": "#/$defs/ProofBasis"
         },
         "vectors_failed": {
           "description": "Vectors that failed (0 when execution was not run).",
@@ -119,6 +130,8 @@
         "version",
         "contract",
         "contract_hash",
+        "contract_ensures",
+        "proof_basis",
         "claim",
         "vectors_passed",
         "vectors_failed",
@@ -229,6 +242,16 @@
         "all_passed"
       ]
     },
+    "ProofBasis": {
+      "description": "How a recognized shape's behavioral claim was established.",
+      "oneOf": [
+        {
+          "description": "Named builtin oracle plus synthesized/evaluated vectors — not contract alone.",
+          "type": "string",
+          "const": "oracle_and_vectors"
+        }
+      ]
+    },
     "SemanticGates": {
       "description": "Static semantic gates applied to the candidate relocatable object.",
       "type": "object",
@@ -259,6 +282,11 @@
         "lowering": {
           "description": "Lowering coverage over decoded instructions.",
           "$ref": "#/$defs/Coverage"
+        },
+        "memory": {
+          "description": "Memory effects leaf policy (read-only buffer leaves must not store).\n\nAbsent in older reports; deserializes as [`GateStatus::Passed`].",
+          "$ref": "#/$defs/GateStatus",
+          "default": "passed"
         },
         "object_policy": {
           "description": "Relocatable object, exports, and import policy.",

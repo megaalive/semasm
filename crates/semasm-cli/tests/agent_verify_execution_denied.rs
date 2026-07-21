@@ -48,7 +48,7 @@ fn agent_verify_emits_execution_denied_json_without_opt_in() {
     let value: serde_json::Value = serde_json::from_str(&stdout).unwrap_or_else(|error| {
         panic!("expected VerificationReport JSON on stdout ({error}): {stdout}\nstderr={stderr}")
     });
-    assert_eq!(value["schema_version"], "0.2");
+    assert_eq!(value["schema_version"], "0.3");
     assert_eq!(value["status"], "execution_denied");
     assert_eq!(value["semantic"]["abi"], "passed");
     assert_eq!(value["semantic"]["capability"], "passed");
@@ -58,6 +58,13 @@ fn agent_verify_emits_execution_denied_json_without_opt_in() {
         value["behavior_oracle"]["id"],
         "builtin.buffer.count_equal_u8"
     );
-    assert_eq!(value["behavior_oracle"]["version"], 1);
+    assert_eq!(value["behavior_oracle"]["version"], 2);
+    assert_eq!(
+        value["behavior_oracle"]["proof_basis"],
+        "oracle_and_vectors"
+    );
+    assert!(value["behavior_oracle"]["contract_ensures"]
+        .as_array()
+        .is_some_and(|arr| arr.iter().any(|v| v.as_str() == Some("count <= length"))));
     assert!(value["behavior_oracle"]["evidence_hash"].is_string());
 }

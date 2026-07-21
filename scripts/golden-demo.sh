@@ -31,7 +31,9 @@ import json, sys
 r = json.load(sys.stdin)
 behavior = r.get('behavior') or {}
 cases = behavior.get('cases') or []
+oracle = r.get('behavior_oracle') or {}
 print(f\"status={r.get('status')} isolation={r.get('isolation')} vectors={len(cases)} exit=${status}\")
+print(f\"oracle={oracle.get('id')} proof_basis={oracle.get('proof_basis')} ensures={oracle.get('contract_ensures')}\")
 "
   if [[ -f "$card" ]]; then
     echo "--- evidence card: $card ---"

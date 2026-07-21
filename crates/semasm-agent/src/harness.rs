@@ -75,12 +75,12 @@ pub fn synthesize_vectors(contract: &CheckedContract) -> Vec<TestVector> {
 
 /// Builtin oracle id for buffer-scan count-equal-u8 (`count_byte` shape).
 pub const ORACLE_BUFFER_COUNT_EQUAL_U8: &str = "builtin.buffer.count_equal_u8";
-/// Profile version for [`ORACLE_BUFFER_COUNT_EQUAL_U8`].
-pub const ORACLE_BUFFER_COUNT_EQUAL_U8_VERSION: u32 = 1;
+/// Profile version for [`ORACLE_BUFFER_COUNT_EQUAL_U8`] (v2: ensures vs claim split).
+pub const ORACLE_BUFFER_COUNT_EQUAL_U8_VERSION: u32 = 2;
 /// Builtin oracle id for pure two-`usize` integer shapes (`min_usize`).
 pub const ORACLE_PURE_INT_BINARY_USIZE: &str = "builtin.pure_int.binary_usize";
 /// Profile version for [`ORACLE_PURE_INT_BINARY_USIZE`].
-pub const ORACLE_PURE_INT_BINARY_USIZE_VERSION: u32 = 1;
+pub const ORACLE_PURE_INT_BINARY_USIZE_VERSION: u32 = 2;
 
 /// Recognized builtin behavioral oracle for a contract shape, if any.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -116,16 +116,37 @@ pub fn recognize_behavior_oracle(contract: &CheckedContract) -> Option<Recognize
     None
 }
 
+/// True when the contract is a buffer-scan leaf that only declares `memory_read`
+/// (no `memory_write`) — candidates must not store to memory.
+#[must_use]
+pub fn is_read_only_buffer_scan(contract: &CheckedContract) -> bool {
+    if scan_shape(contract).is_none() {
+        return false;
+    }
+    let has_read = contract
+        .effects
+        .iter()
+        .any(|effect| effect.kind == "memory_read");
+    let has_write = contract
+        .effects
+        .iter()
+        .any(|effect| effect.kind == "memory_write");
+    has_read && !has_write
+}
+
 /// Build a [`crate::verify::BehaviorOracle`] snapshot for a verification report.
 #[must_use]
 pub fn build_behavior_oracle(
     recognized: RecognizedOracle,
+    contract: &CheckedContract,
     contract_path: &str,
     contract_bytes: &[u8],
     planned_vectors: &[TestVector],
     behavior: Option<&HarnessReport>,
 ) -> crate::verify::BehaviorOracle {
     use sha2::{Digest, Sha256};
+
+    use crate::verify::ProofBasis;
 
     let contract_hash = {
         let digest = Sha256::digest(contract_bytes);
@@ -135,6 +156,12 @@ pub fn build_behavior_oracle(
         }
         out
     };
+
+    let contract_ensures: Vec<String> = contract
+        .ensures
+        .iter()
+        .map(|condition| condition.source.clone())
+        .collect();
 
     let (vectors_passed, vectors_failed, vectors_total) = match behavior {
         Some(report) => {
@@ -150,6 +177,12 @@ pub fn build_behavior_oracle(
     hasher.update(b"\0");
     hasher.update(recognized.version.to_string().as_bytes());
     hasher.update(b"\0");
+    hasher.update(ProofBasis::OracleAndVectors.as_str().as_bytes());
+    hasher.update(b"\0");
+    for ensure in &contract_ensures {
+        hasher.update(ensure.as_bytes());
+        hasher.update(b"\n");
+    }
     if let Some(report) = behavior {
         for case in &report.cases {
             hasher.update(case.name.as_bytes());
@@ -180,6 +213,8 @@ pub fn build_behavior_oracle(
         version: recognized.version,
         contract: contract_path.to_string(),
         contract_hash,
+        contract_ensures,
+        proof_basis: ProofBasis::OracleAndVectors,
         claim: recognized.claim.to_string(),
         vectors_passed,
         vectors_failed,
@@ -1294,11 +1329,26 @@ expression = "count <= length"
         assert_eq!(oracle.version, ORACLE_BUFFER_COUNT_EQUAL_U8_VERSION);
         assert!(oracle.claim.contains("equal to needle"));
         let vectors = synthesize_vectors(&c);
-        let built =
-            build_behavior_oracle(oracle, "count_byte.sem.toml", b"contract", &vectors, None);
+        let built = build_behavior_oracle(
+            oracle,
+            &c,
+            "count_byte.sem.toml",
+            b"contract",
+            &vectors,
+            None,
+        );
         assert_eq!(built.vectors_total, vectors.len());
         assert_eq!(built.vectors_passed, 0);
         assert!(!built.evidence_hash.is_empty());
+        assert!(built
+            .contract_ensures
+            .iter()
+            .any(|e| e.contains("count <= length")));
+        assert_eq!(
+            built.proof_basis,
+            crate::verify::ProofBasis::OracleAndVectors
+        );
+        assert!(is_read_only_buffer_scan(&c));
     }
 
     #[test]

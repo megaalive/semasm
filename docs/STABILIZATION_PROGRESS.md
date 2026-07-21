@@ -26,21 +26,28 @@ before work advances past a failed item.
 
 ## Current focus
 
-Stabilization PR-01…18 and the **Bulletproof Roadmap (P0–P5)** are complete.
-Active work is the **X86 Golden Path Depth** vertical slice (SysV + Win64):
+Stabilization PR-01…18, the **Bulletproof Roadmap (P0–P5)**, **X86 Golden Path
+Depth (S0–S4)**, **Evidence Instruments (W1–W3)**, and **W4 Evidence Depth**
+are complete on `main` (pending the commit that lands this doc sync).
 
 | Step | Focus | Status |
 |---|---|---|
-| S0 | E2E symmetry (`count_byte` SysV verified; `min_usize` Win64) | done |
-| S1 | ABI adversarial (stack, callee-saved, red-zone, Win64 shadow) | done |
-| S2 | Decode/lower adversarial (unknown insn, trailing bytes) | done |
-| S3 | Object policy rejects W+X sections | done |
-| S4 | Demo scripts + docs / deferred list | done |
+| H0 | Sync this progress doc | done |
+| W4a | Oracle honesty (`contract_ensures` / `proof_basis`, schema 0.3) | done |
+| W4b | Read-only buffer leaf gate (`semantic.memory`) | done |
+| W4c | Golden demo / README oracle-vs-ensures clarity | done |
 
-### Deferred (explicitly out of this slice)
+### Completed recently (not deferred)
 
-- Wiring CFG / indirect-branch policy into `agent verify`
-- Memory alias analysis on the buffer-scan shape
+- CFG / indirect-branch leaf policy wired into `agent verify` (`control` gate)
+- Evidence card (`--card`), candidate compare, named versioned behavior oracles
+- Oracle v2 splits weak contract `ensures` from `proof_basis: oracle_and_vectors`
+- Read-only buffer leaf rejects explicit memory stores (`memory` gate)
+
+### Deferred (explicitly out of W4)
+
+- Formal `ensures result == count(...)` / general theorem proving
+- Full memory alias / symbolic proof beyond the read-only leaf gate
 - C compiler `-O2` / `-Os` binary-size bake-off in CI
 - New ISAs or broad mnemonic expansion
 - GitHub Release `v0.1.0` (checklist-gated separately)

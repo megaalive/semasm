@@ -434,6 +434,7 @@ fn run_agent_verify_core(
         match recognized_oracle {
             Some(recognized) => report.with_behavior_oracle(harness::build_behavior_oracle(
                 recognized,
+                &checked,
                 &contract_label,
                 &contract_bytes,
                 &vectors,
@@ -482,30 +483,31 @@ fn run_agent_verify_core(
 
     let object_bytes = std::fs::metadata(&routine_object).map_or(0, |meta| meta.len());
 
-    let semantic = match verify_candidate_semantics(&routine_object, &identity, &routine_symbol) {
-        Ok(gates) => gates,
-        Err(error) => {
-            eprintln!("semantic gate failed: {error}");
-            let report = attach_oracle(
-                VerificationReport::from_parts(
-                    identity.name.clone(),
-                    routine_symbol,
-                    SemanticGates::from_error(&error, 0),
-                    ExecutableGate::skipped(),
+    let semantic =
+        match verify_candidate_semantics(&routine_object, &identity, &routine_symbol, &checked) {
+            Ok(gates) => gates,
+            Err(error) => {
+                eprintln!("semantic gate failed: {error}");
+                let report = attach_oracle(
+                    VerificationReport::from_parts(
+                        identity.name.clone(),
+                        routine_symbol,
+                        SemanticGates::from_error(&error, 0),
+                        ExecutableGate::skipped(),
+                        None,
+                        ExecutionIsolation::StaticOnly,
+                    ),
                     None,
-                    ExecutionIsolation::StaticOnly,
-                ),
-                None,
-            );
-            let _ = std::fs::remove_dir_all(&directory);
-            return VerifyCore::Done {
-                report: Box::new(report),
-                object_bytes,
-                contract_bytes,
-                exit: ExitCode::from(1),
-            };
-        }
-    };
+                );
+                let _ = std::fs::remove_dir_all(&directory);
+                return VerifyCore::Done {
+                    report: Box::new(report),
+                    object_bytes,
+                    contract_bytes,
+                    exit: ExitCode::from(1),
+                };
+            }
+        };
 
     let harness_source = match harness::generate_harness(&routine_symbol, &vectors, identity.abi) {
         Ok(source) => source,
@@ -638,6 +640,7 @@ fn run_agent_verify_core(
     let oracle = recognized_oracle.map(|recognized| {
         harness::build_behavior_oracle(
             recognized,
+            &checked,
             &contract_label,
             &contract_bytes,
             &vectors,
@@ -694,7 +697,7 @@ fn print_verification_terminal(report: &VerificationReport) {
     println!("Routine: {}", report.routine_symbol);
     println!("Isolation: {}", report.isolation.as_str());
     println!(
-        "Semantic gates: object={} decode={}/{} lowering={}/{} ({}%) abi={} capability={} control={}",
+        "Semantic gates: object={} decode={}/{} lowering={}/{} ({}%) abi={} capability={} control={} memory={}",
         semantic.object_policy.as_str(),
         semantic.decode.modeled,
         semantic.decode.total,
@@ -704,6 +707,7 @@ fn print_verification_terminal(report: &VerificationReport) {
         semantic.abi.as_str(),
         semantic.capability.as_str(),
         semantic.control.as_str(),
+        semantic.memory.as_str(),
     );
     println!("Executable gate: {}", report.executable.status.as_str());
     if let Some(oracle) = &report.behavior_oracle {
@@ -763,6 +767,7 @@ fn verify_candidate_semantics(
     object_path: &Path,
     identity: &TargetIdentity,
     routine_symbol: &str,
+    contract: &semasm_contract::CheckedContract,
 ) -> Result<SemanticGates, SemanticGateError> {
     require_semantic_target(identity)?;
     check_candidate_object_policy(object_path, identity, routine_symbol)?;
@@ -777,6 +782,12 @@ fn verify_candidate_semantics(
             let lowering_coverage = Coverage::complete(lowered.len());
             check_x86_abi_capability(&lowered, identity.abi, decode_coverage, lowering_coverage)?;
             check_x86_cfg_leaf(&physical, decode_coverage, lowering_coverage)?;
+            check_x86_read_only_buffer_leaf(
+                &lowered,
+                contract,
+                decode_coverage,
+                lowering_coverage,
+            )?;
             Ok(SemanticGates {
                 object_policy: GateStatus::Passed,
                 executable_bytes: code_bytes,
@@ -785,6 +796,7 @@ fn verify_candidate_semantics(
                 abi: GateStatus::Passed,
                 capability: GateStatus::Passed,
                 control: GateStatus::Passed,
+                memory: GateStatus::Passed,
             })
         }
         (Isa::AArch64, Abi::Aapcs64, ObjectFormat::Elf) => {
@@ -801,8 +813,9 @@ fn verify_candidate_semantics(
                 lowering: lowering_coverage,
                 abi: GateStatus::Passed,
                 capability: GateStatus::Passed,
-                // CFG leaf policy is x86-only in this slice.
+                // CFG / memory leaf policies are x86-only in this slice.
                 control: GateStatus::Passed,
+                memory: GateStatus::Passed,
             })
         }
         (Isa::Riscv64, Abi::Riscv, ObjectFormat::Elf) => {
@@ -819,8 +832,9 @@ fn verify_candidate_semantics(
                 lowering: lowering_coverage,
                 abi: GateStatus::Passed,
                 capability: GateStatus::Passed,
-                // CFG leaf policy is x86-only in this slice.
+                // CFG / memory leaf policies are x86-only in this slice.
                 control: GateStatus::Passed,
+                memory: GateStatus::Passed,
             })
         }
         _ => Err(SemanticGateError::new(
@@ -1223,6 +1237,69 @@ fn check_x86_cfg_leaf(
 }
 
 #[cfg(feature = "capstone")]
+fn check_x86_read_only_buffer_leaf(
+    lowered: &[semasm_x86::lower::LoweredInstr],
+    contract: &semasm_contract::CheckedContract,
+    decode_coverage: Coverage,
+    lowering_coverage: Coverage,
+) -> Result<(), SemanticGateError> {
+    if !harness::is_read_only_buffer_scan(contract) {
+        return Ok(());
+    }
+    for instruction in lowered {
+        if is_x86_explicit_memory_write(instruction) {
+            return Err(SemanticGateError {
+                stage: "memory",
+                message: format!(
+                    "read-only buffer leaf rejected memory store `{}`",
+                    instruction.mnemonic
+                ),
+                decode: Some(decode_coverage),
+                lowering: Some(lowering_coverage),
+            });
+        }
+    }
+    Ok(())
+}
+
+/// True when the first operand is memory and the mnemonic writes that destination.
+#[cfg(feature = "capstone")]
+fn is_x86_explicit_memory_write(instruction: &semasm_x86::lower::LoweredInstr) -> bool {
+    use semasm_x86::lower::Operand;
+
+    if !matches!(instruction.operands.first(), Some(Operand::Mem(_))) {
+        return false;
+    }
+    matches!(
+        instruction.mnemonic.to_ascii_lowercase().as_str(),
+        "mov"
+            | "movabs"
+            | "xchg"
+            | "add"
+            | "sub"
+            | "adc"
+            | "sbb"
+            | "and"
+            | "or"
+            | "xor"
+            | "inc"
+            | "dec"
+            | "not"
+            | "neg"
+            | "shl"
+            | "shr"
+            | "sal"
+            | "sar"
+            | "rol"
+            | "ror"
+            | "stosb"
+            | "stosw"
+            | "stosd"
+            | "stosq"
+    )
+}
+
+#[cfg(feature = "capstone")]
 fn check_aarch64_abi_capability(
     lowered: &[semasm_aarch64::lower::LoweredInstr],
     decode_coverage: Coverage,
@@ -1291,6 +1368,7 @@ fn verify_candidate_semantics(
     _object_path: &Path,
     _identity: &TargetIdentity,
     _routine_symbol: &str,
+    _contract: &semasm_contract::CheckedContract,
 ) -> Result<SemanticGates, SemanticGateError> {
     Err(SemanticGateError::new(
         "decode",
@@ -1302,6 +1380,15 @@ fn verify_candidate_semantics(
 mod semantic_gate_tests {
     use super::*;
     use std::process::Command;
+
+    fn load_count_byte_contract(workspace: &Path) -> semasm_contract::CheckedContract {
+        let text =
+            std::fs::read_to_string(workspace.join("fixtures/contracts/count_byte.sem.toml"))
+                .expect("read count_byte contract");
+        let check = semasm_contract::check_str(&text);
+        assert!(check.ok(), "count_byte contract must validate");
+        check.contract.expect("ok implies Some")
+    }
 
     #[test]
     #[ignore = "requires nasm on PATH"]
@@ -1325,13 +1412,15 @@ mod semantic_gate_tests {
             String::from_utf8_lossy(&output.stderr)
         );
         let target = TargetIdentity::parse_known("x86_64-unknown-linux-gnu").unwrap();
-        let gates = verify_candidate_semantics(&object, &target, "count_byte").unwrap();
+        let contract = load_count_byte_contract(&workspace);
+        let gates = verify_candidate_semantics(&object, &target, "count_byte", &contract).unwrap();
         assert!(gates.all_passed());
         assert_eq!(gates.lowering.unknown, 0);
         assert_eq!(gates.lowering.modeled, gates.lowering.total);
         assert_eq!(gates.abi, GateStatus::Passed);
         assert_eq!(gates.capability, GateStatus::Passed);
         assert_eq!(gates.control, GateStatus::Passed);
+        assert_eq!(gates.memory, GateStatus::Passed);
         let _ = std::fs::remove_dir_all(scratch);
     }
 
@@ -1357,12 +1446,14 @@ mod semantic_gate_tests {
             String::from_utf8_lossy(&output.stderr)
         );
         let target = TargetIdentity::parse_known("x86_64-pc-windows-msvc").unwrap();
-        let gates = verify_candidate_semantics(&object, &target, "count_byte").unwrap();
+        let contract = load_count_byte_contract(&workspace);
+        let gates = verify_candidate_semantics(&object, &target, "count_byte", &contract).unwrap();
         assert!(gates.all_passed());
         assert_eq!(gates.lowering.unknown, 0);
         assert_eq!(gates.abi, GateStatus::Passed);
         assert_eq!(gates.capability, GateStatus::Passed);
         assert_eq!(gates.control, GateStatus::Passed);
+        assert_eq!(gates.memory, GateStatus::Passed);
         let _ = std::fs::remove_dir_all(scratch);
     }
 
@@ -1395,7 +1486,8 @@ mod semantic_gate_tests {
             String::from_utf8_lossy(&output.stderr)
         );
         let target = TargetIdentity::parse_known("aarch64-unknown-linux-gnu").unwrap();
-        let gates = verify_candidate_semantics(&object, &target, "count_byte").unwrap();
+        let contract = load_count_byte_contract(&workspace);
+        let gates = verify_candidate_semantics(&object, &target, "count_byte", &contract).unwrap();
         assert!(gates.all_passed());
         assert_eq!(gates.abi, GateStatus::Passed);
         assert_eq!(gates.capability, GateStatus::Passed);
@@ -1431,7 +1523,8 @@ mod semantic_gate_tests {
             String::from_utf8_lossy(&output.stderr)
         );
         let target = TargetIdentity::parse_known("riscv64gc-unknown-linux-gnu").unwrap();
-        let gates = verify_candidate_semantics(&object, &target, "count_byte").unwrap();
+        let contract = load_count_byte_contract(&workspace);
+        let gates = verify_candidate_semantics(&object, &target, "count_byte", &contract).unwrap();
         assert!(gates.all_passed());
         assert_eq!(gates.abi, GateStatus::Passed);
         assert_eq!(gates.capability, GateStatus::Passed);

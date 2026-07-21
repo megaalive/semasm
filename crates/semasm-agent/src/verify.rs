@@ -117,6 +117,11 @@ pub struct SemanticGates {
     /// Absent in older reports; deserializes as [`GateStatus::Passed`].
     #[serde(default = "gate_status_passed")]
     pub control: GateStatus,
+    /// Memory effects leaf policy (read-only buffer leaves must not store).
+    ///
+    /// Absent in older reports; deserializes as [`GateStatus::Passed`].
+    #[serde(default = "gate_status_passed")]
+    pub memory: GateStatus,
 }
 
 fn gate_status_passed() -> GateStatus {
@@ -131,6 +136,7 @@ impl SemanticGates {
             && self.abi == GateStatus::Passed
             && self.capability == GateStatus::Passed
             && self.control == GateStatus::Passed
+            && self.memory == GateStatus::Passed
             && self.decode.unknown == 0
             && self.lowering.unknown == 0
             && self.decode.modeled == self.decode.total
@@ -156,6 +162,7 @@ impl SemanticGates {
                 abi: GateStatus::Skipped,
                 capability: GateStatus::Skipped,
                 control: GateStatus::Skipped,
+                memory: GateStatus::Skipped,
             },
             "decode" => Self {
                 object_policy: GateStatus::Passed,
@@ -165,6 +172,7 @@ impl SemanticGates {
                 abi: GateStatus::Skipped,
                 capability: GateStatus::Skipped,
                 control: GateStatus::Skipped,
+                memory: GateStatus::Skipped,
             },
             "lowering" => Self {
                 object_policy: GateStatus::Passed,
@@ -178,6 +186,7 @@ impl SemanticGates {
                 abi: GateStatus::Skipped,
                 capability: GateStatus::Skipped,
                 control: GateStatus::Skipped,
+                memory: GateStatus::Skipped,
             },
             "abi" => Self {
                 object_policy: GateStatus::Passed,
@@ -187,6 +196,7 @@ impl SemanticGates {
                 abi: GateStatus::Failed,
                 capability: GateStatus::Skipped,
                 control: GateStatus::Skipped,
+                memory: GateStatus::Skipped,
             },
             "capability" => Self {
                 object_policy: GateStatus::Passed,
@@ -196,6 +206,7 @@ impl SemanticGates {
                 abi: GateStatus::Passed,
                 capability: GateStatus::Failed,
                 control: GateStatus::Skipped,
+                memory: GateStatus::Skipped,
             },
             "cfg" | "control" => Self {
                 object_policy: GateStatus::Passed,
@@ -205,6 +216,17 @@ impl SemanticGates {
                 abi: GateStatus::Passed,
                 capability: GateStatus::Passed,
                 control: GateStatus::Failed,
+                memory: GateStatus::Skipped,
+            },
+            "memory" => Self {
+                object_policy: GateStatus::Passed,
+                executable_bytes,
+                decode,
+                lowering,
+                abi: GateStatus::Passed,
+                capability: GateStatus::Passed,
+                control: GateStatus::Passed,
+                memory: GateStatus::Failed,
             },
             _ => Self {
                 object_policy: GateStatus::Failed,
@@ -214,6 +236,7 @@ impl SemanticGates {
                 abi: GateStatus::Skipped,
                 capability: GateStatus::Skipped,
                 control: GateStatus::Skipped,
+                memory: GateStatus::Skipped,
             },
         }
     }
@@ -325,6 +348,10 @@ pub struct BehaviorOracle {
     pub contract: String,
     /// Short SHA-256 of contract bytes.
     pub contract_hash: String,
+    /// Raw `ensures` expressions from the contract (may be weaker than the claim).
+    pub contract_ensures: Vec<String>,
+    /// How equality/behavior was proven for this shape.
+    pub proof_basis: ProofBasis,
     /// Human-readable claim checked by the oracle (not a formal ensures AST).
     pub claim: String,
     /// Vectors that passed (0 when execution was not run).
@@ -337,8 +364,27 @@ pub struct BehaviorOracle {
     pub evidence_hash: String,
 }
 
+/// How a recognized shape's behavioral claim was established.
+#[derive(Serialize, Deserialize, Clone, Copy, Debug, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+#[cfg_attr(feature = "schema", derive(schemars::JsonSchema))]
+pub enum ProofBasis {
+    /// Named builtin oracle plus synthesized/evaluated vectors — not contract alone.
+    OracleAndVectors,
+}
+
+impl ProofBasis {
+    /// Stable snake_case label for printers.
+    #[must_use]
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::OracleAndVectors => "oracle_and_vectors",
+        }
+    }
+}
+
 /// Current experimental schema version for [`VerificationReport`] JSON.
-pub const VERIFICATION_REPORT_SCHEMA_VERSION: &str = "0.2";
+pub const VERIFICATION_REPORT_SCHEMA_VERSION: &str = "0.3";
 
 impl VerificationReport {
     /// Compose an immutable report from completed stage results.
@@ -435,6 +481,7 @@ mod tests {
             abi: GateStatus::Passed,
             capability: GateStatus::Passed,
             control: GateStatus::Passed,
+            memory: GateStatus::Passed,
         }
     }
 

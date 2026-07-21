@@ -74,7 +74,10 @@ and a second harness shape `min_usize` (`fixtures/contracts/min_usize.sem.toml`)
 Report field `isolation` is `static_only`, `qemu_user`, or `native_host` —
 honesty about how (or whether) a process ran, not an OS sandbox claim.
 x86 golden-path leaves also fail closed on indirect control flow (`jmp rax` /
-`call rax`).
+`call rax`) and on stores into a read-only buffer leaf.
+Equality for `count_byte` is proven by `behavior_oracle`
+(`builtin.buffer.count_equal_u8` + vectors), not by the weak contract
+`ensures count <= length` alone.
 
 One-shot scripts (print `status` / `isolation` / vector count for correct +
 wrong):

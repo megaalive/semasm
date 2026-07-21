@@ -142,9 +142,20 @@ pub fn render_evidence_card_markdown(ctx: &EvidenceCardContext<'_>) -> String {
         executable = report.executable.status.as_str(),
         oracle_rows = match &report.behavior_oracle {
             Some(oracle) => format!(
-                "| Behavior oracle | `{id}` v{version} |\n| Oracle claim | {claim} |\n| Oracle evidence | `{hash}` |\n",
+                "| Behavior oracle | `{id}` v{version} |\n| Proof basis | `{basis}` |\n| Contract ensures | {ensures} |\n| Oracle claim | {claim} |\n| Oracle evidence | `{hash}` |\n",
                 id = oracle.id,
                 version = oracle.version,
+                basis = oracle.proof_basis.as_str(),
+                ensures = if oracle.contract_ensures.is_empty() {
+                    "_(none)_".to_string()
+                } else {
+                    oracle
+                        .contract_ensures
+                        .iter()
+                        .map(|e| format!("`{e}`"))
+                        .collect::<Vec<_>>()
+                        .join(", ")
+                },
                 claim = oracle.claim,
                 hash = oracle.evidence_hash,
             ),
@@ -251,6 +262,12 @@ pub fn compare_reports(
         "control",
         report_a.semantic.control,
         report_b.semantic.control,
+    );
+    push_gate_diff(
+        &mut gate_diffs,
+        "memory",
+        report_a.semantic.memory,
+        report_b.semantic.memory,
     );
     if report_a.semantic.decode != report_b.semantic.decode {
         gate_diffs.push(format!(
@@ -391,6 +408,7 @@ mod tests {
             abi: GateStatus::Passed,
             capability: GateStatus::Passed,
             control: status_control,
+            memory: GateStatus::Passed,
         };
         VerificationReport::from_parts(
             "x86_64-unknown-linux-gnu".into(),
@@ -436,6 +454,7 @@ mod tests {
                 abi: GateStatus::Passed,
                 capability: GateStatus::Passed,
                 control: GateStatus::Failed,
+                memory: GateStatus::Passed,
             },
             ExecutableGate::skipped(),
             None,

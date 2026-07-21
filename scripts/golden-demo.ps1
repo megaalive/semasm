@@ -67,6 +67,10 @@ function Invoke-Verify {
         $n = @($report.behavior.cases).Count
     }
     Write-Host ("status={0} isolation={1} vectors={2} exit={3}" -f $report.status, $report.isolation, $n, $result.ExitCode)
+    if ($null -ne $report.behavior_oracle) {
+        $ensures = @($report.behavior_oracle.contract_ensures) -join ", "
+        Write-Host ("oracle={0} proof_basis={1} ensures=[{2}]" -f $report.behavior_oracle.id, $report.behavior_oracle.proof_basis, $ensures)
+    }
     if (Test-Path $card) {
         Write-Host ("--- evidence card: {0} ---" -f $card)
         Get-Content $card -TotalCount 20 | ForEach-Object { Write-Host $_ }

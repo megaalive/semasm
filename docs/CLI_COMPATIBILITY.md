@@ -31,21 +31,22 @@ Otherwise exit `1` and still emit a structured report when gates were reached:
 
 JSON document type is `VerificationReport` from `semasm-agent::verify`:
 
-- `schema_version` — experimental agent schema (`0.2`); see
+- `schema_version` — experimental agent schema (`0.3`); see
   `AGENT_SCHEMA_POLICY.md` and
   `crates/semasm-agent/schemas/verification-report.json`
 - `status`, `target`, `routine_symbol`, `isolation`
 - `semantic` — object policy, instruction-oriented `decode` / `lowering`
-  coverage (`total` / `modeled` / `unknown`), ABI, capability, and control
-  statuses
+  coverage (`total` / `modeled` / `unknown`), ABI, capability, control, and
+  memory statuses
 - `executable` — post-link container gate (`passed` / `failed` / `skipped`)
 - `behavior` — `HarnessReport` when execution ran; otherwise `null`.
   Case count for the buffer-scan shape is 6 or 7 depending on whether a
   `memory_read` region `{ptr}[0..{len}]` proves null-when-empty policy.
 - `behavior_oracle` — named versioned profile when the contract matches a
-  builtin shape (e.g. `builtin.buffer.count_equal_u8` v1). Equality for
-  golden shapes is proven by this oracle + vectors, not by weak contract
-  `ensures` alone (`count <= length` is not `count == occurrences`).
+  builtin shape (e.g. `builtin.buffer.count_equal_u8` v2). Fields include
+  `contract_ensures` (raw contract postconditions, often weaker) and
+  `proof_basis: oracle_and_vectors` — equality is not proven by the contract
+  alone.
 
 Coverage units are instructions, never raw bytes. Byte decode gaps appear only
 in stderr / error messages. Agent JSON remains experimental in 0.x: tolerate
