@@ -111,7 +111,7 @@ Raw assembly states machine operations precisely but often hides intent: contrac
 | `semasm-asir` | ASIR graph types |
 | `semasm-target` | Target identity, capability registry, and tool discovery |
 | `semasm-build` | Safe process execution, build pipeline (assemble, link, verify, run), artifact reports |
-| `semasm-agent` | Provider-neutral agent packets and verification |
+| `semasm-agent` | Provider-neutral agent packets, harness, and verification reports |
 | `semasm-cli` | `semasm` binary |
 | `semasm-obj` | Structured object-file inspection |
 | `semasm-decode` | Physical instruction decoding |

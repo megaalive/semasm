@@ -9,7 +9,7 @@ Current workspace crates:
 | `semasm-asir` | ASIR types |
 | `semasm-target` | Target identity and kits |
 | `semasm-build` | Tool execution, assembly, linking, execution, and reports |
-| `semasm-agent` | Provider-neutral agent task and result packets |
+| `semasm-agent` | Provider-neutral agent task packets, harness, and `VerificationReport` |
 | `semasm-cli` | `semasm` binary |
 | `semasm-obj` | Structured object-file inspection |
 | `semasm-decode` | Normalized physical instruction decoding |

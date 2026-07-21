@@ -1763,7 +1763,10 @@ Acceptance criteria:
 
 - agent-generated routine passes all cases;
 - failure output includes input and observed result;
-- implementation is not accepted merely because it assembles.
+- implementation is not accepted merely because it assembles;
+- `semasm agent verify` emits `VerificationReport` for gate failure, execution
+  denial, and behavioral outcomes (`docs/CLI_COMPATIBILITY.md`); harness shape
+  expansion must not weaken that evidence contract.
 
 ---
 

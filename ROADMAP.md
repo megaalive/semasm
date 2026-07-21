@@ -38,6 +38,9 @@ conformance evidence are proven.
 - Unsupported instructions produce an incomplete result, never a clean result.
 - AArch64 and RISC-V claims remain below CI-verified until cross-target jobs pass.
 - Capability documentation remains synchronized with the manifest.
+- Agent verify emits structured `VerificationReport` evidence on every gate
+  outcome (including denial and failure); expand harness shapes only after that
+  contract stays stable (`docs/CLI_COMPATIBILITY.md`).
 
 See `semasm-complete-project-plan.md` for the original ordered vertical slices
 and `docs/status/BASELINE-2026-07.md` for the stabilization baseline.

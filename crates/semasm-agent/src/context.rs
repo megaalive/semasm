@@ -181,10 +181,9 @@ fn registers(regs: Option<&ABIRegisterMap>) -> (Vec<String>, Vec<String>) {
     }
 }
 
-fn build_acceptance(_target: &TargetIdentity, toolchain: &TargetToolchain) -> Vec<String> {
+fn build_acceptance(target: &TargetIdentity, toolchain: &TargetToolchain) -> Vec<String> {
     // Derived from the build pipeline known in semasm-build.
-    // These are reasonable defaults for the first-slice target.
-    let fmt = "elf64";
+    let fmt = target.nasm_format();
     let ext = "asm";
     vec![
         format!("{} -f {fmt} -o /dev/null src/*.{ext}", toolchain.assembler),

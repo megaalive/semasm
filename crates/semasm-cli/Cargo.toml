@@ -35,5 +35,8 @@ semasm-aarch64 = { workspace = true, optional = true }
 default = ["capstone"]
 capstone = ["semasm-decode/capstone", "semasm-cfg/capstone", "semasm-x86", "semasm-aarch64"]
 
+[dev-dependencies]
+serde_json = { workspace = true }
+
 [lints]
 workspace = true

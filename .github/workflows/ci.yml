@@ -190,8 +190,8 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Install nasm
-        run: sudo apt-get install -y nasm
+      - name: Install nasm and verification tools
+        run: sudo apt-get update && sudo apt-get install -y nasm binutils qemu-user
 
       - name: Install Rust toolchain
         uses: dtolnay/rust-toolchain@stable
@@ -207,7 +207,7 @@ jobs:
       - name: Test (capstone feature)
         run: cargo test --workspace --all-features
 
-      - name: Agent semantic-gate integration tests
+      - name: Agent semantic-gate and verify integration tests
         run: cargo test -p semasm-cli --all-features -- --ignored --nocapture
 
       - name: Compile fuzz targets

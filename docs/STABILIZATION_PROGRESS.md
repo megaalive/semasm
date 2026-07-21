@@ -30,3 +30,10 @@ PR-16 remains: document crate-boundary decisions and consolidate only the
 boundaries whose separation no longer provides a clear ownership benefit. The
 0.1 release workflow is prepared but must only be triggered from a reviewed
 `v0.1.0` tag after every checklist gate is green.
+
+Agent verification report composition (`semasm-agent::verify`) and fail-closed
+CLI emit-on-fail are in place. Next agent work (broader harness shapes beyond
+the `count_byte` slice, multi-target semantic gates) must keep emitting
+`VerificationReport` for every gate outcome and must not reintroduce pending
+mutation or hardcoded assembler formats — see `docs/CLI_COMPATIBILITY.md` and
+`ARCHITECTURE.md` verification plane.

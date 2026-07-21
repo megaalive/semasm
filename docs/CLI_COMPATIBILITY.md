@@ -15,6 +15,36 @@ fails. Partial or unsupported semantic coverage is never promoted to complete
 verification; commands either report incomplete evidence or require an explicit
 opt-in where that behavior is supported.
 
+## Agent verify (`semasm agent verify`)
+
+Exit `0` only when overall status is `verified` (static gates passed and every
+harness vector passed after `--allow-execution`).
+
+Otherwise exit `1` and still emit a structured report when gates were reached:
+
+| Status | When |
+|---|---|
+| `semantic_failed` | Object/decode/lowering/ABI/capability gate failed |
+| `executable_failed` | Linked image failed the executable-container policy |
+| `execution_denied` | Static gates passed; `--allow-execution` was not set |
+| `behavior_failed` | Execution ran; one or more vectors failed |
+
+JSON document type is `VerificationReport` from `semasm-agent::verify`:
+
+- `status`, `target`, `routine_symbol`
+- `semantic` — object policy, instruction-oriented `decode` / `lowering`
+  coverage (`total` / `modeled` / `unknown`), ABI and capability statuses
+- `executable` — post-link container gate (`passed` / `failed` / `skipped`)
+- `behavior` — `HarnessReport` when execution ran; otherwise `null`
+
+Coverage units are instructions, never raw bytes. Byte decode gaps appear only
+in stderr / error messages. Agent JSON remains experimental in 0.1: tolerate
+additive fields; do not treat unknown coverage as verified.
+
+Semantic gate runners currently complete only for `x86_64` + System V + ELF
+(with the `capstone` feature). Other targets fail closed before claiming
+verification.
+
 ## JSON status
 
 - Artifact reports are experimental but versioned. Schema compatibility and

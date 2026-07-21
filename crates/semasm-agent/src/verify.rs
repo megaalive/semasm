@@ -34,15 +34,18 @@ impl GateStatus {
     }
 }
 
-/// Instruction- or byte-level coverage counts (unknown ≠ verified).
+/// Instruction-level coverage counts (unknown ≠ verified).
+///
+/// Decode and lowering gates always use instruction counts here. Byte-level
+/// detail belongs in error messages, not in these fields.
 #[derive(Serialize, Deserialize, Clone, Copy, Debug, PartialEq, Eq)]
 #[cfg_attr(feature = "schema", derive(schemars::JsonSchema))]
 pub struct Coverage {
-    /// Total units presented to the gate.
+    /// Total instructions presented to the gate.
     pub total: usize,
-    /// Units with modeled / accepted semantics.
+    /// Instructions with modeled / accepted semantics.
     pub modeled: usize,
-    /// Units left unknown or unsupported.
+    /// Instructions left unknown or unsupported.
     pub unknown: usize,
 }
 
@@ -53,6 +56,26 @@ impl Coverage {
         Self {
             total,
             modeled: total,
+            unknown: 0,
+        }
+    }
+
+    /// Fail-closed placeholder when instruction coverage is unknown.
+    #[must_use]
+    pub fn unknown_incomplete() -> Self {
+        Self {
+            total: 0,
+            modeled: 0,
+            unknown: 1,
+        }
+    }
+
+    /// Empty coverage for gates that have not run yet.
+    #[must_use]
+    pub fn not_started() -> Self {
+        Self {
+            total: 0,
+            modeled: 0,
             unknown: 0,
         }
     }
@@ -77,9 +100,9 @@ impl Coverage {
 pub struct SemanticGates {
     /// Relocatable object, exports, and import policy.
     pub object_policy: GateStatus,
-    /// Total executable bytes examined.
+    /// Total executable bytes examined (metadata; not coverage units).
     pub executable_bytes: usize,
-    /// Decode coverage over executable bytes (as instruction counts).
+    /// Decode coverage as instruction counts.
     pub decode: Coverage,
     /// Lowering coverage over decoded instructions.
     pub lowering: Coverage,
@@ -100,6 +123,72 @@ impl SemanticGates {
             && self.lowering.unknown == 0
             && self.decode.modeled == self.decode.total
             && self.lowering.modeled == self.lowering.total
+    }
+
+    /// Build a fail-closed gate snapshot from a structured stage error.
+    ///
+    /// Stages that did not run are marked [`GateStatus::Skipped`]. Coverage
+    /// fields use instruction counts from the error when present; otherwise a
+    /// fail-closed unknown placeholder is used for the failing coverage stage.
+    #[must_use]
+    pub fn from_error(error: &SemanticGateError, executable_bytes: usize) -> Self {
+        let decode = error.decode.unwrap_or_else(Coverage::not_started);
+        let lowering = error.lowering.unwrap_or_else(Coverage::not_started);
+
+        match error.stage {
+            "target" | "object" => Self {
+                object_policy: GateStatus::Failed,
+                executable_bytes,
+                decode: Coverage::not_started(),
+                lowering: Coverage::not_started(),
+                abi: GateStatus::Skipped,
+                capability: GateStatus::Skipped,
+            },
+            "decode" => Self {
+                object_policy: GateStatus::Passed,
+                executable_bytes,
+                decode: error.decode.unwrap_or_else(Coverage::unknown_incomplete),
+                lowering: Coverage::not_started(),
+                abi: GateStatus::Skipped,
+                capability: GateStatus::Skipped,
+            },
+            "lowering" => Self {
+                object_policy: GateStatus::Passed,
+                executable_bytes,
+                decode: if error.decode.is_some() {
+                    decode
+                } else {
+                    Coverage::not_started()
+                },
+                lowering: error.lowering.unwrap_or_else(Coverage::unknown_incomplete),
+                abi: GateStatus::Skipped,
+                capability: GateStatus::Skipped,
+            },
+            "abi" => Self {
+                object_policy: GateStatus::Passed,
+                executable_bytes,
+                decode,
+                lowering,
+                abi: GateStatus::Failed,
+                capability: GateStatus::Skipped,
+            },
+            "capability" => Self {
+                object_policy: GateStatus::Passed,
+                executable_bytes,
+                decode,
+                lowering,
+                abi: GateStatus::Passed,
+                capability: GateStatus::Failed,
+            },
+            _ => Self {
+                object_policy: GateStatus::Failed,
+                executable_bytes,
+                decode: error.decode.unwrap_or_else(Coverage::unknown_incomplete),
+                lowering: error.lowering.unwrap_or_else(Coverage::not_started),
+                abi: GateStatus::Skipped,
+                capability: GateStatus::Skipped,
+            },
+        }
     }
 }
 
@@ -125,6 +214,14 @@ impl ExecutableGate {
     pub fn failed() -> Self {
         Self {
             status: GateStatus::Failed,
+        }
+    }
+
+    /// Construct a skipped executable gate (semantic failed before link).
+    #[must_use]
+    pub fn skipped() -> Self {
+        Self {
+            status: GateStatus::Skipped,
         }
     }
 }
@@ -366,5 +463,85 @@ mod tests {
         assert_eq!(value["status"], "execution_denied");
         assert_eq!(value["semantic"]["abi"], "passed");
         assert_eq!(value["semantic"]["lowering"]["unknown"], 0);
+    }
+
+    #[test]
+    fn from_error_object_stage_skips_later_gates() {
+        let error = SemanticGateError::new("object", "not relocatable");
+        let gates = SemanticGates::from_error(&error, 0);
+        assert_eq!(gates.object_policy, GateStatus::Failed);
+        assert_eq!(gates.abi, GateStatus::Skipped);
+        assert_eq!(gates.capability, GateStatus::Skipped);
+        assert!(!gates.all_passed());
+        let report = VerificationReport::from_parts(
+            "x86_64-unknown-linux-gnu".into(),
+            "count_byte".into(),
+            gates,
+            ExecutableGate::skipped(),
+            None,
+        );
+        assert_eq!(report.status, VerificationStatus::SemanticFailed);
+    }
+
+    #[test]
+    fn from_error_lowering_keeps_partial_coverage() {
+        let error = SemanticGateError {
+            stage: "lowering",
+            message: "unsupported `foo`".into(),
+            decode: Some(Coverage::complete(4)),
+            lowering: Some(Coverage {
+                total: 4,
+                modeled: 2,
+                unknown: 2,
+            }),
+        };
+        let gates = SemanticGates::from_error(&error, 64);
+        assert_eq!(gates.object_policy, GateStatus::Passed);
+        assert_eq!(gates.decode, Coverage::complete(4));
+        assert_eq!(gates.lowering.modeled, 2);
+        assert_eq!(gates.lowering.unknown, 2);
+        assert_eq!(gates.abi, GateStatus::Skipped);
+        assert_eq!(gates.executable_bytes, 64);
+        assert!(!gates.all_passed());
+    }
+
+    #[test]
+    fn from_error_abi_marks_abi_failed() {
+        let error = SemanticGateError {
+            stage: "abi",
+            message: "stack misaligned".into(),
+            decode: Some(Coverage::complete(3)),
+            lowering: Some(Coverage::complete(3)),
+        };
+        let gates = SemanticGates::from_error(&error, 16);
+        assert_eq!(gates.abi, GateStatus::Failed);
+        assert_eq!(gates.capability, GateStatus::Skipped);
+        assert_eq!(gates.decode.total, 3);
+        assert!(!gates.all_passed());
+    }
+
+    #[test]
+    fn from_error_decode_without_coverage_is_fail_closed() {
+        let error = SemanticGateError::new(
+            "decode",
+            "decode coverage incomplete: decoded 3 of 8 executable bytes",
+        );
+        let gates = SemanticGates::from_error(&error, 8);
+        assert_eq!(gates.decode, Coverage::unknown_incomplete());
+        assert_eq!(gates.executable_bytes, 8);
+        assert!(!gates.all_passed());
+    }
+
+    #[test]
+    fn compose_executable_failed_json_status() {
+        let report = VerificationReport::from_parts(
+            "x86_64-unknown-linux-gnu".into(),
+            "count_byte".into(),
+            passed_semantic(),
+            ExecutableGate::failed(),
+            None,
+        );
+        let value = serde_json::to_value(&report).unwrap();
+        assert_eq!(value["status"], "executable_failed");
     }
 }

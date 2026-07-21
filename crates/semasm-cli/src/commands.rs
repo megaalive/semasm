@@ -3,10 +3,12 @@
 use std::path::{Path, PathBuf};
 use std::process::ExitCode;
 
+#[cfg(feature = "capstone")]
+use semasm_agent::verify::Coverage;
 use semasm_agent::{
     harness,
     verify::{
-        Coverage, ExecutableGate, GateStatus, SemanticGateError, SemanticGates, VerificationReport,
+        ExecutableGate, GateStatus, SemanticGateError, SemanticGates, VerificationReport,
         VerificationStatus,
     },
     ContextBundle, TargetToolchain, TaskPacket,
@@ -18,7 +20,9 @@ use semasm_contract::{
     check_file, explain_code, format_diagnostics_terminal, CheckReportJson, ContractCode,
 };
 use semasm_obj::{ContainerKind, ObjectError};
-use semasm_target::{tools, Abi, Isa, ObjectFormat, TargetIdentity};
+use semasm_target::{tools, TargetIdentity};
+#[cfg(feature = "capstone")]
+use semasm_target::{Abi, Isa, ObjectFormat};
 
 use crate::OutputFormat;
 
@@ -240,7 +244,8 @@ pub(crate) fn do_agent_verify(
     let harness_object = directory.join("harness.o");
     let executable = directory.join("harness");
 
-    match pipeline.assemble_reproducible(source, &routine_object, "elf64") {
+    let nasm_format = identity.nasm_format();
+    match pipeline.assemble_reproducible(source, &routine_object, nasm_format) {
         Ok(output) if output.success() => {}
         Ok(output) => {
             eprintln!(
@@ -261,7 +266,15 @@ pub(crate) fn do_agent_verify(
         Ok(gates) => gates,
         Err(error) => {
             eprintln!("semantic gate failed: {error}");
+            let verification = VerificationReport::from_parts(
+                identity.name.clone(),
+                routine_symbol,
+                SemanticGates::from_error(&error, 0),
+                ExecutableGate::skipped(),
+                None,
+            );
             let _ = std::fs::remove_dir_all(&directory);
+            let _ = emit_verification_report(&verification, format);
             return ExitCode::from(1);
         }
     };
@@ -272,7 +285,7 @@ pub(crate) fn do_agent_verify(
         let _ = std::fs::remove_dir_all(&directory);
         return ExitCode::from(1);
     }
-    match pipeline.assemble_reproducible(&harness_path, &harness_object, "elf64") {
+    match pipeline.assemble_reproducible(&harness_path, &harness_object, nasm_format) {
         Ok(output) if output.success() => {}
         Ok(output) => {
             eprintln!(
@@ -303,14 +316,22 @@ pub(crate) fn do_agent_verify(
         }
     }
 
-    let executable_gate = match check_executable_object(&executable, &identity) {
-        Ok(gate) => gate,
-        Err(error) => {
+    let (executable_gate, executable_error) = check_executable_object(&executable, &identity);
+    if executable_gate.status == GateStatus::Failed {
+        if let Some(error) = executable_error {
             eprintln!("executable object gate failed: {error}");
-            let _ = std::fs::remove_dir_all(&directory);
-            return ExitCode::from(1);
         }
-    };
+        let verification = VerificationReport::from_parts(
+            identity.name.clone(),
+            routine_symbol,
+            semantic,
+            executable_gate,
+            None,
+        );
+        let _ = std::fs::remove_dir_all(&directory);
+        let _ = emit_verification_report(&verification, format);
+        return ExitCode::from(1);
+    }
 
     if !allow_execution {
         let verification = VerificationReport::from_parts(
@@ -424,13 +445,14 @@ fn print_verification_terminal(report: &VerificationReport) {
 fn check_executable_object(
     executable: &Path,
     identity: &TargetIdentity,
-) -> Result<ExecutableGate, String> {
-    let info =
-        semasm_obj::read_for_target(executable, identity).map_err(|error| error.to_string())?;
-    if info.kind == ContainerKind::Executable {
-        Ok(ExecutableGate::passed())
-    } else {
-        Err(format!("produced {:?} container", info.kind))
+) -> (ExecutableGate, Option<String>) {
+    match semasm_obj::read_for_target(executable, identity) {
+        Ok(info) if info.kind == ContainerKind::Executable => (ExecutableGate::passed(), None),
+        Ok(info) => (
+            ExecutableGate::failed(),
+            Some(format!("produced {:?} container", info.kind)),
+        ),
+        Err(error) => (ExecutableGate::failed(), Some(error.to_string())),
     }
 }
 
@@ -543,11 +565,9 @@ fn decode_candidate_code(
             message: format!(
                 "decode coverage incomplete: decoded {decoded_bytes} of {code_bytes} executable bytes"
             ),
-            decode: Some(Coverage {
-                total: code_bytes,
-                modeled: decoded_bytes,
-                unknown: code_bytes.saturating_sub(decoded_bytes),
-            }),
+            // Instruction coverage is unknown when bytes remain undecoded;
+            // keep byte totals in the message only.
+            decode: None,
             lowering: None,
         });
     }

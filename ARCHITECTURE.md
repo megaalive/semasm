@@ -25,7 +25,19 @@ Intent, project manifests, contracts, target selection, agent task packets, and 
 
 ### Verification plane
 
-Assemble → object inspect → disassemble → ASIR lower → static checks → link → sandbox/emulator → behavioral tests → size/performance reports.
+Assemble → object inspect → disassemble → ASIR lower → static checks → link →
+sandbox/emulator → behavioral tests → size/performance reports.
+
+Agent candidate verification (`semasm agent verify`) follows the same plane and
+emits an immutable `VerificationReport` from `semasm-agent::verify`:
+
+1. Assemble the candidate with the target's `nasm_format()`.
+2. Static semantic gates (object policy, decode, lowering, ABI, capability).
+3. Assemble harness, link, executable-container gate.
+4. Behavioral harness only after `--allow-execution`.
+
+Stage results are composed once; failures still emit the report (JSON or
+terminal) so agents can audit evidence. See `docs/CLI_COMPATIBILITY.md`.
 
 ### Delivery plane
 
