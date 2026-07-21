@@ -6,6 +6,10 @@ use std::process::ExitCode;
 #[cfg(feature = "capstone")]
 use semasm_agent::verify::Coverage;
 use semasm_agent::{
+    evidence::{
+        compare_reports, render_compare_markdown, render_evidence_card_json,
+        render_evidence_card_markdown, EvidenceCardContext,
+    },
     harness,
     verify::{
         ExecutableGate, ExecutionIsolation, GateStatus, SemanticGateError, SemanticGates,
@@ -188,12 +192,185 @@ pub(crate) fn do_agent_verify(
     target_str: &str,
     format: OutputFormat,
     allow_execution: bool,
+    card: Option<&Path>,
+    card_json: bool,
 ) -> ExitCode {
+    match run_agent_verify_core(source, contract_path, target_str, allow_execution) {
+        VerifyCore::Early(code) => code,
+        VerifyCore::Done {
+            report,
+            object_bytes,
+            contract_bytes,
+            exit,
+        } => {
+            let card_opts = CardOptions {
+                path: card,
+                as_json: card_json,
+                contract_path,
+                contract_bytes: &contract_bytes,
+                source_path: source,
+                object_bytes,
+                allow_execution,
+                target: target_str,
+            };
+            if !emit_verification_with_card(report.as_ref(), format, &card_opts) {
+                return ExitCode::from(1);
+            }
+            exit
+        }
+    }
+}
+
+pub(crate) fn do_agent_compare(
+    source_a: &Path,
+    source_b: &Path,
+    contract_path: &Path,
+    target_str: &str,
+    format: OutputFormat,
+    allow_execution: bool,
+) -> ExitCode {
+    let a = match run_agent_verify_core(source_a, contract_path, target_str, allow_execution) {
+        VerifyCore::Early(code) => return code,
+        VerifyCore::Done { report, exit, .. } => (report, exit),
+    };
+    let b = match run_agent_verify_core(source_b, contract_path, target_str, allow_execution) {
+        VerifyCore::Early(code) => return code,
+        VerifyCore::Done { report, exit, .. } => (report, exit),
+    };
+
+    let label_a = source_a
+        .file_name()
+        .and_then(|name| name.to_str())
+        .unwrap_or("a");
+    let label_b = source_b
+        .file_name()
+        .and_then(|name| name.to_str())
+        .unwrap_or("b");
+    let compare = compare_reports(a.0.as_ref(), b.0.as_ref(), label_a, label_b);
+
+    match format {
+        OutputFormat::Json => match serde_json::to_string_pretty(&compare) {
+            Ok(json) => println!("{json}"),
+            Err(error) => {
+                eprintln!("failed to serialize compare report: {error}");
+                return ExitCode::from(1);
+            }
+        },
+        OutputFormat::Terminal => {
+            print!("{}", render_compare_markdown(&compare, label_a, label_b));
+        }
+    }
+
+    // Compare always emits a report when both sides produced verification
+    // evidence; exit 0 only if at least one candidate verified.
+    if a.0.status == VerificationStatus::Verified || b.0.status == VerificationStatus::Verified {
+        ExitCode::SUCCESS
+    } else {
+        ExitCode::from(1)
+    }
+}
+
+struct CardOptions<'a> {
+    path: Option<&'a Path>,
+    as_json: bool,
+    contract_path: &'a Path,
+    contract_bytes: &'a [u8],
+    source_path: &'a Path,
+    object_bytes: u64,
+    allow_execution: bool,
+    target: &'a str,
+}
+
+enum VerifyCore {
+    Early(ExitCode),
+    Done {
+        report: Box<VerificationReport>,
+        object_bytes: u64,
+        contract_bytes: Vec<u8>,
+        exit: ExitCode,
+    },
+}
+
+fn reproduce_verify_cmd(
+    source: &Path,
+    contract: &Path,
+    target: &str,
+    allow_execution: bool,
+) -> String {
+    let mut cmd = format!(
+        "semasm agent verify {} {}",
+        source.display(),
+        contract.display()
+    );
+    if target != "x86_64-unknown-linux-gnu" {
+        cmd.push_str(" --target ");
+        cmd.push_str(target);
+    }
+    if allow_execution {
+        cmd.push_str(" --allow-execution");
+    }
+    cmd
+}
+
+fn emit_verification_with_card(
+    report: &VerificationReport,
+    format: OutputFormat,
+    card: &CardOptions<'_>,
+) -> bool {
+    if !emit_verification_report(report, format) {
+        return false;
+    }
+    write_evidence_card_if_requested(report, card)
+}
+
+fn write_evidence_card_if_requested(report: &VerificationReport, card: &CardOptions<'_>) -> bool {
+    let Some(path) = card.path else {
+        return true;
+    };
+    let ctx = EvidenceCardContext {
+        report,
+        contract_path: card.contract_path,
+        contract_bytes: card.contract_bytes,
+        source_path: card.source_path,
+        object_bytes: card.object_bytes,
+        reproduce_cmd: &reproduce_verify_cmd(
+            card.source_path,
+            card.contract_path,
+            card.target,
+            card.allow_execution,
+        ),
+    };
+    let body = if card.as_json {
+        match render_evidence_card_json(&ctx) {
+            Ok(json) => json,
+            Err(error) => {
+                eprintln!("failed to serialize evidence card: {error}");
+                return false;
+            }
+        }
+    } else {
+        render_evidence_card_markdown(&ctx)
+    };
+    if let Err(error) = std::fs::write(path, body) {
+        eprintln!("error: cannot write evidence card {}: {error}", path.display());
+        return false;
+    }
+    eprintln!("wrote evidence card {}", path.display());
+    true
+}
+
+#[allow(clippy::too_many_lines)]
+fn run_agent_verify_core(
+    source: &Path,
+    contract_path: &Path,
+    target_str: &str,
+    allow_execution: bool,
+) -> VerifyCore {
     let identity = match TargetIdentity::parse_known(target_str) {
         Ok(identity) => identity,
         Err(error) => {
             eprintln!("error: {error}");
-            return ExitCode::from(2);
+            return VerifyCore::Early(ExitCode::from(2));
         }
     };
     let pipeline = Pipeline::discover(&identity);
@@ -203,24 +380,31 @@ pub(crate) fn do_agent_verify(
         eprintln!(
             "  (assembler, linker, disassembler, and a runner such as qemu-x86_64 are required)"
         );
-        return ExitCode::from(1);
+        return VerifyCore::Early(ExitCode::from(1));
     }
     let run_isolation = ExecutionIsolation::from_runner(pipeline.toolchain.runner.as_deref());
 
-    let contract_text = match std::fs::read_to_string(contract_path) {
+    let contract_bytes = match std::fs::read(contract_path) {
+        Ok(bytes) => bytes,
+        Err(error) => {
+            eprintln!("{}: error: {error}", contract_path.display());
+            return VerifyCore::Early(ExitCode::from(1));
+        }
+    };
+    let contract_text = match std::str::from_utf8(&contract_bytes) {
         Ok(text) => text,
         Err(error) => {
             eprintln!("{}: error: {error}", contract_path.display());
-            return ExitCode::from(1);
+            return VerifyCore::Early(ExitCode::from(1));
         }
     };
-    let check = semasm_contract::check_str(&contract_text);
+    let check = semasm_contract::check_str(contract_text);
     if !check.ok() {
         print!(
             "{}",
             format_diagnostics_terminal(&contract_path.display().to_string(), &check.diagnostics)
         );
-        return ExitCode::from(1);
+        return VerifyCore::Early(ExitCode::from(1));
     }
     let checked = check.contract.expect("ok() implies Some");
 
@@ -231,14 +415,21 @@ pub(crate) fn do_agent_verify(
              the routine shape is not yet supported by the harness",
             checked.name
         );
-        return ExitCode::from(1);
+        return VerifyCore::Early(ExitCode::from(1));
     }
     let routine_symbol = checked.name.clone();
 
-    let directory = std::env::temp_dir().join(format!("semasm-verify-{}", std::process::id()));
+    let directory = std::env::temp_dir().join(format!(
+        "semasm-verify-{}-{}",
+        std::process::id(),
+        source
+            .file_stem()
+            .and_then(|stem| stem.to_str())
+            .unwrap_or("candidate")
+    ));
     if let Err(error) = std::fs::create_dir_all(&directory) {
         eprintln!("error: cannot create scratch dir: {error}");
-        return ExitCode::from(1);
+        return VerifyCore::Early(ExitCode::from(1));
     }
     let routine_object = directory.join("routine.o");
     let harness_object = directory.join("harness.o");
@@ -256,20 +447,22 @@ pub(crate) fn do_agent_verify(
                 String::from_utf8_lossy(&output.stderr)
             );
             let _ = std::fs::remove_dir_all(&directory);
-            return ExitCode::from(1);
+            return VerifyCore::Early(ExitCode::from(1));
         }
         Err(error) => {
             eprintln!("assemble routine error: {error}");
             let _ = std::fs::remove_dir_all(&directory);
-            return ExitCode::from(1);
+            return VerifyCore::Early(ExitCode::from(1));
         }
     }
+
+    let object_bytes = std::fs::metadata(&routine_object).map_or(0, |meta| meta.len());
 
     let semantic = match verify_candidate_semantics(&routine_object, &identity, &routine_symbol) {
         Ok(gates) => gates,
         Err(error) => {
             eprintln!("semantic gate failed: {error}");
-            let verification = VerificationReport::from_parts(
+            let report = VerificationReport::from_parts(
                 identity.name.clone(),
                 routine_symbol,
                 SemanticGates::from_error(&error, 0),
@@ -278,8 +471,12 @@ pub(crate) fn do_agent_verify(
                 ExecutionIsolation::StaticOnly,
             );
             let _ = std::fs::remove_dir_all(&directory);
-            let _ = emit_verification_report(&verification, format);
-            return ExitCode::from(1);
+            return VerifyCore::Done {
+                report: Box::new(report),
+                object_bytes,
+                contract_bytes,
+                exit: ExitCode::from(1),
+            };
         }
     };
 
@@ -287,7 +484,7 @@ pub(crate) fn do_agent_verify(
         Ok(source) => source,
         Err(reason) => {
             eprintln!("behavioral harness unavailable: {reason}");
-            let verification = VerificationReport::from_parts(
+            let report = VerificationReport::from_parts(
                 identity.name.clone(),
                 routine_symbol,
                 semantic,
@@ -296,11 +493,15 @@ pub(crate) fn do_agent_verify(
                 ExecutionIsolation::StaticOnly,
             );
             let _ = std::fs::remove_dir_all(&directory);
-            let _ = emit_verification_report(&verification, format);
             eprintln!(
                 "execution denied: static semantic gates passed; behavioral harness not available for this target"
             );
-            return ExitCode::from(1);
+            return VerifyCore::Done {
+                report: Box::new(report),
+                object_bytes,
+                contract_bytes,
+                exit: ExitCode::from(1),
+            };
         }
     };
 
@@ -312,7 +513,7 @@ pub(crate) fn do_agent_verify(
     if let Err(error) = std::fs::write(&harness_path, &harness_source) {
         eprintln!("error: cannot write harness source: {error}");
         let _ = std::fs::remove_dir_all(&directory);
-        return ExitCode::from(1);
+        return VerifyCore::Early(ExitCode::from(1));
     }
     match pipeline.assemble_for_target(&harness_path, &harness_object) {
         Ok(output) if output.success() => {}
@@ -322,12 +523,12 @@ pub(crate) fn do_agent_verify(
                 String::from_utf8_lossy(&output.stderr)
             );
             let _ = std::fs::remove_dir_all(&directory);
-            return ExitCode::from(1);
+            return VerifyCore::Early(ExitCode::from(1));
         }
         Err(error) => {
             eprintln!("assemble harness error: {error}");
             let _ = std::fs::remove_dir_all(&directory);
-            return ExitCode::from(1);
+            return VerifyCore::Early(ExitCode::from(1));
         }
     }
 
@@ -340,12 +541,12 @@ pub(crate) fn do_agent_verify(
         Ok(output) => {
             eprintln!("link failed: {}", String::from_utf8_lossy(&output.stderr));
             let _ = std::fs::remove_dir_all(&directory);
-            return ExitCode::from(1);
+            return VerifyCore::Early(ExitCode::from(1));
         }
         Err(error) => {
             eprintln!("link error: {error}");
             let _ = std::fs::remove_dir_all(&directory);
-            return ExitCode::from(1);
+            return VerifyCore::Early(ExitCode::from(1));
         }
     }
 
@@ -354,7 +555,7 @@ pub(crate) fn do_agent_verify(
         if let Some(error) = executable_error {
             eprintln!("executable object gate failed: {error}");
         }
-        let verification = VerificationReport::from_parts(
+        let report = VerificationReport::from_parts(
             identity.name.clone(),
             routine_symbol,
             semantic,
@@ -363,12 +564,16 @@ pub(crate) fn do_agent_verify(
             ExecutionIsolation::StaticOnly,
         );
         let _ = std::fs::remove_dir_all(&directory);
-        let _ = emit_verification_report(&verification, format);
-        return ExitCode::from(1);
+        return VerifyCore::Done {
+            report: Box::new(report),
+            object_bytes,
+            contract_bytes,
+            exit: ExitCode::from(1),
+        };
     }
 
     if !allow_execution {
-        let verification = VerificationReport::from_parts(
+        let report = VerificationReport::from_parts(
             identity.name.clone(),
             routine_symbol,
             semantic,
@@ -377,13 +582,15 @@ pub(crate) fn do_agent_verify(
             ExecutionIsolation::StaticOnly,
         );
         let _ = std::fs::remove_dir_all(&directory);
-        if !emit_verification_report(&verification, format) {
-            return ExitCode::from(1);
-        }
         eprintln!(
             "execution denied: static semantic gates passed; rerun with --allow-execution to run the candidate"
         );
-        return ExitCode::from(1);
+        return VerifyCore::Done {
+            report: Box::new(report),
+            object_bytes,
+            contract_bytes,
+            exit: ExitCode::from(1),
+        };
     }
 
     let run = match pipeline.run(&executable) {
@@ -391,12 +598,12 @@ pub(crate) fn do_agent_verify(
         Err(error) => {
             eprintln!("run error: {error}");
             let _ = std::fs::remove_dir_all(&directory);
-            return ExitCode::from(1);
+            return VerifyCore::Early(ExitCode::from(1));
         }
     };
     let behavior = harness::evaluate(&run.stdout, &vectors);
     let _ = std::fs::remove_dir_all(&directory);
-    let verification = VerificationReport::from_parts(
+    let report = VerificationReport::from_parts(
         identity.name.clone(),
         routine_symbol,
         semantic,
@@ -405,13 +612,15 @@ pub(crate) fn do_agent_verify(
         run_isolation,
     );
 
-    if !emit_verification_report(&verification, format) {
-        return ExitCode::from(1);
-    }
-
-    match verification.status {
+    let exit = match report.status {
         VerificationStatus::Verified => ExitCode::SUCCESS,
         _ => ExitCode::from(1),
+    };
+    VerifyCore::Done {
+        report: Box::new(report),
+        object_bytes,
+        contract_bytes,
+        exit,
     }
 }
 
@@ -441,7 +650,7 @@ fn print_verification_terminal(report: &VerificationReport) {
     println!("Routine: {}", report.routine_symbol);
     println!("Isolation: {}", report.isolation.as_str());
     println!(
-        "Semantic gates: object={} decode={}/{} lowering={}/{} ({}%) abi={} capability={}",
+        "Semantic gates: object={} decode={}/{} lowering={}/{} ({}%) abi={} capability={} control={}",
         semantic.object_policy.as_str(),
         semantic.decode.modeled,
         semantic.decode.total,
@@ -450,6 +659,7 @@ fn print_verification_terminal(report: &VerificationReport) {
         semantic.lowering.percent_modeled(),
         semantic.abi.as_str(),
         semantic.capability.as_str(),
+        semantic.control.as_str(),
     );
     println!("Executable gate: {}", report.executable.status.as_str());
 
@@ -511,6 +721,7 @@ fn verify_candidate_semantics(
             let lowered = lower_x86_instructions(&physical, decode_coverage)?;
             let lowering_coverage = Coverage::complete(lowered.len());
             check_x86_abi_capability(&lowered, identity.abi, decode_coverage, lowering_coverage)?;
+            check_x86_cfg_leaf(&physical, decode_coverage, lowering_coverage)?;
             Ok(SemanticGates {
                 object_policy: GateStatus::Passed,
                 executable_bytes: code_bytes,
@@ -518,6 +729,7 @@ fn verify_candidate_semantics(
                 lowering: lowering_coverage,
                 abi: GateStatus::Passed,
                 capability: GateStatus::Passed,
+                control: GateStatus::Passed,
             })
         }
         (Isa::AArch64, Abi::Aapcs64, ObjectFormat::Elf) => {
@@ -534,6 +746,8 @@ fn verify_candidate_semantics(
                 lowering: lowering_coverage,
                 abi: GateStatus::Passed,
                 capability: GateStatus::Passed,
+                // CFG leaf policy is x86-only in this slice.
+                control: GateStatus::Passed,
             })
         }
         (Isa::Riscv64, Abi::Riscv, ObjectFormat::Elf) => {
@@ -550,6 +764,8 @@ fn verify_candidate_semantics(
                 lowering: lowering_coverage,
                 abi: GateStatus::Passed,
                 capability: GateStatus::Passed,
+                // CFG leaf policy is x86-only in this slice.
+                control: GateStatus::Passed,
             })
         }
         _ => Err(SemanticGateError::new(
@@ -850,6 +1066,108 @@ fn check_x86_abi_capability(
 }
 
 #[cfg(feature = "capstone")]
+fn check_x86_cfg_leaf(
+    physical: &[semasm_decode::PhysicalInstruction],
+    decode_coverage: Coverage,
+    lowering_coverage: Coverage,
+) -> Result<(), SemanticGateError> {
+    use semasm_cfg::BlockEnd;
+
+    for instruction in physical {
+        match semasm_cfg::classify_instruction(instruction) {
+            BlockEnd::Indirect => {
+                return Err(SemanticGateError {
+                    stage: "cfg",
+                    message: format!(
+                        "leaf control-flow policy rejected indirect branch at {:#x}",
+                        instruction.address
+                    ),
+                    decode: Some(decode_coverage),
+                    lowering: Some(lowering_coverage),
+                });
+            }
+            BlockEnd::Unknown => {
+                return Err(SemanticGateError {
+                    stage: "cfg",
+                    message: format!(
+                        "leaf control-flow policy rejected unknown terminator at {:#x}",
+                        instruction.address
+                    ),
+                    decode: Some(decode_coverage),
+                    lowering: Some(lowering_coverage),
+                });
+            }
+            BlockEnd::Call { address: None, .. } => {
+                return Err(SemanticGateError {
+                    stage: "cfg",
+                    message: format!(
+                        "leaf control-flow policy rejected indirect call at {:#x}",
+                        instruction.address
+                    ),
+                    decode: Some(decode_coverage),
+                    lowering: Some(lowering_coverage),
+                });
+            }
+            _ => {}
+        }
+    }
+
+    let cfg = semasm_cfg::build(physical).map_err(|error| SemanticGateError {
+        stage: "cfg",
+        message: format!("CFG build failed: {error}"),
+        decode: Some(decode_coverage),
+        lowering: Some(lowering_coverage),
+    })?;
+
+    for block in &cfg.blocks {
+        match &block.end {
+            BlockEnd::UnconditionalBranch {
+                target: None,
+                address,
+            } => {
+                return Err(SemanticGateError {
+                    stage: "cfg",
+                    message: format!(
+                        "leaf control-flow policy rejected incomplete jump from {:#x} to {:#x}",
+                        block.end_address, address
+                    ),
+                    decode: Some(decode_coverage),
+                    lowering: Some(lowering_coverage),
+                });
+            }
+            BlockEnd::ConditionalBranch {
+                taken: None,
+                taken_address,
+                ..
+            } => {
+                return Err(SemanticGateError {
+                    stage: "cfg",
+                    message: format!(
+                        "leaf control-flow policy rejected incomplete conditional from {:#x} to {:#x}",
+                        block.end_address, taken_address
+                    ),
+                    decode: Some(decode_coverage),
+                    lowering: Some(lowering_coverage),
+                });
+            }
+            BlockEnd::Indirect | BlockEnd::Unknown => {
+                return Err(SemanticGateError {
+                    stage: "cfg",
+                    message: format!(
+                        "leaf control-flow policy rejected non-direct terminator at {:#x}",
+                        block.end_address
+                    ),
+                    decode: Some(decode_coverage),
+                    lowering: Some(lowering_coverage),
+                });
+            }
+            _ => {}
+        }
+    }
+    Ok(())
+}
+
+#[cfg(feature = "capstone")]
 fn check_aarch64_abi_capability(
     lowered: &[semasm_aarch64::lower::LoweredInstr],
     decode_coverage: Coverage,
@@ -958,6 +1276,7 @@ mod semantic_gate_tests {
         assert_eq!(gates.lowering.modeled, gates.lowering.total);
         assert_eq!(gates.abi, GateStatus::Passed);
         assert_eq!(gates.capability, GateStatus::Passed);
+        assert_eq!(gates.control, GateStatus::Passed);
         let _ = std::fs::remove_dir_all(scratch);
     }
 
@@ -988,6 +1307,7 @@ mod semantic_gate_tests {
         assert_eq!(gates.lowering.unknown, 0);
         assert_eq!(gates.abi, GateStatus::Passed);
         assert_eq!(gates.capability, GateStatus::Passed);
+        assert_eq!(gates.control, GateStatus::Passed);
         let _ = std::fs::remove_dir_all(scratch);
     }
 

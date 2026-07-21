@@ -8,6 +8,7 @@
 //! contract and target have not been tampered with.
 
 pub mod context;
+pub mod evidence;
 pub mod harness;
 pub mod verify;
 

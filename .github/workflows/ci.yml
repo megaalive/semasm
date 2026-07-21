@@ -248,6 +248,7 @@ jobs:
           cargo test -p semasm-cli --all-features --test agent_verify_min_usize \
             -- --ignored --nocapture
           cargo test -p semasm-cli --all-features --test agent_verify_adversarial _sysv_ -- --ignored --nocapture
+          cargo test -p semasm-cli --all-features --test agent_evidence_compare _sysv_ -- --ignored --nocapture
         env:
           SEMASM_REQUIRE_TOOLCHAIN: "1"
 

@@ -169,6 +169,11 @@
           "description": "Capability policy (e.g. no syscall in the candidate).",
           "$ref": "#/$defs/GateStatus"
         },
+        "control": {
+          "description": "Control-flow leaf policy (direct edges only on golden path).\n\nAbsent in older reports; deserializes as [`GateStatus::Passed`].",
+          "$ref": "#/$defs/GateStatus",
+          "default": "passed"
+        },
         "decode": {
           "description": "Decode coverage as instruction counts.",
           "$ref": "#/$defs/Coverage"

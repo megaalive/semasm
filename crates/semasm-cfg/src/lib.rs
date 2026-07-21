@@ -302,6 +302,15 @@ pub fn build(instructions: &[PhysicalInstruction]) -> Result<ControlFlowGraph, C
     })
 }
 
+/// Classify a single instruction's control-flow role.
+///
+/// Used by CFG construction and by leaf-policy gates that must reject
+/// indirect calls/branches even when they are not block terminators.
+#[must_use]
+pub fn classify_instruction(ins: &PhysicalInstruction) -> BlockEnd {
+    classify(ins)
+}
+
 /// Classify a single instruction's terminator behaviour.
 fn classify(ins: &PhysicalInstruction) -> BlockEnd {
     let groups = &ins.groups;
@@ -364,9 +373,9 @@ fn classify(ins: &PhysicalInstruction) -> BlockEnd {
 
 /// Parse a direct branch/call target address from the operand list.
 ///
-/// Returns `Some(addr)` when the (first) operand is a bare hex immediate such
-/// as `0x400010`, and `None` when it is a register or memory expression
-/// (indirect transfer) or absent.
+/// Returns `Some(addr)` when the (first) operand is a bare immediate such as
+/// `0x400010` or Capstone's decimal form `7`, and `None` when it is a register
+/// or memory expression (indirect transfer) or absent.
 fn parse_target(ins: &PhysicalInstruction) -> Option<u64> {
     let op = ins.operands.first()?;
     let trimmed = op.trim();
@@ -375,6 +384,12 @@ fn parse_target(ins: &PhysicalInstruction) -> Option<u64> {
         .or_else(|| trimmed.strip_prefix("0X"))
     {
         if let Ok(addr) = u64::from_str_radix(hex, 16) {
+            return Some(addr);
+        }
+    }
+    // Capstone occasionally prints resolved absolute targets in decimal.
+    if !trimmed.is_empty() && trimmed.chars().all(|c| c.is_ascii_digit()) {
+        if let Ok(addr) = trimmed.parse::<u64>() {
             return Some(addr);
         }
     }
@@ -572,6 +587,28 @@ mod tests {
         assert_eq!(g.blocks.len(), 1);
         assert_eq!(g.blocks[0].end, BlockEnd::Indirect);
         assert!(g.blocks[0].successors.is_empty());
+    }
+
+    #[test]
+    fn decimal_jump_immediate_is_direct() {
+        // Capstone may print absolute targets as decimal (e.g. "7").
+        let ins = PhysicalInstruction {
+            address: 0x17,
+            bytes: vec![0x75, 0xee],
+            mnemonic: "jne".into(),
+            operands: vec!["7".into()],
+            read_regs: Vec::new(),
+            write_regs: Vec::new(),
+            groups: vec!["jump".into(), "branch_relative".into()],
+            detail_available: true,
+        };
+        assert!(matches!(
+            classify_instruction(&ins),
+            BlockEnd::ConditionalBranch {
+                taken_address: 7,
+                ..
+            }
+        ));
     }
 
     #[test]

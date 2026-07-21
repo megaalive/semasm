@@ -112,6 +112,15 @@ pub struct SemanticGates {
     pub abi: GateStatus,
     /// Capability policy (e.g. no syscall in the candidate).
     pub capability: GateStatus,
+    /// Control-flow leaf policy (direct edges only on golden path).
+    ///
+    /// Absent in older reports; deserializes as [`GateStatus::Passed`].
+    #[serde(default = "gate_status_passed")]
+    pub control: GateStatus,
+}
+
+fn gate_status_passed() -> GateStatus {
+    GateStatus::Passed
 }
 
 impl SemanticGates {
@@ -121,6 +130,7 @@ impl SemanticGates {
         self.object_policy == GateStatus::Passed
             && self.abi == GateStatus::Passed
             && self.capability == GateStatus::Passed
+            && self.control == GateStatus::Passed
             && self.decode.unknown == 0
             && self.lowering.unknown == 0
             && self.decode.modeled == self.decode.total
@@ -145,6 +155,7 @@ impl SemanticGates {
                 lowering: Coverage::not_started(),
                 abi: GateStatus::Skipped,
                 capability: GateStatus::Skipped,
+                control: GateStatus::Skipped,
             },
             "decode" => Self {
                 object_policy: GateStatus::Passed,
@@ -153,6 +164,7 @@ impl SemanticGates {
                 lowering: Coverage::not_started(),
                 abi: GateStatus::Skipped,
                 capability: GateStatus::Skipped,
+                control: GateStatus::Skipped,
             },
             "lowering" => Self {
                 object_policy: GateStatus::Passed,
@@ -165,6 +177,7 @@ impl SemanticGates {
                 lowering: error.lowering.unwrap_or_else(Coverage::unknown_incomplete),
                 abi: GateStatus::Skipped,
                 capability: GateStatus::Skipped,
+                control: GateStatus::Skipped,
             },
             "abi" => Self {
                 object_policy: GateStatus::Passed,
@@ -173,6 +186,7 @@ impl SemanticGates {
                 lowering,
                 abi: GateStatus::Failed,
                 capability: GateStatus::Skipped,
+                control: GateStatus::Skipped,
             },
             "capability" => Self {
                 object_policy: GateStatus::Passed,
@@ -181,6 +195,16 @@ impl SemanticGates {
                 lowering,
                 abi: GateStatus::Passed,
                 capability: GateStatus::Failed,
+                control: GateStatus::Skipped,
+            },
+            "cfg" | "control" => Self {
+                object_policy: GateStatus::Passed,
+                executable_bytes,
+                decode,
+                lowering,
+                abi: GateStatus::Passed,
+                capability: GateStatus::Passed,
+                control: GateStatus::Failed,
             },
             _ => Self {
                 object_policy: GateStatus::Failed,
@@ -189,6 +213,7 @@ impl SemanticGates {
                 lowering: error.lowering.unwrap_or_else(Coverage::not_started),
                 abi: GateStatus::Skipped,
                 capability: GateStatus::Skipped,
+                control: GateStatus::Skipped,
             },
         }
     }
@@ -370,6 +395,7 @@ mod tests {
             lowering: Coverage::complete(4),
             abi: GateStatus::Passed,
             capability: GateStatus::Passed,
+            control: GateStatus::Passed,
         }
     }
 

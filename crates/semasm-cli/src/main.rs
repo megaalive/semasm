@@ -16,8 +16,8 @@ use std::process::ExitCode;
 
 use clap::{Parser, Subcommand, ValueEnum};
 use commands::{
-    do_agent_packet, do_agent_verify, do_build, do_contract_check, do_explain, do_obj_inspect,
-    do_target_doctor,
+    do_agent_compare, do_agent_packet, do_agent_verify, do_build, do_contract_check, do_explain,
+    do_obj_inspect, do_target_doctor,
 };
 #[cfg(all(feature = "capstone", test))]
 use inspect::{analysis_exit_code, lower_x86_with_evidence};
@@ -247,6 +247,30 @@ enum AgentCmd {
         /// Explicitly permit candidate execution after all static gates pass.
         #[arg(long)]
         allow_execution: bool,
+        /// Write a one-page evidence card (Markdown by default) to this path.
+        #[arg(long)]
+        card: Option<PathBuf>,
+        /// Emit the evidence card as JSON instead of Markdown (requires `--card`).
+        #[arg(long)]
+        card_json: bool,
+    },
+    /// Compare two candidate `.asm` files against one contract.
+    Compare {
+        /// First candidate source.
+        source_a: PathBuf,
+        /// Second candidate source.
+        source_b: PathBuf,
+        /// Path to the `*.sem.toml` contract.
+        contract: PathBuf,
+        /// Target triple (default: `x86_64-unknown-linux-gnu`).
+        #[arg(long, default_value = "x86_64-unknown-linux-gnu")]
+        target: String,
+        /// Output format: `terminal` (Markdown) or `json`.
+        #[arg(long, value_enum, default_value_t = OutputFormat::Terminal)]
+        format: OutputFormat,
+        /// Permit candidate execution when static gates pass.
+        #[arg(long)]
+        allow_execution: bool,
     },
 }
 
@@ -312,7 +336,39 @@ fn main() -> ExitCode {
                 target,
                 format,
                 allow_execution,
-            } => do_agent_verify(&source, &contract, &target, format, allow_execution),
+                card,
+                card_json,
+            } => {
+                if card_json && card.is_none() {
+                    eprintln!("error: --card-json requires --card <path>");
+                    ExitCode::from(2)
+                } else {
+                    do_agent_verify(
+                        &source,
+                        &contract,
+                        &target,
+                        format,
+                        allow_execution,
+                        card.as_deref(),
+                        card_json,
+                    )
+                }
+            }
+            AgentCmd::Compare {
+                source_a,
+                source_b,
+                contract,
+                target,
+                format,
+                allow_execution,
+            } => do_agent_compare(
+                &source_a,
+                &source_b,
+                &contract,
+                &target,
+                format,
+                allow_execution,
+            ),
         },
         Some(Commands::Obj {
             path,
@@ -589,6 +645,8 @@ type = "usize"
             &contract,
             "x86_64-unknown-linux-gnu",
             OutputFormat::Terminal,
+            false,
+            None,
             false,
         );
         // Without a runner (qemu) the toolchain is incomplete → non-zero.

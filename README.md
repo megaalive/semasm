@@ -45,14 +45,24 @@ cargo run -p semasm-cli --features capstone -- agent verify \
   --format json
 
 # Full verify → verified when every harness vector passes (exit 0)
+# Also write a one-page evidence card for PRs / agents
 cargo run -p semasm-cli --features capstone -- agent verify \
   fixtures/asm/count_byte.asm \
   fixtures/contracts/count_byte.sem.toml \
   --allow-execution \
-  --format json
+  --format json \
+  --card /tmp/count_byte-card.md
 
 # Deliberate wrong implementation → behavior_failed (never silent success)
 cargo run -p semasm-cli --features capstone -- agent verify \
+  fixtures/asm/count_byte_wrong.asm \
+  fixtures/contracts/count_byte.sem.toml \
+  --allow-execution \
+  --format json
+
+# Compare two candidates against one contract
+cargo run -p semasm-cli --features capstone -- agent compare \
+  fixtures/asm/count_byte.asm \
   fixtures/asm/count_byte_wrong.asm \
   fixtures/contracts/count_byte.sem.toml \
   --allow-execution \
@@ -63,6 +73,8 @@ Also available: Win64 (`count_byte_win64.asm`), AArch64 / RV64 gas fixtures,
 and a second harness shape `min_usize` (`fixtures/contracts/min_usize.sem.toml`).
 Report field `isolation` is `static_only`, `qemu_user`, or `native_host` —
 honesty about how (or whether) a process ran, not an OS sandbox claim.
+x86 golden-path leaves also fail closed on indirect control flow (`jmp rax` /
+`call rax`).
 
 One-shot scripts (print `status` / `isolation` / vector count for correct +
 wrong):
