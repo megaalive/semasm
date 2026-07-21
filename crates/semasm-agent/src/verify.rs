@@ -746,4 +746,21 @@ mod tests {
         assert_eq!(oracle.version, 2);
         assert_eq!(oracle.proof_basis, ProofBasis::OracleAndVectors);
     }
+
+    #[test]
+    fn golden_verified_report_deserializes() {
+        let json = include_str!("../fixtures/verification-report-count_byte.verified.json");
+        let report: VerificationReport =
+            serde_json::from_str(json).expect("verified golden must deserialize");
+        assert_eq!(report.schema_version, VERIFICATION_REPORT_SCHEMA_VERSION);
+        assert_eq!(report.status, VerificationStatus::Verified);
+        assert_eq!(report.isolation, ExecutionIsolation::NativeHost);
+        let behavior = report.behavior.expect("verified golden includes behavior");
+        assert!(behavior.all_passed);
+        assert!(!behavior.cases.is_empty());
+        assert!(behavior.cases.iter().all(|c| c.passed));
+        let oracle = report.behavior_oracle.expect("oracle present");
+        assert!(oracle.vectors_passed > 0);
+        assert_eq!(oracle.vectors_failed, 0);
+    }
 }

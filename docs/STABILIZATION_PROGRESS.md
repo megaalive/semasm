@@ -62,8 +62,8 @@ lands this doc sync).
 
 | Wave | Focus | Status |
 |---|---|---|
-| S0 | Lock honesty: next shared slice is `count_byte`, not `sum_i64` | in progress |
-| S1 | Consumer golden `verified` JSON for count_byte | planned |
+| S0 | Lock honesty: next shared slice is `count_byte`, not `sum_i64` | done |
+| S1 | Consumer golden `verified` JSON for count_byte | done |
 | S2 | VAA CI Gate-1: live Incomplete (`execution_denied`) + seal chain | planned (VAA) |
 | S3 | VAA `--allow-execution` + optional Gate-2 Verified | planned (VAA) |
 | S4 | SemASM `sum_i64` contract/oracle/harness + VAA fixtures | planned |
