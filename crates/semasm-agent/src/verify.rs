@@ -9,6 +9,8 @@ use serde::{Deserialize, Serialize};
 
 use crate::harness::HarnessReport;
 
+pub use semasm_target::ExecutionIsolation;
+
 /// Outcome of a single verification gate.
 #[derive(Serialize, Deserialize, Clone, Copy, Debug, PartialEq, Eq)]
 #[serde(rename_all = "snake_case")]
@@ -269,6 +271,8 @@ pub struct VerificationReport {
     pub target: String,
     /// Routine symbol under verification.
     pub routine_symbol: String,
+    /// How execution was isolated (or that only static gates ran).
+    pub isolation: ExecutionIsolation,
     /// Static semantic gate results.
     pub semantic: SemanticGates,
     /// Post-link executable gate result.
@@ -292,6 +296,7 @@ impl VerificationReport {
         semantic: SemanticGates,
         executable: ExecutableGate,
         behavior: Option<HarnessReport>,
+        isolation: ExecutionIsolation,
     ) -> Self {
         let status = if !semantic.all_passed() {
             VerificationStatus::SemanticFailed
@@ -310,6 +315,7 @@ impl VerificationReport {
             status,
             target,
             routine_symbol,
+            isolation,
             semantic,
             executable,
             behavior,
@@ -375,6 +381,7 @@ mod tests {
             passed_semantic(),
             ExecutableGate::passed(),
             None,
+            ExecutionIsolation::StaticOnly,
         );
         assert_eq!(report.status, VerificationStatus::ExecutionDenied);
         assert!(report.behavior.is_none());
@@ -397,6 +404,7 @@ mod tests {
             passed_semantic(),
             ExecutableGate::passed(),
             Some(behavior),
+            ExecutionIsolation::QemuUser,
         );
         assert_eq!(report.status, VerificationStatus::Verified);
     }
@@ -418,6 +426,7 @@ mod tests {
             passed_semantic(),
             ExecutableGate::passed(),
             Some(behavior),
+            ExecutionIsolation::QemuUser,
         );
         assert_eq!(report.status, VerificationStatus::BehaviorFailed);
     }
@@ -430,6 +439,7 @@ mod tests {
             passed_semantic(),
             ExecutableGate::failed(),
             None,
+            ExecutionIsolation::StaticOnly,
         );
         assert_eq!(report.status, VerificationStatus::ExecutableFailed);
     }
@@ -448,6 +458,7 @@ mod tests {
             semantic,
             ExecutableGate::passed(),
             None,
+            ExecutionIsolation::StaticOnly,
         );
         assert_eq!(report.status, VerificationStatus::SemanticFailed);
         assert_eq!(report.semantic.lowering.percent_modeled(), 75);
@@ -461,6 +472,7 @@ mod tests {
             passed_semantic(),
             ExecutableGate::passed(),
             None,
+            ExecutionIsolation::StaticOnly,
         );
         let value = serde_json::to_value(&report).unwrap();
         assert!(value.get("semantic").is_some());
@@ -486,6 +498,7 @@ mod tests {
             gates,
             ExecutableGate::skipped(),
             None,
+            ExecutionIsolation::StaticOnly,
         );
         assert_eq!(report.status, VerificationStatus::SemanticFailed);
     }
@@ -547,6 +560,7 @@ mod tests {
             passed_semantic(),
             ExecutableGate::failed(),
             None,
+            ExecutionIsolation::StaticOnly,
         );
         let value = serde_json::to_value(&report).unwrap();
         assert_eq!(value["status"], "executable_failed");

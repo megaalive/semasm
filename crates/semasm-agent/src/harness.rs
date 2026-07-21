@@ -14,12 +14,15 @@
 //! 3. **Evaluates** observed results against expected values and
 //!    produces a per-vector [`HarnessReport`].
 //!
-//! The current implementation targets the buffer-scan calling shape
-//! `(ptr<const u8> buffer, usize length, u8 needle) -> usize`, which
-//! is the canonical example (`count_byte`) driving the plan's required
-//! cases.  When the contract does not match this shape the synthesizer
-//! returns an empty vector set and the caller may fall back to a
-//! hand-written set.
+//! Supported calling shapes:
+//!
+//! - **Buffer scan** `(ptr<const u8> buffer, usize length, u8 needle) -> usize`
+//!   — canonical example `count_byte`.
+//! - **Pure integer** `(usize, usize) -> usize` — canonical example `min_usize`.
+//!
+//! Synthesis tries buffer-scan first, then pure-integer.  When the contract
+//! matches neither shape the synthesizer returns an empty vector set and the
+//! caller may fall back to a hand-written set.
 //!
 //! Synthesis rules for the buffer-scan shape (contract schema 0.1):
 //!
@@ -56,16 +59,50 @@ const DEFAULT_BUFFER_SCAN_NEEDLE: u8 = 0x41;
 
 /// Synthesise the canonical test vectors for a contract.
 ///
-/// Returns an empty `Vec` when the contract does not expose the expected
-/// `(ptr<const u8>, usize, u8) -> usize` signature, signalling that no
-/// automatic vectors are available.
+/// Returns an empty `Vec` when the contract does not match a supported
+/// calling shape (buffer-scan or pure-integer), signalling that no automatic
+/// vectors are available.
 #[must_use]
-#[allow(clippy::vec_init_then_push)]
 pub fn synthesize_vectors(contract: &CheckedContract) -> Vec<TestVector> {
-    let Some(shape) = scan_shape(contract) else {
-        return Vec::new();
-    };
+    if let Some(shape) = scan_shape(contract) {
+        return synthesize_buffer_scan_vectors(shape);
+    }
+    if pure_int_shape(contract).is_some() {
+        return synthesize_pure_int_vectors();
+    }
+    Vec::new()
+}
 
+/// Resolved calling shape for the harness generator.
+enum HarnessShape {
+    BufferScan,
+    PureInt,
+}
+
+/// Detect harness shape from the first test vector's input layout.
+fn detect_harness_shape(vectors: &[TestVector]) -> Result<HarnessShape, String> {
+    let Some(first) = vectors.first() else {
+        return Err("no test vectors".into());
+    };
+    match first.inputs.len() {
+        3 if matches!(
+            first.inputs.first(),
+            Some(serde_json::Value::Null | serde_json::Value::Array(_))
+        ) =>
+        {
+            Ok(HarnessShape::BufferScan)
+        }
+        2 if first.inputs.iter().all(serde_json::Value::is_number) => Ok(HarnessShape::PureInt),
+        n => Err(format!(
+            "unsupported test vector shape ({n} inputs); \
+             expected buffer-scan (3) or pure-int (2 numeric)"
+        )),
+    }
+}
+
+/// Synthesise canonical buffer-scan test vectors.
+#[allow(clippy::vec_init_then_push)]
+fn synthesize_buffer_scan_vectors(shape: ScanShape) -> Vec<TestVector> {
     let max_len = shape
         .max_length
         .unwrap_or(MAX_FIXTURE_CAP)
@@ -163,6 +200,62 @@ pub fn synthesize_vectors(contract: &CheckedContract) -> Vec<TestVector> {
     vectors
 }
 
+/// Synthesise canonical pure-integer test vectors for `(usize, usize) -> usize`.
+#[allow(clippy::vec_init_then_push)]
+fn synthesize_pure_int_vectors() -> Vec<TestVector> {
+    let cases: [(&str, u64, u64); 6] = [
+        ("both zero", 0, 0),
+        ("a smaller", 1, 2),
+        ("b smaller", 5, 3),
+        ("equal", 7, 7),
+        ("zero and large", 0, 1_000_000),
+        ("wide spread", 100, 50),
+    ];
+
+    cases
+        .into_iter()
+        .map(|(name, a, b)| TestVector {
+            name: name.into(),
+            inputs: vec![serde_json::json!(a), serde_json::json!(b)],
+            expected: serde_json::json!(a.min(b)),
+        })
+        .collect()
+}
+
+/// Detect the `(usize, usize) -> usize` pure-integer shape.
+fn pure_int_shape(contract: &CheckedContract) -> Option<()> {
+    let usize_count = contract
+        .parameters
+        .iter()
+        .filter(|p| matches!(p.ty, SemType::Usize))
+        .count();
+    if usize_count != 2 {
+        return None;
+    }
+
+    let has_ptr = contract
+        .parameters
+        .iter()
+        .any(|p| matches!(p.ty, SemType::Ptr { .. }));
+    let has_u8 = contract
+        .parameters
+        .iter()
+        .any(|p| matches!(p.ty, SemType::UInt { bits: 8 }));
+    if has_ptr || has_u8 {
+        return None;
+    }
+
+    let returns_usize = contract
+        .returns
+        .iter()
+        .any(|r| matches!(r.ty, SemType::Usize));
+    if returns_usize {
+        Some(())
+    } else {
+        None
+    }
+}
+
 /// Three distinct bytes that are not equal to `needle`.
 fn non_needle_bytes(needle: u8) -> [u8; 3] {
     let mut out = [0u8; 3];
@@ -179,6 +272,7 @@ fn non_needle_bytes(needle: u8) -> [u8; 3] {
 }
 
 /// Resolved calling shape for the canonical buffer-scan function.
+#[derive(Clone, Copy)]
 struct ScanShape {
     /// Needle value used for synthesised inputs.
     needle: u8,
@@ -337,6 +431,8 @@ fn int_value(expr: &Expr) -> Option<i64> {
 /// Generate assembler source for a harness that exercises `vectors`
 /// against the routine named `routine_symbol`.
 ///
+/// The calling shape is inferred from `vectors` (buffer-scan vs pure-int).
+///
 /// Supported ABIs:
 /// - [`Abi::SysVAmd64`]: NASM `_start`, args in `rdi`/`rsi`/`rdx`, Linux syscalls
 /// - [`Abi::WindowsX64`]: NASM `main`, args in `rcx`/`rdx`/`r8`, Win32 I/O
@@ -347,11 +443,32 @@ pub fn generate_harness(
     vectors: &[TestVector],
     abi: Abi,
 ) -> Result<String, String> {
-    match abi {
-        Abi::SysVAmd64 => Ok(generate_sysv_harness(routine_symbol, vectors)),
-        Abi::WindowsX64 => Ok(generate_win64_harness(routine_symbol, vectors)),
-        Abi::Aapcs64 => Ok(generate_aapcs64_harness(routine_symbol, vectors)),
-        Abi::Riscv => Ok(generate_riscv_harness(routine_symbol, vectors)),
+    let shape = detect_harness_shape(vectors)?;
+    match (abi, shape) {
+        (Abi::SysVAmd64, HarnessShape::BufferScan) => {
+            Ok(generate_sysv_buffer_harness(routine_symbol, vectors))
+        }
+        (Abi::SysVAmd64, HarnessShape::PureInt) => {
+            Ok(generate_sysv_pure_int_harness(routine_symbol, vectors))
+        }
+        (Abi::WindowsX64, HarnessShape::BufferScan) => {
+            Ok(generate_win64_buffer_harness(routine_symbol, vectors))
+        }
+        (Abi::WindowsX64, HarnessShape::PureInt) => {
+            Ok(generate_win64_pure_int_harness(routine_symbol, vectors))
+        }
+        (Abi::Aapcs64, HarnessShape::BufferScan) => {
+            Ok(generate_aapcs64_buffer_harness(routine_symbol, vectors))
+        }
+        (Abi::Aapcs64, HarnessShape::PureInt) => {
+            Ok(generate_aapcs64_pure_int_harness(routine_symbol, vectors))
+        }
+        (Abi::Riscv, HarnessShape::BufferScan) => {
+            Ok(generate_riscv_buffer_harness(routine_symbol, vectors))
+        }
+        (Abi::Riscv, HarnessShape::PureInt) => {
+            Ok(generate_riscv_pure_int_harness(routine_symbol, vectors))
+        }
     }
 }
 
@@ -373,8 +490,11 @@ fn emit_gas_vector_data(out: &mut String, vectors: &[TestVector]) {
     out.push_str(".section .data\n");
     for (i, v) in vectors.iter().enumerate() {
         let bytes = vector_buffer_bytes(v);
+        // Keep each len quad 8-byte aligned — RISC-V `ld` faults on misalignment.
+        out.push_str(".align 3\n");
         let _ = writeln!(out, "vec{i}_len:\n    .quad {}", vector_length(v));
         let _ = writeln!(out, "vec{i}_needle:\n    .byte {}", vector_needle(v));
+        out.push_str(".align 3\n");
         let _ = write!(out, "vec{i}_buf:\n    .byte ");
         if bytes.is_empty() {
             out.push_str("0\n");
@@ -385,8 +505,26 @@ fn emit_gas_vector_data(out: &mut String, vectors: &[TestVector]) {
     }
 }
 
+fn emit_pure_int_vector_data(out: &mut String, vectors: &[TestVector]) {
+    out.push_str("section .data\n");
+    for (i, v) in vectors.iter().enumerate() {
+        let _ = writeln!(out, "vec{i}_a: dq {}", vector_int_input(v, 0));
+        let _ = writeln!(out, "vec{i}_b: dq {}", vector_int_input(v, 1));
+    }
+}
+
+fn emit_gas_pure_int_vector_data(out: &mut String, vectors: &[TestVector]) {
+    out.push_str(".section .data\n");
+    for (i, v) in vectors.iter().enumerate() {
+        out.push_str(".align 3\n");
+        let _ = writeln!(out, "vec{i}_a:\n    .quad {}", vector_int_input(v, 0));
+        out.push_str(".align 3\n");
+        let _ = writeln!(out, "vec{i}_b:\n    .quad {}", vector_int_input(v, 1));
+    }
+}
+
 /// Generate NASM source for a `_start` harness (System V + Linux syscalls).
-fn generate_sysv_harness(routine_symbol: &str, vectors: &[TestVector]) -> String {
+fn generate_sysv_buffer_harness(routine_symbol: &str, vectors: &[TestVector]) -> String {
     let mut out = String::new();
 
     out.push_str("BITS 64\n");
@@ -424,8 +562,46 @@ fn generate_sysv_harness(routine_symbol: &str, vectors: &[TestVector]) -> String
     out
 }
 
+/// Generate NASM source for a SysV pure-integer `_start` harness.
+fn generate_sysv_pure_int_harness(routine_symbol: &str, vectors: &[TestVector]) -> String {
+    let mut out = String::new();
+
+    out.push_str("BITS 64\n");
+    out.push_str("DEFAULT REL\n\n");
+
+    emit_pure_int_vector_data(&mut out, vectors);
+
+    out.push_str("\nsection .bss\n");
+    let _ = writeln!(out, "results: resb {}", vectors.len() * 8);
+
+    out.push_str("\nsection .text\n");
+    let _ = writeln!(out, "extern {routine_symbol}");
+    out.push_str("global _start\n");
+    out.push_str("_start:\n");
+
+    for (i, _v) in vectors.iter().enumerate() {
+        let _ = writeln!(out, "    ; vector {i}: {}", vectors[i].name);
+        let _ = writeln!(out, "    mov rdi, [vec{i}_a]");
+        let _ = writeln!(out, "    mov rsi, [vec{i}_b]");
+        let _ = writeln!(out, "    call {routine_symbol}");
+        let _ = writeln!(out, "    mov [results + {i}*8], rax");
+    }
+
+    out.push_str("    ; write(results, len)\n");
+    out.push_str("    mov eax, 1          ; sys_write\n");
+    out.push_str("    mov edi, 1          ; stdout\n");
+    let _ = writeln!(out, "    lea rsi, [results]");
+    let _ = writeln!(out, "    mov edx, {}", vectors.len() * 8);
+    out.push_str("    syscall\n");
+    out.push_str("    mov eax, 60         ; sys_exit\n");
+    out.push_str("    xor edi, edi\n");
+    out.push_str("    syscall\n");
+
+    out
+}
+
 /// Generate NASM source for a Win64 `main` harness (kernel32 WriteFile/ExitProcess).
-fn generate_win64_harness(routine_symbol: &str, vectors: &[TestVector]) -> String {
+fn generate_win64_buffer_harness(routine_symbol: &str, vectors: &[TestVector]) -> String {
     let mut out = String::new();
 
     out.push_str("BITS 64\n");
@@ -475,8 +651,58 @@ fn generate_win64_harness(routine_symbol: &str, vectors: &[TestVector]) -> Strin
     out
 }
 
+/// Generate NASM source for a Win64 pure-integer `main` harness.
+fn generate_win64_pure_int_harness(routine_symbol: &str, vectors: &[TestVector]) -> String {
+    let mut out = String::new();
+
+    out.push_str("BITS 64\n");
+    out.push_str("DEFAULT REL\n\n");
+    out.push_str("EXTERN GetStdHandle\n");
+    out.push_str("EXTERN WriteFile\n");
+    out.push_str("EXTERN ExitProcess\n\n");
+
+    emit_pure_int_vector_data(&mut out, vectors);
+
+    out.push_str("\nsection .bss\n");
+    let _ = writeln!(out, "results: resb {}", vectors.len() * 8);
+    out.push_str("written: resq 1\n");
+
+    out.push_str("\nsection .text\n");
+    let _ = writeln!(out, "extern {routine_symbol}");
+    out.push_str("global main\n");
+    out.push_str("main:\n");
+
+    for (i, _v) in vectors.iter().enumerate() {
+        let _ = writeln!(out, "    ; vector {i}: {}", vectors[i].name);
+        out.push_str("    sub rsp, 40\n");
+        let _ = writeln!(out, "    mov rcx, [vec{i}_a]");
+        let _ = writeln!(out, "    mov rdx, [vec{i}_b]");
+        let _ = writeln!(out, "    call {routine_symbol}");
+        out.push_str("    add rsp, 40\n");
+        let _ = writeln!(out, "    mov [results + {i}*8], rax");
+    }
+
+    out.push_str("    ; WriteFile(stdout, results, len, &written, NULL)\n");
+    out.push_str("    sub rsp, 40\n");
+    out.push_str("    mov ecx, -11        ; STD_OUTPUT_HANDLE\n");
+    out.push_str("    call GetStdHandle\n");
+    out.push_str("    mov rcx, rax\n");
+    out.push_str("    lea rdx, [results]\n");
+    let _ = writeln!(out, "    mov r8d, {}", vectors.len() * 8);
+    out.push_str("    lea r9, [written]\n");
+    out.push_str("    mov qword [rsp + 32], 0\n");
+    out.push_str("    call WriteFile\n");
+    out.push_str("    add rsp, 40\n");
+
+    out.push_str("    sub rsp, 40\n");
+    out.push_str("    xor ecx, ecx\n");
+    out.push_str("    call ExitProcess\n");
+
+    out
+}
+
 /// Generate GNU as source for an AArch64 `_start` harness (Linux syscalls).
-fn generate_aapcs64_harness(routine_symbol: &str, vectors: &[TestVector]) -> String {
+fn generate_aapcs64_buffer_harness(routine_symbol: &str, vectors: &[TestVector]) -> String {
     let mut out = String::new();
     let results_len = vectors.len() * 8;
 
@@ -517,12 +743,12 @@ fn generate_aapcs64_harness(routine_symbol: &str, vectors: &[TestVector]) -> Str
     out
 }
 
-/// Generate GNU as source for a RISC-V `_start` harness (Linux syscalls).
-fn generate_riscv_harness(routine_symbol: &str, vectors: &[TestVector]) -> String {
+/// Generate GNU as source for an AArch64 pure-integer `_start` harness.
+fn generate_aapcs64_pure_int_harness(routine_symbol: &str, vectors: &[TestVector]) -> String {
     let mut out = String::new();
     let results_len = vectors.len() * 8;
 
-    emit_gas_vector_data(&mut out, vectors);
+    emit_gas_pure_int_vector_data(&mut out, vectors);
 
     out.push_str("\n.section .bss\n");
     out.push_str(".align 3\n");
@@ -532,6 +758,52 @@ fn generate_riscv_harness(routine_symbol: &str, vectors: &[TestVector]) -> Strin
     out.push_str("\n.section .text\n");
     out.push_str(".global _start\n");
     out.push_str("_start:\n");
+
+    for (i, _v) in vectors.iter().enumerate() {
+        let _ = writeln!(out, "    // vector {i}: {}", vectors[i].name);
+        let _ = writeln!(out, "    ldr x0, =vec{i}_a");
+        out.push_str("    ldr x0, [x0]\n");
+        let _ = writeln!(out, "    ldr x1, =vec{i}_b");
+        out.push_str("    ldr x1, [x1]\n");
+        let _ = writeln!(out, "    bl {routine_symbol}");
+        out.push_str("    ldr x2, =results\n");
+        let _ = writeln!(out, "    str x0, [x2, #{offset}]", offset = i * 8);
+    }
+
+    out.push_str("    // write(1, results, len)\n");
+    out.push_str("    mov x0, #1\n");
+    out.push_str("    ldr x1, =results\n");
+    let _ = writeln!(out, "    mov x2, #{results_len}");
+    out.push_str("    mov x8, #64\n");
+    out.push_str("    svc #0\n");
+    out.push_str("    // exit(0)\n");
+    out.push_str("    mov x0, #0\n");
+    out.push_str("    mov x8, #93\n");
+    out.push_str("    svc #0\n");
+
+    out
+}
+
+/// Generate GNU as source for a RISC-V `_start` harness (Linux syscalls).
+fn generate_riscv_buffer_harness(routine_symbol: &str, vectors: &[TestVector]) -> String {
+    let mut out = String::new();
+    let results_len = vectors.len() * 8;
+
+    out.push_str(".option norelax\n");
+    emit_gas_vector_data(&mut out, vectors);
+
+    out.push_str("\n.section .bss\n");
+    out.push_str(".align 4\n");
+    out.push_str("results:\n");
+    let _ = writeln!(out, "    .space {results_len}");
+    out.push_str(".align 4\n");
+    out.push_str("    .space 16384\n");
+    out.push_str("__stack_top:\n");
+
+    out.push_str("\n.section .text\n");
+    out.push_str(".global _start\n");
+    out.push_str("_start:\n");
+    out.push_str("    la sp, __stack_top\n");
 
     for (i, _v) in vectors.iter().enumerate() {
         let _ = writeln!(out, "    # vector {i}: {}", vectors[i].name);
@@ -557,6 +829,60 @@ fn generate_riscv_harness(routine_symbol: &str, vectors: &[TestVector]) -> Strin
     out.push_str("    ecall\n");
 
     out
+}
+
+/// Generate GNU as source for a RISC-V pure-integer `_start` harness.
+fn generate_riscv_pure_int_harness(routine_symbol: &str, vectors: &[TestVector]) -> String {
+    let mut out = String::new();
+    let results_len = vectors.len() * 8;
+
+    out.push_str(".option norelax\n");
+    emit_gas_pure_int_vector_data(&mut out, vectors);
+
+    out.push_str("\n.section .bss\n");
+    out.push_str(".align 4\n");
+    out.push_str("results:\n");
+    let _ = writeln!(out, "    .space {results_len}");
+    out.push_str(".align 4\n");
+    out.push_str("    .space 16384\n");
+    out.push_str("__stack_top:\n");
+
+    out.push_str("\n.section .text\n");
+    out.push_str(".global _start\n");
+    out.push_str("_start:\n");
+    out.push_str("    la sp, __stack_top\n");
+
+    for (i, _v) in vectors.iter().enumerate() {
+        let _ = writeln!(out, "    # vector {i}: {}", vectors[i].name);
+        let _ = writeln!(out, "    la a0, vec{i}_a");
+        out.push_str("    ld a0, 0(a0)\n");
+        let _ = writeln!(out, "    la a1, vec{i}_b");
+        out.push_str("    ld a1, 0(a1)\n");
+        let _ = writeln!(out, "    jal {routine_symbol}");
+        out.push_str("    la t0, results\n");
+        let _ = writeln!(out, "    sd a0, {offset}(t0)", offset = i * 8);
+    }
+
+    out.push_str("    # write(1, results, len)\n");
+    out.push_str("    li a0, 1\n");
+    out.push_str("    la a1, results\n");
+    let _ = writeln!(out, "    li a2, {results_len}");
+    out.push_str("    li a7, 64\n");
+    out.push_str("    ecall\n");
+    out.push_str("    # exit(0)\n");
+    out.push_str("    li a0, 0\n");
+    out.push_str("    li a7, 93\n");
+    out.push_str("    ecall\n");
+
+    out
+}
+
+/// Extract a numeric input for a pure-integer vector.
+fn vector_int_input(v: &TestVector, index: usize) -> u64 {
+    v.inputs
+        .get(index)
+        .and_then(serde_json::Value::as_u64)
+        .unwrap_or(0)
 }
 
 /// Extract the buffer bytes for a vector's first input (a JSON array).
@@ -722,6 +1048,98 @@ expression = "count <= length"
 
     fn vector_needle(v: &TestVector) -> u64 {
         v.inputs[2].as_u64().expect("needle input")
+    }
+
+    fn min_usize_contract() -> CheckedContract {
+        let toml = include_str!("../../../fixtures/contracts/min_usize.sem.toml");
+        check_contract(toml)
+    }
+
+    #[test]
+    fn synthesizes_six_pure_int_vectors() {
+        let c = min_usize_contract();
+        let v = synthesize_vectors(&c);
+        assert_eq!(v.len(), 6, "expected 6 pure-int cases, got {}", v.len());
+        assert!(v.iter().all(|case| case.inputs.len() == 2));
+        assert!(v.iter().all(|case| {
+            let a = case.inputs[0].as_u64().unwrap();
+            let b = case.inputs[1].as_u64().unwrap();
+            case.expected.as_u64() == Some(a.min(b))
+        }));
+        let names: Vec<&str> = v.iter().map(|x| x.name.as_str()).collect();
+        assert!(names.contains(&"both zero"));
+        assert!(names.contains(&"a smaller"));
+        assert!(names.contains(&"b smaller"));
+        assert!(names.contains(&"equal"));
+        assert!(names.contains(&"zero and large"));
+        assert!(names.contains(&"wide spread"));
+    }
+
+    #[test]
+    fn pure_int_sysv_harness_loads_abi_registers() {
+        let c = min_usize_contract();
+        let v = synthesize_vectors(&c);
+        let src = generate_harness("min_usize", &v, Abi::SysVAmd64).unwrap();
+        assert!(src.contains("extern min_usize"));
+        assert!(src.contains("global _start"));
+        assert!(src.contains("call min_usize"));
+        assert!(src.contains("vec0_a"));
+        assert!(src.contains("vec0_b"));
+        assert!(src.contains("mov rdi, [vec0_a]"));
+        assert!(src.contains("mov rsi, [vec0_b]"));
+        assert!(!src.contains("vec0_buf"));
+    }
+
+    #[test]
+    fn pure_int_win64_harness_loads_abi_registers() {
+        let c = min_usize_contract();
+        let v = synthesize_vectors(&c);
+        let src = generate_harness("min_usize", &v, Abi::WindowsX64).unwrap();
+        assert!(src.contains("global main"));
+        assert!(src.contains("mov rcx, [vec0_a]"));
+        assert!(src.contains("mov rdx, [vec0_b]"));
+        assert!(src.contains("WriteFile"));
+        assert!(!src.contains("vec0_buf"));
+    }
+
+    #[test]
+    fn pure_int_aarch64_harness_loads_abi_registers() {
+        let c = min_usize_contract();
+        let v = synthesize_vectors(&c);
+        let src = generate_harness("min_usize", &v, Abi::Aapcs64).unwrap();
+        assert!(src.contains("bl min_usize"));
+        assert!(src.contains("vec0_a"));
+        assert!(src.contains("vec0_b"));
+        assert!(!src.contains("vec0_buf"));
+    }
+
+    #[test]
+    fn pure_int_riscv_harness_loads_abi_registers() {
+        let c = min_usize_contract();
+        let v = synthesize_vectors(&c);
+        let src = generate_harness("min_usize", &v, Abi::Riscv).unwrap();
+        assert!(src.contains("jal min_usize"));
+        assert!(src.contains("vec0_a"));
+        assert!(src.contains("vec0_b"));
+        assert!(!src.contains("vec0_buf"));
+    }
+
+    #[test]
+    fn generate_harness_rejects_unsupported_vector_shape() {
+        let mixed = vec![
+            TestVector {
+                name: "bad".into(),
+                inputs: vec![serde_json::json!(1u64)],
+                expected: serde_json::json!(1u64),
+            },
+            TestVector {
+                name: "also bad".into(),
+                inputs: vec![serde_json::json!(2u64), serde_json::json!(3u64)],
+                expected: serde_json::json!(2u64),
+            },
+        ];
+        let err = generate_harness("min_usize", &mixed, Abi::SysVAmd64).unwrap_err();
+        assert!(err.contains("unsupported test vector shape"));
     }
 
     #[test]

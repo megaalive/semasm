@@ -31,13 +31,47 @@ fn run_agent_verify(source: &Path, target: &str, allow_execution: bool) -> std::
 }
 
 fn skip_if_incomplete(stderr: &str) -> bool {
-    if stderr.contains("toolchain incomplete") {
-        // Cross-target CI installs the matching binutils+qemu; other jobs may
-        // run these ignored tests without that toolchain and should soft-skip.
-        eprintln!("skipping cross-target agent verify e2e: {stderr}");
-        return true;
+    if !stderr.contains("toolchain incomplete") {
+        return false;
     }
-    false
+    assert!(
+        std::env::var_os("SEMASM_REQUIRE_TOOLCHAIN").is_none(),
+        "toolchain incomplete in owner CI job: {stderr}"
+    );
+    eprintln!("skipping cross-target agent verify e2e: {stderr}");
+    true
+}
+
+fn assert_execution_denied(output: &std::process::Output, target: &str) {
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(
+        !output.status.success(),
+        "expected non-zero exit; stderr={stderr}"
+    );
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    let value: serde_json::Value = serde_json::from_str(&stdout).unwrap_or_else(|error| {
+        panic!("expected VerificationReport JSON ({error}): {stdout}\nstderr={stderr}")
+    });
+    assert_eq!(value["status"], "execution_denied");
+    assert_eq!(value["target"], target);
+    assert_eq!(value["semantic"]["abi"], "passed");
+    assert_eq!(value["executable"]["status"], "passed");
+    assert!(value["behavior"].is_null());
+}
+
+fn assert_verified(output: &std::process::Output) {
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    assert!(
+        output.status.success(),
+        "expected success; stderr={stderr}; stdout={stdout}"
+    );
+    let value: serde_json::Value = serde_json::from_str(&stdout).unwrap_or_else(|error| {
+        panic!("expected VerificationReport JSON ({error}): {stdout}\nstderr={stderr}")
+    });
+    assert_eq!(value["status"], "verified");
+    assert_eq!(value["behavior"]["all_passed"], true);
+    assert!(value["behavior"]["cases"].as_array().unwrap().len() >= 6);
 }
 
 #[test]
@@ -49,19 +83,7 @@ fn agent_verify_aarch64_emits_execution_denied_without_opt_in() {
     if skip_if_incomplete(&stderr) {
         return;
     }
-    assert!(
-        !output.status.success(),
-        "expected non-zero exit; stderr={stderr}"
-    );
-    let stdout = String::from_utf8_lossy(&output.stdout);
-    let value: serde_json::Value = serde_json::from_str(&stdout).unwrap_or_else(|error| {
-        panic!("expected VerificationReport JSON ({error}): {stdout}\nstderr={stderr}")
-    });
-    assert_eq!(value["status"], "execution_denied");
-    assert_eq!(value["target"], "aarch64-unknown-linux-gnu");
-    assert_eq!(value["semantic"]["abi"], "passed");
-    assert_eq!(value["executable"]["status"], "passed");
-    assert!(value["behavior"].is_null());
+    assert_execution_denied(&output, "aarch64-unknown-linux-gnu");
 }
 
 #[test]
@@ -73,14 +95,7 @@ fn agent_verify_aarch64_allow_execution_is_verified() {
     if skip_if_incomplete(&stderr) {
         return;
     }
-    assert!(output.status.success(), "expected success; stderr={stderr}");
-    let stdout = String::from_utf8_lossy(&output.stdout);
-    let value: serde_json::Value = serde_json::from_str(&stdout).unwrap_or_else(|error| {
-        panic!("expected VerificationReport JSON ({error}): {stdout}\nstderr={stderr}")
-    });
-    assert_eq!(value["status"], "verified");
-    assert_eq!(value["behavior"]["all_passed"], true);
-    assert!(value["behavior"]["cases"].as_array().unwrap().len() >= 6);
+    assert_verified(&output);
 }
 
 #[test]
@@ -92,19 +107,7 @@ fn agent_verify_riscv64_emits_execution_denied_without_opt_in() {
     if skip_if_incomplete(&stderr) {
         return;
     }
-    assert!(
-        !output.status.success(),
-        "expected non-zero exit; stderr={stderr}"
-    );
-    let stdout = String::from_utf8_lossy(&output.stdout);
-    let value: serde_json::Value = serde_json::from_str(&stdout).unwrap_or_else(|error| {
-        panic!("expected VerificationReport JSON ({error}): {stdout}\nstderr={stderr}")
-    });
-    assert_eq!(value["status"], "execution_denied");
-    assert_eq!(value["target"], "riscv64gc-unknown-linux-gnu");
-    assert_eq!(value["semantic"]["abi"], "passed");
-    assert_eq!(value["executable"]["status"], "passed");
-    assert!(value["behavior"].is_null());
+    assert_execution_denied(&output, "riscv64gc-unknown-linux-gnu");
 }
 
 #[test]
@@ -116,12 +119,5 @@ fn agent_verify_riscv64_allow_execution_is_verified() {
     if skip_if_incomplete(&stderr) {
         return;
     }
-    assert!(output.status.success(), "expected success; stderr={stderr}");
-    let stdout = String::from_utf8_lossy(&output.stdout);
-    let value: serde_json::Value = serde_json::from_str(&stdout).unwrap_or_else(|error| {
-        panic!("expected VerificationReport JSON ({error}): {stdout}\nstderr={stderr}")
-    });
-    assert_eq!(value["status"], "verified");
-    assert_eq!(value["behavior"]["all_passed"], true);
-    assert!(value["behavior"]["cases"].as_array().unwrap().len() >= 6);
+    assert_verified(&output);
 }

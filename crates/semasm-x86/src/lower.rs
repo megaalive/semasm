@@ -297,8 +297,10 @@ pub fn lower(instr: &PhysicalInstruction) -> Lowering {
     // Semantic kind + signedness for the supported subset.
     let (kind, signed) = match m.as_str() {
         "mov" | "movabs" | "push" | "pop" => (OpKind::Store, None),
-        "lea" => (OpKind::Load, None),
-        "xor" | "add" | "sub" | "inc" | "dec" => (OpKind::Binary, None),
+        "lea" | "movzx" => (OpKind::Load, None),
+        "xor" | "add" | "sub" | "inc" | "dec" | "and" | "or" | "shl" | "shr" => {
+            (OpKind::Binary, None)
+        }
         "cmp" | "test" => (OpKind::Compare, None),
         "jmp" | "je" | "jne" | "jz" | "jnz" => (OpKind::Branch, None),
         "ja" | "jae" | "jb" | "jbe" => (OpKind::Branch, Some(false)),
@@ -497,6 +499,30 @@ mod tests {
                 "mnemonic {m} should lower"
             );
         }
+    }
+
+    #[test]
+    fn bit_ops_and_movzx_lower() {
+        assert_eq!(
+            lowered(&lower(&ins("and", &["eax", "ebx"]))).kind,
+            OpKind::Binary
+        );
+        assert_eq!(
+            lowered(&lower(&ins("or", &["eax", "ebx"]))).kind,
+            OpKind::Binary
+        );
+        assert_eq!(
+            lowered(&lower(&ins("shl", &["eax", "1"]))).kind,
+            OpKind::Binary
+        );
+        assert_eq!(
+            lowered(&lower(&ins("shr", &["eax", "1"]))).kind,
+            OpKind::Binary
+        );
+        assert_eq!(
+            lowered(&lower(&ins("movzx", &["ecx", "byte ptr [rdi]"]))).kind,
+            OpKind::Load
+        );
     }
 
     #[test]

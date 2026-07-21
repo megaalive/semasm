@@ -11,7 +11,8 @@ count_byte:
     test rsi, rsi
     jz .done
 .loop:
-    cmp byte [rdi], dl
+    movzx ecx, byte [rdi]
+    cmp cl, dl
     jne .skip
     inc rax
 .skip:

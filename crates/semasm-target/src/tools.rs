@@ -34,10 +34,12 @@ pub enum ToolKind {
     Objdump,
     /// QEMU user-mode runner for a specific ISA.
     Qemu(&'static str),
-    /// Native host execution (e.g. running a PE directly on Windows).
-    /// Always "found" on the matching host OS; on other hosts it reports
-    /// missing so the doctor surfaces the portability gap.
+    /// Native Windows host execution (PE on Windows).
+    /// Always "found" on Windows; missing elsewhere.
     NativeHost,
+    /// Native Linux host execution (x86_64 ELF on Linux).
+    /// Fallback after QEMU when both are available; preferred order keeps QEMU first.
+    NativeLinux,
 }
 
 impl ToolKind {
@@ -54,6 +56,7 @@ impl ToolKind {
             Self::Objdump => "objdump",
             Self::Qemu(cpu) => cpu,
             Self::NativeHost => "native",
+            Self::NativeLinux => "native-linux",
         }
     }
 
@@ -71,7 +74,7 @@ impl ToolKind {
             Self::Qemu(_) => self.label(),
             // Native execution uses no wrapper binary; the probe resolves it
             // by host platform instead of spawning a `--version` check.
-            Self::NativeHost => "",
+            Self::NativeHost | Self::NativeLinux => "",
         }
     }
 
@@ -82,7 +85,7 @@ impl ToolKind {
             Self::Nasm | Self::GnuAs(_) => "assembler",
             Self::Lld | Self::LldLink | Self::LdBfd | Self::GnuLd(_) => "linker",
             Self::LlvmObjdump | Self::Objdump => "disassembler",
-            Self::Qemu(_) | Self::NativeHost => "runner",
+            Self::Qemu(_) | Self::NativeHost | Self::NativeLinux => "runner",
         }
     }
 
@@ -120,6 +123,10 @@ impl ToolKind {
                 "Native execution is only available on the matching host OS \
                  (e.g. run a Windows PE on Windows)",
             ],
+            Self::NativeLinux => vec![
+                "Native Linux execution is only available when the host is Linux \
+                 (x86_64 ELF). Prefer qemu-user when both are installed.",
+            ],
         }
     }
 }
@@ -150,22 +157,41 @@ pub struct ToolProbe {
 impl ToolProbe {
     fn probe(kind: ToolKind) -> Self {
         // Native host execution has no wrapper binary; it is "found" only
-        // when the build host is the target OS (here: Windows).
-        if let ToolKind::NativeHost = kind {
-            #[cfg(windows)]
-            let found = true;
-            #[cfg(not(windows))]
-            let found = false;
-            return Self {
-                kind,
-                found,
-                version: Some(if found {
-                    "host (native)".to_string()
-                } else {
-                    "host is not Windows".to_string()
-                }),
-                detail: None,
-            };
+        // when the build host matches the intended OS.
+        match kind {
+            ToolKind::NativeHost => {
+                #[cfg(windows)]
+                let found = true;
+                #[cfg(not(windows))]
+                let found = false;
+                return Self {
+                    kind,
+                    found,
+                    version: Some(if found {
+                        "host (native)".to_string()
+                    } else {
+                        "host is not Windows".to_string()
+                    }),
+                    detail: None,
+                };
+            }
+            ToolKind::NativeLinux => {
+                #[cfg(target_os = "linux")]
+                let found = true;
+                #[cfg(not(target_os = "linux"))]
+                let found = false;
+                return Self {
+                    kind,
+                    found,
+                    version: Some(if found {
+                        "host (native-linux)".to_string()
+                    } else {
+                        "host is not Linux".to_string()
+                    }),
+                    detail: None,
+                };
+            }
+            _ => {}
         }
         let binary = kind.binary();
         match Command::new(binary).arg("--version").output() {
@@ -298,7 +324,14 @@ pub fn required_tools(target: &TargetIdentity) -> Vec<ToolSlot> {
                 "disassembler",
                 vec![ToolKind::LlvmObjdump, ToolKind::Objdump],
             ),
-            ToolSlot::probe("runner", vec![ToolKind::Qemu("qemu-x86_64")]),
+            ToolSlot::probe(
+                "runner",
+                vec![
+                    // Prefer qemu-user when present; fall back to native Linux host.
+                    ToolKind::Qemu("qemu-x86_64"),
+                    ToolKind::NativeLinux,
+                ],
+            ),
         ],
         // Windows x64: NASM → win64 object, lld-link → PE, native execution.
         (Isa::X86_64, Abi::WindowsX64, ObjectFormat::PeCoff) => vec![

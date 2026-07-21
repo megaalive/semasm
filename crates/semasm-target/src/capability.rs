@@ -60,8 +60,35 @@ pub struct TargetCapabilities {
     pub link: CapabilityLevel,
     /// Execution maturity.
     pub execute: CapabilityLevel,
-    /// Contract/artifact verification maturity.
+    /// Pipeline assemble/link/run maturity (alias of [`Self::pipeline_verify`]).
+    ///
+    /// Kept for schema `0.1` TOML compatibility. Prefer `pipeline_verify` /
+    /// `agent_verify` when reading claims programmatically.
     pub verify: CapabilityLevel,
+    /// Build-pipeline verification (fixture assemble → link → run).
+    ///
+    /// When omitted, mirrors [`Self::verify`].
+    #[serde(default)]
+    pub pipeline_verify: Option<CapabilityLevel>,
+    /// `semasm agent verify` maturity (semantic gates + optional harness).
+    ///
+    /// When omitted, defaults to [`CapabilityLevel::Experimental`].
+    #[serde(default)]
+    pub agent_verify: Option<CapabilityLevel>,
+}
+
+impl TargetCapabilities {
+    /// Effective pipeline verification level (`pipeline_verify` or `verify`).
+    #[must_use]
+    pub fn pipeline_verify_level(&self) -> CapabilityLevel {
+        self.pipeline_verify.unwrap_or(self.verify)
+    }
+
+    /// Effective agent verification level (explicit or experimental default).
+    #[must_use]
+    pub fn agent_verify_level(&self) -> CapabilityLevel {
+        self.agent_verify.unwrap_or(CapabilityLevel::Experimental)
+    }
 }
 
 /// Executable evidence attached to a target capability claim.
@@ -159,14 +186,14 @@ impl CapabilityManifest {
     #[must_use]
     pub fn render_readme_table(&self) -> String {
         let mut output = String::from(
-            "| Identity | Decode | Lower | ABI | Assemble | Link | Execute | Verify |\n\
-             |---|---|---|---|---|---|---|---|\n",
+            "| Identity | Decode | Lower | ABI | Assemble | Link | Execute | Pipeline | Agent |\n\
+             |---|---|---|---|---|---|---|---|---|\n",
         );
         for target in &self.targets {
             let c = &target.capabilities;
             writeln!(
                 output,
-                "| `{}` | {} | {} | {} | {} | {} | {} | {} |",
+                "| `{}` | {} | {} | {} | {} | {} | {} | {} | {} |",
                 target.id,
                 c.decode.as_str(),
                 c.lower.as_str(),
@@ -174,7 +201,8 @@ impl CapabilityManifest {
                 c.assemble.as_str(),
                 c.link.as_str(),
                 c.execute.as_str(),
-                c.verify.as_str()
+                c.pipeline_verify_level().as_str(),
+                c.agent_verify_level().as_str()
             )
             .expect("writing to a String cannot fail");
         }
@@ -194,7 +222,7 @@ impl CapabilityManifest {
             let c = &target.capabilities;
             writeln!(
                 output,
-                "  {}: decode={}, lower={}, abi={}, assemble={}, link={}, execute={}, verify={}",
+                "  {}: decode={}, lower={}, abi={}, assemble={}, link={}, execute={}, pipeline={}, agent={}",
                 target.id,
                 c.decode.as_str(),
                 c.lower.as_str(),
@@ -202,10 +230,14 @@ impl CapabilityManifest {
                 c.assemble.as_str(),
                 c.link.as_str(),
                 c.execute.as_str(),
-                c.verify.as_str()
+                c.pipeline_verify_level().as_str(),
+                c.agent_verify_level().as_str()
             )
             .expect("writing to a String cannot fail");
         }
+        output.push_str(
+            "note: pipeline = fixture assemble/link/run; agent = semasm agent verify gates\n",
+        );
         output.push_str("note: generated programs do not link SemASM by default\n");
         output
     }
@@ -242,6 +274,8 @@ fn validate_target(target: &TargetCapability) -> Result<()> {
         c.link,
         c.execute,
         c.verify,
+        c.pipeline_verify_level(),
+        c.agent_verify_level(),
     ];
     if levels
         .iter()
@@ -330,7 +364,7 @@ mod tests {
 
     #[test]
     fn rejects_missing_ci_evidence() {
-        let invalid = MANIFEST.replacen("decode = \"partial\"", "decode = \"verified_in_ci\"", 1);
+        let invalid = MANIFEST.replacen("decode = \"declared\"", "decode = \"verified_in_ci\"", 1);
         let error = CapabilityManifest::parse(&invalid).unwrap_err();
         assert!(error.to_string().contains("without a CI job"));
     }

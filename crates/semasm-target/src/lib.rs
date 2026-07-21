@@ -15,6 +15,51 @@ use std::fmt;
 use semasm_core::{Error, Result};
 use serde::{Deserialize, Serialize};
 
+/// How candidate/artifact execution was (or was not) isolated.
+///
+/// This is an honesty field for reports — SemASM does not claim OS sandboxing
+/// (seccomp / job objects / containers) by default.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+#[cfg_attr(feature = "schema", derive(schemars::JsonSchema))]
+pub enum ExecutionIsolation {
+    /// No candidate/artifact process was started (static gates only).
+    StaticOnly,
+    /// Ran under a QEMU user-mode emulator.
+    QemuUser,
+    /// Ran directly on the build host (no emulator wrapper).
+    NativeHost,
+}
+
+impl ExecutionIsolation {
+    /// Stable snake_case label for printers and JSON.
+    #[must_use]
+    pub const fn as_str(self) -> &'static str {
+        match self {
+            Self::StaticOnly => "static_only",
+            Self::QemuUser => "qemu_user",
+            Self::NativeHost => "native_host",
+        }
+    }
+
+    /// Map a pipeline runner sentinel/binary to an isolation mode.
+    #[must_use]
+    pub fn from_runner(runner: Option<&str>) -> Self {
+        match runner {
+            None => Self::StaticOnly,
+            Some("__native__") => Self::NativeHost,
+            Some(name) if name.starts_with("qemu") => Self::QemuUser,
+            Some(_) => Self::NativeHost,
+        }
+    }
+}
+
+impl fmt::Display for ExecutionIsolation {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.write_str(self.as_str())
+    }
+}
+
 /// Instruction set architecture family.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
 #[cfg_attr(feature = "schema", derive(schemars::JsonSchema))]

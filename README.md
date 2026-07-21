@@ -1,12 +1,15 @@
 # SemASM
 
-**SemASM** is multi-architecture semantic infrastructure for software written directly in assembly language. It supplies portable semantic contracts, target kits, analysis (ASIR), and verification so humans and AI agents can produce and check minimal target programs without shipping a high-level language runtime.
+**SemASM** is multi-architecture semantic infrastructure for software written
+directly in assembly. It supplies portable semantic contracts, target kits,
+analysis (ASIR), and verification so humans and AI agents can produce and check
+minimal target programs **without shipping a high-level language runtime**.
 
-> **Status:** early stabilization. Contract checking, target discovery, build and
-> report infrastructure, object inspection, decoding, CFG construction, and
-> partial x86-64, AArch64, and RISC-V semantics are implemented. Capability
-> maturity comes only from `capabilities.toml`; code in the tree is not the same
-> as CI-proven support.
+> **Status:** pre-1.0 developer tooling (0.1 line). Thirteen workspace crates,
+> multi-target agent verify (SysV / Win64 / AArch64 / RV64), structured
+> `VerificationReport` evidence, and named CI owner jobs are in tree.
+> Capability maturity is defined only by `capabilities.toml` — code present ≠
+> CI-proven support. Agent output remains **untrusted until verified**.
 
 ## Architecture (build-time only)
 
@@ -18,38 +21,66 @@ target kits              object inspect / tests        linked image
 agent task packets       size / performance report     no SemASM runtime
 ```
 
-Rich tools (Rust analyzers, optional Capstone/LLVM/QEMU adapters) may exist in the **factory**. Generated executables and firmware images contain only instructions, data, startup code, platform interfaces, and **explicitly selected** runtime fragments.
+Rich tools (Rust analyzers, optional Capstone/QEMU adapters) live in the
+**factory**. Generated executables contain only instructions, data, startup,
+platform interfaces, and **explicitly selected** fragments — never a SemASM
+runtime.
+
+## Golden demo: `count_byte` in five minutes
+
+The shortest path that shows why SemASM exists: a real routine, a semantic
+contract, static gates, then behavioral vectors under `--allow-execution`.
+
+Requirements: Rust stable, plus `nasm`, an ELF linker, `objdump`/`llvm-objdump`,
+and `qemu-x86_64` (see `semasm target doctor x86_64-unknown-linux-gnu`). On
+Windows PE hosts use `--target x86_64-pc-windows-msvc` with NASM + `lld-link`.
+
+```bash
+cargo build -p semasm-cli --features capstone
+
+# Static gates only → execution_denied (structured JSON, exit 1)
+cargo run -p semasm-cli --features capstone -- agent verify \
+  fixtures/asm/count_byte.asm \
+  fixtures/contracts/count_byte.sem.toml \
+  --format json
+
+# Full verify → verified when every harness vector passes (exit 0)
+cargo run -p semasm-cli --features capstone -- agent verify \
+  fixtures/asm/count_byte.asm \
+  fixtures/contracts/count_byte.sem.toml \
+  --allow-execution \
+  --format json
+
+# Deliberate wrong implementation → behavior_failed (never silent success)
+cargo run -p semasm-cli --features capstone -- agent verify \
+  fixtures/asm/count_byte_wrong.asm \
+  fixtures/contracts/count_byte.sem.toml \
+  --allow-execution \
+  --format json
+```
+
+Also available: Win64 (`count_byte_win64.asm`), AArch64 / RV64 gas fixtures,
+and a second harness shape `min_usize` (`fixtures/contracts/min_usize.sem.toml`).
+Report field `isolation` is `static_only`, `qemu_user`, or `native_host` —
+honesty about how (or whether) a process ran, not an OS sandbox claim.
 
 ## Quick start (tooling)
-
-Requirements: a recent stable Rust toolchain with `rustfmt` and `clippy`.
 
 ```bash
 cargo build -p semasm-cli
 cargo run -p semasm-cli -- --version
 cargo run -p semasm-cli -- status
-cargo run -p semasm-cli -- contract check fixtures/contracts/write_all.sem.toml
-cargo run -p semasm-cli -- --explain CTR003
+cargo run -p semasm-cli -- contract check fixtures/contracts/count_byte.sem.toml
 cargo run -p semasm-cli -- target doctor x86_64-unknown-linux-gnu
-cargo run -p semasm-cli -- target doctor x86_64-unknown-linux-gnu --format json
-
 ```
 
-The contract command is the current five-minute success path. It exits zero and
-prints that the `write_all` contract is valid. It does not assemble or execute a
-program.
-
-An exact Linux end-to-end command is:
+Pipeline assemble / link / run (exit fixture, not agent gates):
 
 ```bash
 cargo run -p semasm-cli -- build fixtures/asm/exit.asm \
   --target x86_64-unknown-linux-gnu \
   --out-dir target/e2e-linux
 ```
-
-Run it only on Linux or WSL with Rust, NASM, a compatible ELF linker, and any
-runner reported by `target doctor`. The equivalent scenario is exercised by the
-named Linux end-to-end CI job.
 
 Quality gates used in CI:
 
@@ -64,45 +95,50 @@ cargo doc --workspace --no-deps
 
 - Support maturity is per capability; a target is not globally "supported"
   merely because some rows are `CI-verified`.
-- External-tool scenarios run in dedicated CI jobs rather than ordinary unit
-  test jobs.
-- A decoder or lowering implementation may cover only part of an ISA.
+- External-tool scenarios run in dedicated CI owner jobs
+  (`SEMASM_REQUIRE_TOOLCHAIN=1`); local soft-skip is not allowed there.
+- A decoder or lowering implementation may cover only part of an ISA
+  (`decode` / `lower` remain `partial` even on primary targets).
 - Canonical report reproducibility is checked across independent output roots;
   this does not promise byte-identical artifacts from every toolchain.
-- AArch64 and RV64 have structural and QEMU CI evidence where recorded in the
-  capability manifest. Manifest `verify = CI-verified` means pipeline
-  assemble/link/run evidence, not complete agent semantic gates (see
-  `docs/CLI_COMPATIBILITY.md`).
-- ABI commands propagate unsupported instructions as incomplete evidence;
-  callers must not treat incomplete analysis as a clean full verification.
+- Manifest **Pipeline** vs **Agent** columns are separate: pipeline
+  `CI-verified` means fixture assemble/link/run; **Agent** means
+  `semasm agent verify` gates (+ harness when claimed). See
+  `docs/CLI_COMPATIBILITY.md`.
+- Incomplete ABI analysis is never promoted to a clean full verification.
 
 ## Target capability evidence
 
 The table is generated from `capabilities.toml`. Levels describe implementation
-and evidence maturity; they are not a blanket support promise.
+and evidence maturity; they are not a blanket support promise. **Pipeline** =
+build e2e; **Agent** = `semasm agent verify`.
 
 <!-- capabilities:start -->
-| Identity | Decode | Lower | ABI | Assemble | Link | Execute | Verify |
-|---|---|---|---|---|---|---|---|
-| `x86_64-unknown-linux-gnu` | partial | partial | unit-tested | experimental | experimental | experimental | experimental |
-| `x86_64-pc-windows-msvc` | partial | partial | unit-tested | experimental | experimental | experimental | experimental |
-| `aarch64-unknown-linux-gnu` | partial | partial | unit-tested | CI-verified | CI-verified | CI-verified | CI-verified |
-| `riscv64gc-unknown-linux-gnu` | partial | partial | unit-tested | CI-verified | CI-verified | CI-verified | CI-verified |
-| `riscv32imac-unknown-none-elf` | declared | partial | unit-tested | unavailable | unavailable | unavailable | experimental |
+| Identity | Decode | Lower | ABI | Assemble | Link | Execute | Pipeline | Agent |
+|---|---|---|---|---|---|---|---|---|
+| `x86_64-unknown-linux-gnu` | partial | partial | unit-tested | experimental | experimental | experimental | experimental | CI-verified |
+| `x86_64-pc-windows-msvc` | partial | partial | unit-tested | experimental | experimental | experimental | experimental | CI-verified |
+| `aarch64-unknown-linux-gnu` | partial | partial | unit-tested | CI-verified | CI-verified | CI-verified | CI-verified | CI-verified |
+| `riscv64gc-unknown-linux-gnu` | partial | partial | unit-tested | CI-verified | CI-verified | CI-verified | CI-verified | CI-verified |
+| `riscv32imac-unknown-none-elf` | declared | partial | unit-tested | unavailable | unavailable | unavailable | unavailable | declared |
 <!-- capabilities:end -->
 
 ## Why semantic metadata?
 
-Raw assembly states machine operations precisely but often hides intent: contracts, ABI bindings, memory effects, register ownership, and measurable constraints. SemASM records that information at build time so agents and checkers can validate patches without inventing another general-purpose language.
+Raw assembly states machine operations precisely but often hides intent:
+contracts, ABI bindings, memory effects, register ownership, and measurable
+constraints. SemASM records that at build time so agents and checkers can
+validate patches without inventing another general-purpose language.
 
 ## What SemASM is not
 
-- Not a new assembler (uses NASM, GAS, LLVM MC, system linkers).
+- Not a new assembler (uses NASM, GAS, system linkers).
 - Not LLVM IR with different syntax.
 - Not a high-level language that “compiles down to” assembly while hiding the implementation.
 - Not a guarantee that hand-written or agent-written assembly beats optimizing compilers.
 - Not a bundled AI model provider.
 - Not a mandatory runtime linked into generated programs.
+- Not a memory-safety proof for arbitrary agent asm.
 
 ## Workspace crates
 
@@ -112,7 +148,7 @@ Raw assembly states machine operations precisely but often hides intent: contrac
 | `semasm-contract` | Portable semantic contracts and validation |
 | `semasm-asir` | ASIR graph types |
 | `semasm-target` | Target identity, capability registry, and tool discovery |
-| `semasm-build` | Safe process execution, build pipeline (assemble, link, verify, run), artifact reports |
+| `semasm-build` | Safe process execution, build pipeline, artifact reports |
 | `semasm-agent` | Provider-neutral agent packets, harness, and verification reports |
 | `semasm-cli` | `semasm` binary |
 | `semasm-obj` | Structured object-file inspection |
@@ -122,16 +158,20 @@ Raw assembly states machine operations precisely but often hides intent: contrac
 | `semasm-aarch64` | AArch64 lowering and ABI analysis |
 | `semasm-riscv` | RISC-V lowering and ABI analysis |
 
-These boundaries are implemented but still await the stabilization boundary
-audit; crate count is not itself evidence of capability maturity.
+Crate count is not itself evidence of capability maturity; see the table above.
 
 ## Contributing
 
-See [CONTRIBUTING.md](CONTRIBUTING.md). English is required for source, comments, docs, and issues. Prefer small vertical slices that produce executable evidence over large abstract frameworks.
+See [CONTRIBUTING.md](CONTRIBUTING.md). English is required for source, comments,
+docs, and issues. Prefer small vertical slices that produce executable evidence
+over large abstract frameworks. Near-term priority is deepening soundness and
+the golden demo, not adding new ISAs.
 
 Release compatibility and gates are documented in
 [docs/CLI_COMPATIBILITY.md](docs/CLI_COMPATIBILITY.md) and
-[docs/RELEASE_CHECKLIST.md](docs/RELEASE_CHECKLIST.md).
+[docs/RELEASE_CHECKLIST.md](docs/RELEASE_CHECKLIST.md). Changelog `0.1.0` is the
+crate/line version; a GitHub Release tag is published only from a reviewed
+`v0.1.0` after checklist gates stay green.
 
 ## License
 
@@ -147,4 +187,6 @@ at your option.
 - [ARCHITECTURE.md](ARCHITECTURE.md) — planes, principles, crate boundaries  
 - [ROADMAP.md](ROADMAP.md) — vertical slices  
 - [DEPENDENCIES.md](DEPENDENCIES.md) — dependency policy  
+- [SECURITY.md](SECURITY.md) — isolation honesty vs sandbox claims  
+- [docs/STABILIZATION_PROGRESS.md](docs/STABILIZATION_PROGRESS.md) — PR checklist + bulletproof phases  
 - [semasm-complete-project-plan.md](semasm-complete-project-plan.md) — full technical specification  

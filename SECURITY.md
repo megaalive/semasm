@@ -42,7 +42,19 @@ Include:
 
 - SemASM validates assembly; it does **not** claim memory safety for arbitrary agent-written code.
 - Generated programs intentionally contain no SemASM runtime; security of the shipped binary depends on the assembly and platform interfaces chosen by the author.
-- Verification pipelines may use emulators and debuggers; those tools must remain isolated from untrusted network input in CI and local defaults.
+- Verification and build reports record an `isolation` field: `static_only`, `qemu_user`, or `native_host`. That field describes how (or whether) a process was started — not an OS sandbox guarantee.
+
+### Execution isolation: guaranteed today vs not guaranteed
+
+| Guaranteed today (`crates/semasm-build/src/exec.rs`) | Not guaranteed by default |
+|---|---|
+| Wall-clock timeout with process-tree kill | seccomp / Landlock |
+| Sanitized / allowlisted child environment | Windows job-object network deny |
+| Bounded stdout/stderr capture | Container / gVisor / Firecracker |
+| Null stdin by default | Full network isolation |
+| Prefer `qemu_user` over native for Linux ELF when both exist | Memory-safety of agent asm |
+
+Agent verify prefers **qemu-user** for Linux guest targets when QEMU is on `PATH`; Win64 uses **native_host** only. `static_only` means no candidate process ran (execution denied or static gates only).
 
 ## Response expectations
 

@@ -1,0 +1,30 @@
+contract_version = "0.1"
+
+[function]
+name = "min_usize"
+summary = "Return the smaller of two unsigned sizes"
+
+[[function.parameters]]
+name = "a"
+type = "usize"
+role = "input"
+
+[[function.parameters]]
+name = "b"
+type = "usize"
+role = "input"
+
+[[function.returns]]
+name = "result"
+type = "usize"
+
+[[function.ensures]]
+expression = "result <= a"
+
+[[function.ensures]]
+expression = "result <= b"
+
+[function.constraints]
+no_heap = true
+no_recursion = true
+bounded_stack_bytes = 64

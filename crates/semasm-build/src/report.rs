@@ -8,6 +8,7 @@ use std::fmt::Write as FmtWrite;
 use std::io::Read;
 use std::path::Path;
 
+use semasm_target::ExecutionIsolation;
 use serde::ser::Error as _;
 use serde::{Serialize, Serializer};
 use sha2::{Digest, Sha256};
@@ -185,6 +186,8 @@ pub struct ArtifactReport {
     pub executable: ArtifactFileInfo,
     /// Explicit execution evidence.
     pub execution: ExecutionInfo,
+    /// How execution was isolated (or that only static build steps ran).
+    pub isolation: ExecutionIsolation,
 }
 
 /// Compatibility of an artifact report with this reader.
@@ -320,6 +323,7 @@ struct VolatileMetadata<'a> {
     object: Option<VolatileArtifact<'a>>,
     executable: VolatileArtifact<'a>,
     execution: &'a ExecutionInfo,
+    isolation: ExecutionIsolation,
 }
 
 #[derive(Serialize)]
@@ -725,6 +729,15 @@ pub fn generate_report(
         raw_private_headers: exe_raw_private,
     };
 
+    let isolation = match &execution {
+        ExecutionInfo::NotRequested | ExecutionInfo::Unavailable { .. } => {
+            ExecutionIsolation::StaticOnly
+        }
+        ExecutionInfo::Failed { .. } | ExecutionInfo::Succeeded { .. } => {
+            ExecutionIsolation::from_runner(pipeline.toolchain.runner.as_deref())
+        }
+    };
+
     Ok(ArtifactReport {
         schema_version: ARTIFACT_REPORT_SCHEMA_VERSION,
         target: pipeline.target.to_string(),
@@ -734,6 +747,7 @@ pub fn generate_report(
         object,
         executable,
         execution,
+        isolation,
     })
 }
 
@@ -823,6 +837,7 @@ impl ArtifactReport {
         let _ = writeln!(out, "=== Artifact Report ===");
         let _ = writeln!(out, "Schema:      {}", self.schema_version);
         let _ = writeln!(out, "Target:      {}", self.target);
+        let _ = writeln!(out, "Isolation:  {}", self.isolation.as_str());
         let _ = writeln!(out);
 
         let _ = writeln!(
@@ -924,6 +939,7 @@ impl Serialize for ArtifactReport {
                 object: self.object.as_ref().map(volatile_artifact),
                 executable: volatile_artifact(&self.executable),
                 execution: &self.execution,
+                isolation: self.isolation,
             },
         };
         report.serialize(serializer)
@@ -1129,6 +1145,7 @@ SYMBOL TABLE:
                 raw_private_headers: String::new(),
             },
             execution: ExecutionInfo::NotRequested,
+            isolation: ExecutionIsolation::StaticOnly,
         };
         let terminal = report.to_terminal();
         assert!(terminal.contains("Artifact Report"));
@@ -1226,6 +1243,7 @@ SYMBOL TABLE:
                 stderr_capture: capture_info(0),
                 termination: None,
             },
+            isolation: ExecutionIsolation::QemuUser,
         };
 
         // JSON round-trip
@@ -1383,6 +1401,7 @@ SYMBOL TABLE:
                 raw_private_headers: format!("volatile headers from {root}"),
             },
             execution: ExecutionInfo::NotRequested,
+            isolation: ExecutionIsolation::StaticOnly,
         }
     }
 

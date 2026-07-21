@@ -135,11 +135,15 @@ impl Pipeline {
                 "runner" => {
                     // Native host execution is represented internally as a
                     // sentinel so the run step knows to exec the binary itself.
-                    if slot
-                        .candidates
-                        .first()
-                        .is_some_and(|k| matches!(k, semasm_target::tools::ToolKind::NativeHost))
-                    {
+                    // Prefer the *effective* candidate (qemu before native).
+                    let is_native = effective.is_some_and(|p| {
+                        matches!(
+                            p.kind,
+                            semasm_target::tools::ToolKind::NativeHost
+                                | semasm_target::tools::ToolKind::NativeLinux
+                        )
+                    });
+                    if is_native {
                         runner = Some("__native__".to_string());
                     } else {
                         runner = Some(name);

@@ -3,6 +3,18 @@
 use std::path::PathBuf;
 use std::process::Command;
 
+fn skip_if_incomplete(stderr: &str) -> bool {
+    if !stderr.contains("toolchain incomplete") {
+        return false;
+    }
+    assert!(
+        std::env::var_os("SEMASM_REQUIRE_TOOLCHAIN").is_none(),
+        "toolchain incomplete in owner CI job: {stderr}"
+    );
+    eprintln!("skipping win64 execution_denied e2e: {stderr}");
+    true
+}
+
 #[test]
 #[ignore = "requires nasm, lld-link, and native Windows host"]
 fn agent_verify_win64_emits_execution_denied_json_without_opt_in() {
@@ -25,12 +37,7 @@ fn agent_verify_win64_emits_execution_denied_json_without_opt_in() {
         .expect("run semasm agent verify");
 
     let stderr = String::from_utf8_lossy(&output.stderr);
-    if stderr.contains("toolchain incomplete") {
-        assert!(
-            std::env::var_os("CI").is_none(),
-            "CI must provide the Windows verification toolchain: {stderr}"
-        );
-        eprintln!("skipping win64 execution_denied e2e: {stderr}");
+    if skip_if_incomplete(&stderr) {
         return;
     }
 

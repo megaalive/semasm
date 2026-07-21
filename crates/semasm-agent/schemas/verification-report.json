@@ -19,6 +19,10 @@
       "description": "Post-link executable gate result.",
       "$ref": "#/$defs/ExecutableGate"
     },
+    "isolation": {
+      "description": "How execution was isolated (or that only static gates ran).",
+      "$ref": "#/$defs/ExecutionIsolation"
+    },
     "routine_symbol": {
       "description": "Routine symbol under verification.",
       "type": "string"
@@ -45,6 +49,7 @@
     "status",
     "target",
     "routine_symbol",
+    "isolation",
     "semantic",
     "executable"
   ],
@@ -89,6 +94,26 @@
       },
       "required": [
         "status"
+      ]
+    },
+    "ExecutionIsolation": {
+      "description": "How candidate/artifact execution was (or was not) isolated.\n\nThis is an honesty field for reports — SemASM does not claim OS sandboxing\n(seccomp / job objects / containers) by default.",
+      "oneOf": [
+        {
+          "description": "No candidate/artifact process was started (static gates only).",
+          "type": "string",
+          "const": "static_only"
+        },
+        {
+          "description": "Ran under a QEMU user-mode emulator.",
+          "type": "string",
+          "const": "qemu_user"
+        },
+        {
+          "description": "Ran directly on the build host (no emulator wrapper).",
+          "type": "string",
+          "const": "native_host"
+        }
       ]
     },
     "GateStatus": {

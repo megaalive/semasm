@@ -1,17 +1,14 @@
 # Capability claims for SemASM targets.
 #
-# `verify` / assemble / link / execute maturity levels describe the **build
-# pipeline** (fixture assemble → link → run), for example the exit-code e2e
-# jobs. They are **not** a claim that `semasm agent verify` semantic gates
-# (decode → lower → ABI → capability → optional behavioral harness) are
-# complete for that target.
+# `verify` / `pipeline_verify` / assemble / link / execute maturity levels
+# describe the **build pipeline** (fixture assemble → link → run), for
+# example the exit-code e2e jobs.
 #
-# Agent semantic-gate coverage is documented in `docs/CLI_COMPATIBILITY.md`.
-# Today those gates are implemented for:
-#   - x86_64-unknown-linux-gnu (SysV ELF) — static + behavioral harness
-#   - x86_64-pc-windows-msvc (Win64 PE) — static + behavioral harness
-#   - aarch64-unknown-linux-gnu — static gates + gas behavioral harness (qemu CI)
-#   - riscv64gc-unknown-linux-gnu — static gates + gas behavioral harness (qemu CI)
+# `agent_verify` describes `semasm agent verify` (semantic gates + optional
+# behavioral harness). Do not treat pipeline `verified_in_ci` as agent-complete.
+#
+# Legacy key `verify` remains a pipeline alias (schema 0.1). Prefer reading
+# `pipeline_verify` and `agent_verify` when both are present.
 
 schema_version = "0.1"
 
@@ -45,11 +42,13 @@ assemble = "experimental"
 link = "experimental"
 execute = "experimental"
 verify = "experimental"
+pipeline_verify = "experimental"
+agent_verify = "verified_in_ci"
 
 [target.evidence]
 unit_tests = ["semasm-target::tests", "semasm-x86::abi", "semasm-build::pipeline"]
 fixtures = ["fixtures/asm/exit.asm", "fixtures/asm/count_byte.asm"]
-ci_jobs = []
+ci_jobs = ["decode (capstone)"]
 
 [[target]]
 id = "x86_64-pc-windows-msvc"
@@ -64,15 +63,17 @@ assemble = "experimental"
 link = "experimental"
 execute = "experimental"
 verify = "experimental"
+pipeline_verify = "experimental"
+agent_verify = "verified_in_ci"
 
 [target.evidence]
 unit_tests = ["semasm-target::tests", "semasm-x86::abi_win64", "semasm-obj::tests"]
 fixtures = ["fixtures/asm/hello_win64.asm", "fixtures/asm/win64_clean.asm", "fixtures/asm/count_byte_win64.asm"]
-ci_jobs = []
+ci_jobs = ["e2e (x86-64 Windows)"]
 
 [[target]]
 id = "aarch64-unknown-linux-gnu"
-description = "AArch64 Linux, AAPCS64 ABI, ELF (pipeline verify = exit fixture e2e; not agent-complete)"
+description = "AArch64 Linux, AAPCS64 ABI, ELF"
 
 [target.capabilities]
 declared = "verified_in_ci"
@@ -82,8 +83,9 @@ abi_analysis = "verified_in_unit_tests"
 assemble = "verified_in_ci"
 link = "verified_in_ci"
 execute = "verified_in_ci"
-# Pipeline assemble/link/run of fixtures/asm/exit_aarch64.S in CI — not agent semantic gates.
 verify = "verified_in_ci"
+pipeline_verify = "verified_in_ci"
+agent_verify = "verified_in_ci"
 
 [target.evidence]
 unit_tests = ["semasm-decode::tests", "semasm-aarch64::lower", "semasm-aarch64::abi"]
@@ -92,7 +94,7 @@ ci_jobs = ["e2e (AArch64 Linux)"]
 
 [[target]]
 id = "riscv64gc-unknown-linux-gnu"
-description = "RV64 Linux, RISC-V psABI, ELF (pipeline verify = exit fixture e2e; not agent-complete)"
+description = "RV64 Linux, RISC-V psABI, ELF"
 
 [target.capabilities]
 declared = "verified_in_ci"
@@ -102,8 +104,9 @@ abi_analysis = "verified_in_unit_tests"
 assemble = "verified_in_ci"
 link = "verified_in_ci"
 execute = "verified_in_ci"
-# Pipeline assemble/link/run of fixtures/asm/exit_riscv64.S in CI — not agent semantic gates.
 verify = "verified_in_ci"
+pipeline_verify = "verified_in_ci"
+agent_verify = "verified_in_ci"
 
 [target.evidence]
 unit_tests = ["semasm-riscv::lower", "semasm-riscv::abi", "semasm-decode::tests"]
@@ -123,6 +126,8 @@ assemble = "unavailable"
 link = "unavailable"
 execute = "unavailable"
 verify = "experimental"
+pipeline_verify = "unavailable"
+agent_verify = "declared"
 
 [target.evidence]
 unit_tests = ["semasm-riscv::lower", "semasm-riscv::abi"]

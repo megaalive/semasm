@@ -171,7 +171,8 @@ fn classify(base: &str) -> Option<OpKind> {
         }
         "ld" | "lb" | "lh" | "lw" | "ldu" | "lbu" | "lhu" | "lwu" => Some(OpKind::Load),
         "sd" | "sb" | "sh" | "sw" | "mv" => Some(OpKind::Store),
-        "addi" | "addiw" | "subw" | "addw" => Some(OpKind::Binary),
+        "addi" | "addiw" | "subw" | "addw" | "andi" | "ori" | "slli" => Some(OpKind::Binary),
+        "li" => Some(OpKind::Store),
         "slt" | "sltu" | "slti" | "sltiu" => Some(OpKind::Compare),
         "beq" | "bne" | "blt" | "bge" | "bltu" | "bgeu" | "beqz" | "bnez" => Some(OpKind::Branch),
         "jalr" | "jal" => Some(OpKind::Call), // jalr also used for returns; lower() disambiguates
@@ -500,9 +501,22 @@ mod tests {
     }
 
     #[test]
-    fn cbz_is_unmodelled_today() {
-        let l = lower(&dec("cbz", &["a0", "label"]));
-        assert!(matches!(l, Lowering::Unsupported { .. }));
+    fn andi_ori_slli_are_binary() {
+        let l = lower(&dec("andi", &["a0", "a1", "0xff"])).expect_lowered();
+        assert_eq!(l.kind, Kind::Binary);
+        let l = lower(&dec("ori", &["a0", "a1", "1"])).expect_lowered();
+        assert_eq!(l.kind, Kind::Binary);
+        let l = lower(&dec("slli", &["a0", "a1", "3"])).expect_lowered();
+        assert_eq!(l.kind, Kind::Binary);
+    }
+
+    #[test]
+    fn li_is_store_pseudo() {
+        let l = lower(&dec("li", &["a0", "42"])).expect_lowered();
+        assert_eq!(l.kind, Kind::Store);
+        assert_eq!(l.mnemonic, "mv");
+        assert_eq!(l.operands[0], Operand::Reg(Gpr::A0.full()));
+        assert!(matches!(l.operands[1], Operand::Imm(42)));
     }
 
     #[test]

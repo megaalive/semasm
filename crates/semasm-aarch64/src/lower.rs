@@ -187,9 +187,11 @@ fn classify(base: &str) -> Option<OpKind> {
     match base {
         "mov" | "movz" | "movk" | "movn" | "str" | "strb" | "strh" => Some(OpKind::Store),
         "ldr" | "ldrb" | "ldrh" | "ldrsb" | "ldrsh" | "ldrsw" => Some(OpKind::Load),
-        "add" | "sub" | "mul" | "and" | "orr" | "eor" | "lsl" | "lsr" => Some(OpKind::Binary),
+        "add" | "adds" | "sub" | "subs" | "mul" | "and" | "orr" | "eor" | "lsl" | "lsr" => {
+            Some(OpKind::Binary)
+        }
         "cmp" | "cmn" | "tst" => Some(OpKind::Compare),
-        "b" => Some(OpKind::Branch),
+        "b" | "cbz" | "cbnz" => Some(OpKind::Branch),
         "bl" => Some(OpKind::Call),
         "ret" => Some(OpKind::Return),
         "svc" | "hvc" | "smc" | "brk" | "hlt" => Some(OpKind::Unknown),
@@ -417,12 +419,24 @@ mod tests {
     }
 
     #[test]
-    fn cbz_is_unmodelled_today() {
-        // `cbz`/`cbnz` are not in the A64-002 subset yet.
-        assert!(matches!(
-            lower(&dec("cbz", &["x0", "#0x10"])),
-            Lowering::Unsupported { .. }
-        ));
+    fn cbz_cbnz_are_branches() {
+        let l = lower(&dec("cbz", &["x0", "#0x10"])).expect_lowered();
+        assert_eq!(l.kind, OpKind::Branch);
+        assert_eq!(l.mnemonic, "cbz");
+        let l = lower(&dec("cbnz", &["w1", "#0x20"])).expect_lowered();
+        assert_eq!(l.kind, OpKind::Branch);
+        assert_eq!(l.mnemonic, "cbnz");
+        assert_eq!(l.width, Width::B32);
+    }
+
+    #[test]
+    fn adds_subs_are_binary() {
+        let l = lower(&dec("adds", &["x0", "x1", "x2"])).expect_lowered();
+        assert_eq!(l.kind, OpKind::Binary);
+        assert_eq!(l.mnemonic, "adds");
+        let l = lower(&dec("subs", &["x1", "x1", "#1"])).expect_lowered();
+        assert_eq!(l.kind, OpKind::Binary);
+        assert_eq!(l.mnemonic, "subs");
     }
 
     #[test]

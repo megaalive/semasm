@@ -10,8 +10,8 @@ CI-proven support.
 |---|---|---|
 | VS-00 | Repository bootstrap and governance | **done** |
 | VS-01 | Contract parser and deterministic diagnostics | **done** |
-| VS-02–VS-08 | Build/report, agents, object/decode/CFG, and architecture experiments | **implemented; stabilization evidence incomplete** |
-| Stabilization | Fail-closed execution, honest analysis, and target CI evidence | **in progress** |
+| VS-02–VS-08 | Build/report, agents, object/decode/CFG, and architecture experiments | **implemented** |
+| Stabilization | Fail-closed execution, honest claims, adversarial corpus, isolation truth | **bulletproof P0–P5 done; deepen x86 golden path next** |
 
 ## Declared target identities
 
@@ -34,13 +34,15 @@ conformance evidence are proven.
 ## Near-term stabilization criteria
 
 - Clean workspace checks on Linux and Windows.
-- Named Linux and Windows end-to-end CI jobs.
+- Named Linux, Windows, and cross-target end-to-end CI jobs (owner jobs set
+  `SEMASM_REQUIRE_TOOLCHAIN=1`; soft-skip is local-only).
 - Unsupported instructions produce an incomplete result, never a clean result.
-- AArch64 and RISC-V claims remain below CI-verified until cross-target jobs pass.
-- Capability documentation remains synchronized with the manifest.
+- Capability documentation stays synchronized with `capabilities.toml`
+  (Pipeline vs Agent columns must not be conflated).
 - Agent verify emits structured `VerificationReport` evidence on every gate
-  outcome (including denial and failure); expand harness shapes only after that
-  contract stays stable (`docs/CLI_COMPATIBILITY.md`).
+  outcome; deepen soundness on the x86-64 golden path (`count_byte` /
+  `min_usize`) before adding new ISAs.
+- Prefer fail-closed adversarial fixtures over broader mnemonic coverage.
 
 See `semasm-complete-project-plan.md` for the original ordered vertical slices
 and `docs/status/BASELINE-2026-07.md` for the stabilization baseline.

@@ -8,8 +8,8 @@ use semasm_agent::verify::Coverage;
 use semasm_agent::{
     harness,
     verify::{
-        ExecutableGate, GateStatus, SemanticGateError, SemanticGates, VerificationReport,
-        VerificationStatus,
+        ExecutableGate, ExecutionIsolation, GateStatus, SemanticGateError, SemanticGates,
+        VerificationReport, VerificationStatus,
     },
     ContextBundle, TargetToolchain, TaskPacket,
 };
@@ -205,6 +205,7 @@ pub(crate) fn do_agent_verify(
         );
         return ExitCode::from(1);
     }
+    let run_isolation = ExecutionIsolation::from_runner(pipeline.toolchain.runner.as_deref());
 
     let contract_text = match std::fs::read_to_string(contract_path) {
         Ok(text) => text,
@@ -274,6 +275,7 @@ pub(crate) fn do_agent_verify(
                 SemanticGates::from_error(&error, 0),
                 ExecutableGate::skipped(),
                 None,
+                ExecutionIsolation::StaticOnly,
             );
             let _ = std::fs::remove_dir_all(&directory);
             let _ = emit_verification_report(&verification, format);
@@ -291,6 +293,7 @@ pub(crate) fn do_agent_verify(
                 semantic,
                 ExecutableGate::skipped(),
                 None,
+                ExecutionIsolation::StaticOnly,
             );
             let _ = std::fs::remove_dir_all(&directory);
             let _ = emit_verification_report(&verification, format);
@@ -357,6 +360,7 @@ pub(crate) fn do_agent_verify(
             semantic,
             executable_gate,
             None,
+            ExecutionIsolation::StaticOnly,
         );
         let _ = std::fs::remove_dir_all(&directory);
         let _ = emit_verification_report(&verification, format);
@@ -370,6 +374,7 @@ pub(crate) fn do_agent_verify(
             semantic,
             executable_gate,
             None,
+            ExecutionIsolation::StaticOnly,
         );
         let _ = std::fs::remove_dir_all(&directory);
         if !emit_verification_report(&verification, format) {
@@ -397,6 +402,7 @@ pub(crate) fn do_agent_verify(
         semantic,
         executable_gate,
         Some(behavior),
+        run_isolation,
     );
 
     if !emit_verification_report(&verification, format) {
@@ -433,6 +439,7 @@ fn print_verification_terminal(report: &VerificationReport) {
     println!("Status: {}", report.status.as_str());
     println!("Target: {}", report.target);
     println!("Routine: {}", report.routine_symbol);
+    println!("Isolation: {}", report.isolation.as_str());
     println!(
         "Semantic gates: object={} decode={}/{} lowering={}/{} ({}%) abi={} capability={}",
         semantic.object_policy.as_str(),
