@@ -321,6 +321,12 @@ pub struct VerificationReport {
     pub routine_symbol: String,
     /// How execution was isolated (or that only static gates ran).
     pub isolation: ExecutionIsolation,
+    /// Tool identity string (`semasm MAJOR.MINOR.PATCH`).
+    pub tool_version: String,
+    /// SHA-256 digest of the contract file bytes (`sha256:` + hex).
+    pub contract_digest: String,
+    /// SHA-256 digest of the candidate source bytes (`sha256:` + hex).
+    pub source_digest: String,
     /// Static semantic gate results.
     pub semantic: SemanticGates,
     /// Post-link executable gate result.
@@ -384,13 +390,30 @@ impl ProofBasis {
 }
 
 /// Current experimental schema version for [`VerificationReport`] JSON.
-pub const VERIFICATION_REPORT_SCHEMA_VERSION: &str = "0.3";
+pub const VERIFICATION_REPORT_SCHEMA_VERSION: &str = "0.4";
+
+/// Prefixed SHA-256 digest for controller provenance (`sha256:` + lowercase hex).
+#[must_use]
+pub fn sha256_digest_prefixed(bytes: &[u8]) -> String {
+    use sha2::{Digest, Sha256};
+    let digest = Sha256::digest(bytes);
+    let mut out = String::with_capacity(7 + 64);
+    out.push_str("sha256:");
+    for byte in digest {
+        use std::fmt::Write as _;
+        let _ = write!(out, "{byte:02x}");
+    }
+    out
+}
 
 impl VerificationReport {
     /// Compose an immutable report from completed stage results.
     ///
     /// Callers must not pass a half-filled semantic record and mutate it
     /// later; build `semantic` and `executable` fully before calling.
+    ///
+    /// Digests default to empty; CLI callers should attach them with
+    /// [`Self::with_digests`].
     #[must_use]
     pub fn from_parts(
         target: String,
@@ -418,11 +441,22 @@ impl VerificationReport {
             target,
             routine_symbol,
             isolation,
+            tool_version: format!("semasm {}", semasm_core::SEMASM_VERSION),
+            contract_digest: String::new(),
+            source_digest: String::new(),
             semantic,
             executable,
             behavior,
             behavior_oracle: None,
         }
+    }
+
+    /// Attach contract and source content digests for controller consumers.
+    #[must_use]
+    pub fn with_digests(mut self, contract_digest: String, source_digest: String) -> Self {
+        self.contract_digest = contract_digest;
+        self.source_digest = source_digest;
+        self
     }
 
     /// Attach a named behavioral oracle (fluent builder for callers).
@@ -585,12 +619,25 @@ mod tests {
             ExecutableGate::passed(),
             None,
             ExecutionIsolation::StaticOnly,
+        )
+        .with_digests(
+            sha256_digest_prefixed(b"contract"),
+            sha256_digest_prefixed(b"source"),
         );
         let value = serde_json::to_value(&report).unwrap();
         assert!(value.get("semantic").is_some());
         assert!(value.get("executable").is_some());
         assert!(value.get("behavior").is_some());
         assert_eq!(value["schema_version"], VERIFICATION_REPORT_SCHEMA_VERSION);
+        assert!(value["tool_version"]
+            .as_str()
+            .is_some_and(|v| v.starts_with("semasm ")));
+        assert!(value["contract_digest"]
+            .as_str()
+            .is_some_and(|v| v.starts_with("sha256:")));
+        assert!(value["source_digest"]
+            .as_str()
+            .is_some_and(|v| v.starts_with("sha256:")));
         assert_eq!(value["status"], "execution_denied");
         assert_eq!(value["semantic"]["abi"], "passed");
         assert_eq!(value["semantic"]["lowering"]["unknown"], 0);
@@ -676,5 +723,27 @@ mod tests {
         );
         let value = serde_json::to_value(&report).unwrap();
         assert_eq!(value["status"], "executable_failed");
+    }
+
+    #[test]
+    fn golden_execution_denied_report_deserializes() {
+        let json = include_str!("../fixtures/verification-report-count_byte.execution_denied.json");
+        let report: VerificationReport =
+            serde_json::from_str(json).expect("golden VerificationReport must deserialize");
+        assert_eq!(report.schema_version, VERIFICATION_REPORT_SCHEMA_VERSION);
+        assert_eq!(report.status, VerificationStatus::ExecutionDenied);
+        assert_eq!(report.target, "x86_64-unknown-linux-gnu");
+        assert_eq!(report.routine_symbol, "count_byte");
+        assert_eq!(report.isolation, ExecutionIsolation::StaticOnly);
+        assert!(report.tool_version.starts_with("semasm "));
+        assert!(report.contract_digest.starts_with("sha256:"));
+        assert_eq!(report.contract_digest.len(), 7 + 64);
+        assert!(report.source_digest.starts_with("sha256:"));
+        assert_eq!(report.source_digest.len(), 7 + 64);
+        assert!(report.behavior.is_none());
+        let oracle = report.behavior_oracle.expect("golden includes oracle");
+        assert_eq!(oracle.id, "builtin.buffer.count_equal_u8");
+        assert_eq!(oracle.version, 2);
+        assert_eq!(oracle.proof_basis, ProofBasis::OracleAndVectors);
     }
 }

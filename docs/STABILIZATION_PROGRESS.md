@@ -27,8 +27,9 @@ before work advances past a failed item.
 ## Current focus
 
 Stabilization PR-01…18, the **Bulletproof Roadmap (P0–P5)**, **X86 Golden Path
-Depth (S0–S4)**, **Evidence Instruments (W1–W3)**, and **W4 Evidence Depth**
-are complete on `main` (pending the commit that lands this doc sync).
+Depth (S0–S4)**, **Evidence Instruments (W1–W3)**, **W4 Evidence Depth**, and
+**W5 Controller Handshake** are complete on `main` (pending the commit that
+lands this doc sync).
 
 | Step | Focus | Status |
 |---|---|---|
@@ -36,6 +37,9 @@ are complete on `main` (pending the commit that lands this doc sync).
 | W4a | Oracle honesty (`contract_ensures` / `proof_basis`, schema 0.3) | done |
 | W4b | Read-only buffer leaf gate (`semantic.memory`) | done |
 | W4c | Golden demo / README oracle-vs-ensures clarity | done |
+| W5a | Report provenance (`tool_version`, digests, schema 0.4) | done |
+| W5b | `CONTROLLER_PROTOCOL.md` + status map for VAA | done |
+| W5c | Golden `VerificationReport` fixture for consumers | done |
 
 ### Completed recently (not deferred)
 
@@ -43,19 +47,25 @@ are complete on `main` (pending the commit that lands this doc sync).
 - Evidence card (`--card`), candidate compare, named versioned behavior oracles
 - Oracle v2 splits weak contract `ensures` from `proof_basis: oracle_and_vectors`
 - Read-only buffer leaf rejects explicit memory stores (`memory` gate)
+- Controller handshake fields + stdout-only protocol for VAA adapters
 
-### Deferred (explicitly out of W4)
+### Deferred (explicitly out of W5)
 
 - Formal `ensures result == count(...)` / general theorem proving
 - Full memory alias / symbolic proof beyond the read-only leaf gate
 - C compiler `-O2` / `-Os` binary-size bake-off in CI
 - New ISAs or broad mnemonic expansion
 - GitHub Release `v0.1.0` (checklist-gated separately)
+- VAA adapter rewrite (lives in the VAA repo; see `CONTROLLER_PROTOCOL.md`)
 
 Demo: `scripts/golden-demo.sh` (Linux SysV) or `scripts/golden-demo.ps1`
 (Windows PE by default; `-SysV` for Linux tools).
 
+Operational note: SemASM smoke with VAA is reasonable after a VAA adapter that
+parses real `VerificationReport` 0.4 from stdout; a full generate→verify→compare
+agent loop still waits on a real model adapter in VAA.
+
 The 0.1 release workflow remains prepared and must only be triggered from a
 reviewed `v0.1.0` tag after checklist gates stay green. See
-`docs/CLI_COMPATIBILITY.md`, `docs/AGENT_SCHEMA_POLICY.md`, and
-`ARCHITECTURE.md`.
+`docs/CLI_COMPATIBILITY.md`, `docs/CONTROLLER_PROTOCOL.md`,
+`docs/AGENT_SCHEMA_POLICY.md`, and `ARCHITECTURE.md`.

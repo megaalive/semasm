@@ -26,6 +26,10 @@
         }
       ]
     },
+    "contract_digest": {
+      "description": "SHA-256 digest of the contract file bytes (`sha256:` + hex).",
+      "type": "string"
+    },
     "executable": {
       "description": "Post-link executable gate result.",
       "$ref": "#/$defs/ExecutableGate"
@@ -46,12 +50,20 @@
       "description": "Static semantic gate results.",
       "$ref": "#/$defs/SemanticGates"
     },
+    "source_digest": {
+      "description": "SHA-256 digest of the candidate source bytes (`sha256:` + hex).",
+      "type": "string"
+    },
     "status": {
       "description": "Aggregate status derived from stage results.",
       "$ref": "#/$defs/VerificationStatus"
     },
     "target": {
       "description": "Target identity name.",
+      "type": "string"
+    },
+    "tool_version": {
+      "description": "Tool identity string (`semasm MAJOR.MINOR.PATCH`).",
       "type": "string"
     }
   },
@@ -61,6 +73,9 @@
     "target",
     "routine_symbol",
     "isolation",
+    "tool_version",
+    "contract_digest",
+    "source_digest",
     "semantic",
     "executable"
   ],

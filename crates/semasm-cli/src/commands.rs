@@ -12,8 +12,8 @@ use semasm_agent::{
     },
     harness,
     verify::{
-        ExecutableGate, ExecutionIsolation, GateStatus, SemanticGateError, SemanticGates,
-        VerificationReport, VerificationStatus,
+        sha256_digest_prefixed, ExecutableGate, ExecutionIsolation, GateStatus, SemanticGateError,
+        SemanticGates, VerificationReport, VerificationStatus,
     },
     ContextBundle, TargetToolchain, TaskPacket,
 };
@@ -394,6 +394,15 @@ fn run_agent_verify_core(
             return VerifyCore::Early(ExitCode::from(1));
         }
     };
+    let source_bytes = match std::fs::read(source) {
+        Ok(bytes) => bytes,
+        Err(error) => {
+            eprintln!("{}: error: {error}", source.display());
+            return VerifyCore::Early(ExitCode::from(1));
+        }
+    };
+    let contract_digest = sha256_digest_prefixed(&contract_bytes);
+    let source_digest = sha256_digest_prefixed(&source_bytes);
     let contract_text = match std::str::from_utf8(&contract_bytes) {
         Ok(text) => text,
         Err(error) => {
@@ -428,10 +437,10 @@ fn run_agent_verify_core(
         .to_string();
     let routine_symbol = checked.name.clone();
 
-    let attach_oracle = |report: VerificationReport,
-                         behavior: Option<&semasm_agent::harness::HarnessReport>|
+    let finalize_report = |report: VerificationReport,
+                           behavior: Option<&semasm_agent::harness::HarnessReport>|
      -> VerificationReport {
-        match recognized_oracle {
+        let report = match recognized_oracle {
             Some(recognized) => report.with_behavior_oracle(harness::build_behavior_oracle(
                 recognized,
                 &checked,
@@ -441,7 +450,8 @@ fn run_agent_verify_core(
                 behavior,
             )),
             None => report,
-        }
+        };
+        report.with_digests(contract_digest.clone(), source_digest.clone())
     };
 
     let directory = std::env::temp_dir().join(format!(
@@ -488,7 +498,7 @@ fn run_agent_verify_core(
             Ok(gates) => gates,
             Err(error) => {
                 eprintln!("semantic gate failed: {error}");
-                let report = attach_oracle(
+                let report = finalize_report(
                     VerificationReport::from_parts(
                         identity.name.clone(),
                         routine_symbol,
@@ -513,7 +523,7 @@ fn run_agent_verify_core(
         Ok(source) => source,
         Err(reason) => {
             eprintln!("behavioral harness unavailable: {reason}");
-            let report = attach_oracle(
+            let report = finalize_report(
                 VerificationReport::from_parts(
                     identity.name.clone(),
                     routine_symbol,
@@ -583,7 +593,7 @@ fn run_agent_verify_core(
         if let Some(error) = executable_error {
             eprintln!("executable object gate failed: {error}");
         }
-        let report = attach_oracle(
+        let report = finalize_report(
             VerificationReport::from_parts(
                 identity.name.clone(),
                 routine_symbol,
@@ -604,7 +614,7 @@ fn run_agent_verify_core(
     }
 
     if !allow_execution {
-        let report = attach_oracle(
+        let report = finalize_report(
             VerificationReport::from_parts(
                 identity.name.clone(),
                 routine_symbol,
@@ -654,7 +664,8 @@ fn run_agent_verify_core(
         executable_gate,
         Some(behavior),
         run_isolation,
-    );
+    )
+    .with_digests(contract_digest, source_digest);
     if let Some(oracle) = oracle {
         report = report.with_behavior_oracle(oracle);
     }

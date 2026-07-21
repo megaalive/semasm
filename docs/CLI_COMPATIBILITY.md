@@ -31,9 +31,11 @@ Otherwise exit `1` and still emit a structured report when gates were reached:
 
 JSON document type is `VerificationReport` from `semasm-agent::verify`:
 
-- `schema_version` — experimental agent schema (`0.3`); see
+- `schema_version` — experimental agent schema (`0.4`); see
   `AGENT_SCHEMA_POLICY.md` and
   `crates/semasm-agent/schemas/verification-report.json`
+- `tool_version` — `semasm {SEMASM_VERSION}`
+- `contract_digest` / `source_digest` — `sha256:` + full hex of input bytes
 - `status`, `target`, `routine_symbol`, `isolation`
 - `semantic` — object policy, instruction-oriented `decode` / `lowering`
   coverage (`total` / `modeled` / `unknown`), ABI, capability, control, and
@@ -47,6 +49,9 @@ JSON document type is `VerificationReport` from `semasm-agent::verify`:
   `contract_ensures` (raw contract postconditions, often weaker) and
   `proof_basis: oracle_and_vectors` — equality is not proven by the contract
   alone.
+
+Controller consumers (for example VAA) must parse **stdout only** and map
+statuses per [`CONTROLLER_PROTOCOL.md`](CONTROLLER_PROTOCOL.md).
 
 Coverage units are instructions, never raw bytes. Byte decode gaps appear only
 in stderr / error messages. Agent JSON remains experimental in 0.x: tolerate

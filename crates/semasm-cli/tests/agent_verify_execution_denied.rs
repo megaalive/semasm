@@ -48,7 +48,16 @@ fn agent_verify_emits_execution_denied_json_without_opt_in() {
     let value: serde_json::Value = serde_json::from_str(&stdout).unwrap_or_else(|error| {
         panic!("expected VerificationReport JSON on stdout ({error}): {stdout}\nstderr={stderr}")
     });
-    assert_eq!(value["schema_version"], "0.3");
+    assert_eq!(value["schema_version"], "0.4");
+    assert!(value["tool_version"]
+        .as_str()
+        .is_some_and(|v| v.starts_with("semasm ")));
+    assert!(value["contract_digest"]
+        .as_str()
+        .is_some_and(|v| v.starts_with("sha256:") && v.len() == 7 + 64));
+    assert!(value["source_digest"]
+        .as_str()
+        .is_some_and(|v| v.starts_with("sha256:") && v.len() == 7 + 64));
     assert_eq!(value["status"], "execution_denied");
     assert_eq!(value["semantic"]["abi"], "passed");
     assert_eq!(value["semantic"]["capability"], "passed");

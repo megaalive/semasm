@@ -13,6 +13,7 @@ in `REPORT_SCHEMA_POLICY.md` (no deterministic-evidence hash / volatile split).
 | Verification report | `VERIFICATION_REPORT_SCHEMA_VERSION` / `schema_version` | `crates/semasm-agent/schemas/verification-report.json` |
 
 CLI field meanings and exit codes for verify live in `CLI_COMPATIBILITY.md`.
+Controller stream and status-mapping rules live in `CONTROLLER_PROTOCOL.md`.
 
 ## Compatibility rules
 

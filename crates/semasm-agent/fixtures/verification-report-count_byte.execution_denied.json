@@ -1,0 +1,47 @@
+{
+  "schema_version": "0.4",
+  "status": "execution_denied",
+  "target": "x86_64-unknown-linux-gnu",
+  "routine_symbol": "count_byte",
+  "isolation": "static_only",
+  "tool_version": "semasm 0.1.0",
+  "contract_digest": "sha256:6863636196b233645c699087ee7f6805ca34de7d8f43168808803c054c785d58",
+  "source_digest": "sha256:a561e25080732eef325483793d9ff7a00ad6bcd21c6abcebb9bbf2bfbec4ea5c",
+  "semantic": {
+    "object_policy": "passed",
+    "executable_bytes": 48,
+    "decode": {
+      "total": 12,
+      "modeled": 12,
+      "unknown": 0
+    },
+    "lowering": {
+      "total": 12,
+      "modeled": 12,
+      "unknown": 0
+    },
+    "abi": "passed",
+    "capability": "passed",
+    "control": "passed",
+    "memory": "passed"
+  },
+  "executable": {
+    "status": "passed"
+  },
+  "behavior": null,
+  "behavior_oracle": {
+    "id": "builtin.buffer.count_equal_u8",
+    "version": 2,
+    "contract": "count_byte.sem.toml",
+    "contract_hash": "6863636196b2",
+    "contract_ensures": [
+      "count <= length"
+    ],
+    "proof_basis": "oracle_and_vectors",
+    "claim": "result equals the number of bytes in buffer[0..length] equal to needle",
+    "vectors_passed": 0,
+    "vectors_failed": 0,
+    "vectors_total": 7,
+    "evidence_hash": "0123456789abcdef0123456789abcdef"
+  }
+}
