@@ -429,6 +429,10 @@ fn run_agent_verify_core(
         );
         return VerifyCore::Early(ExitCode::from(1));
     }
+    if let Err(message) = harness::validate_vectors_match_oracle(&checked, &vectors) {
+        eprintln!("error: contract/harness mismatch: {message}");
+        return VerifyCore::Early(ExitCode::from(1));
+    }
     let recognized_oracle = harness::recognize_behavior_oracle(&checked);
     let contract_label = contract_path
         .file_name()
@@ -825,8 +829,8 @@ fn verify_candidate_semantics(
                 abi: GateStatus::Passed,
                 capability: GateStatus::Passed,
                 // CFG / memory leaf policies are x86-only in this slice.
-                control: GateStatus::Passed,
-                memory: GateStatus::Passed,
+                control: GateStatus::Skipped,
+                memory: GateStatus::Skipped,
             })
         }
         (Isa::Riscv64, Abi::Riscv, ObjectFormat::Elf) => {
@@ -844,8 +848,8 @@ fn verify_candidate_semantics(
                 abi: GateStatus::Passed,
                 capability: GateStatus::Passed,
                 // CFG / memory leaf policies are x86-only in this slice.
-                control: GateStatus::Passed,
-                memory: GateStatus::Passed,
+                control: GateStatus::Skipped,
+                memory: GateStatus::Skipped,
             })
         }
         _ => Err(SemanticGateError::new(
@@ -1561,6 +1565,8 @@ mod semantic_gate_tests {
         assert!(gates.all_passed());
         assert_eq!(gates.abi, GateStatus::Passed);
         assert_eq!(gates.capability, GateStatus::Passed);
+        assert_eq!(gates.control, GateStatus::Skipped);
+        assert_eq!(gates.memory, GateStatus::Skipped);
         let _ = std::fs::remove_dir_all(scratch);
     }
 
@@ -1598,6 +1604,8 @@ mod semantic_gate_tests {
         assert!(gates.all_passed());
         assert_eq!(gates.abi, GateStatus::Passed);
         assert_eq!(gates.capability, GateStatus::Passed);
+        assert_eq!(gates.control, GateStatus::Skipped);
+        assert_eq!(gates.memory, GateStatus::Skipped);
         let _ = std::fs::remove_dir_all(scratch);
     }
 }
