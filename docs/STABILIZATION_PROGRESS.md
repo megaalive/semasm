@@ -58,6 +58,19 @@ lands this doc sync).
 - GitHub Release `v0.1.0` (checklist-gated separately)
 - VAA adapter rewrite (lives in the VAA repo; see `CONTROLLER_PROTOCOL.md`)
 
+### Next waves (controller / VAA vertical slice)
+
+| Wave | Focus | Status |
+|---|---|---|
+| S0 | Lock honesty: next shared slice is `count_byte`, not `sum_i64` | in progress |
+| S1 | Consumer golden `verified` JSON for count_byte | planned |
+| S2 | VAA CI Gate-1: live Incomplete (`execution_denied`) + seal chain | planned (VAA) |
+| S3 | VAA `--allow-execution` + optional Gate-2 Verified | planned (VAA) |
+| S4 | SemASM `sum_i64` contract/oracle/harness + VAA fixtures | planned |
+
+**Honesty:** Gate-1 (`execution_denied` → VAA Incomplete) is **not** a verified vertical slice.
+Gate-2 requires opt-in execution. `sum_i64` needs a new SemASM harness shape before VAA can claim it.
+
 Demo: `scripts/golden-demo.sh` (Linux SysV) or `scripts/golden-demo.ps1`
 (Windows PE by default; `-SysV` for Linux tools).
 
