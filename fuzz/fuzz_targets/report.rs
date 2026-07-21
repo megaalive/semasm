@@ -35,6 +35,7 @@ fuzz_target!(|data: &[u8]| {
         object: None,
         executable: artifact,
         execution: ExecutionInfo::NotRequested,
+        isolation: semasm_target::ExecutionIsolation::StaticOnly,
     };
     let _ = report.canonical_evidence_json();
     let _ = report.canonical_evidence_hash();

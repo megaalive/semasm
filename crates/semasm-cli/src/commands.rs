@@ -352,7 +352,10 @@ fn write_evidence_card_if_requested(report: &VerificationReport, card: &CardOpti
         render_evidence_card_markdown(&ctx)
     };
     if let Err(error) = std::fs::write(path, body) {
-        eprintln!("error: cannot write evidence card {}: {error}", path.display());
+        eprintln!(
+            "error: cannot write evidence card {}: {error}",
+            path.display()
+        );
         return false;
     }
     eprintln!("wrote evidence card {}", path.display());
@@ -417,7 +420,28 @@ fn run_agent_verify_core(
         );
         return VerifyCore::Early(ExitCode::from(1));
     }
+    let recognized_oracle = harness::recognize_behavior_oracle(&checked);
+    let contract_label = contract_path
+        .file_name()
+        .and_then(|name| name.to_str())
+        .unwrap_or_else(|| contract_path.to_str().unwrap_or("contract"))
+        .to_string();
     let routine_symbol = checked.name.clone();
+
+    let attach_oracle = |report: VerificationReport,
+                         behavior: Option<&semasm_agent::harness::HarnessReport>|
+     -> VerificationReport {
+        match recognized_oracle {
+            Some(recognized) => report.with_behavior_oracle(harness::build_behavior_oracle(
+                recognized,
+                &contract_label,
+                &contract_bytes,
+                &vectors,
+                behavior,
+            )),
+            None => report,
+        }
+    };
 
     let directory = std::env::temp_dir().join(format!(
         "semasm-verify-{}-{}",
@@ -462,13 +486,16 @@ fn run_agent_verify_core(
         Ok(gates) => gates,
         Err(error) => {
             eprintln!("semantic gate failed: {error}");
-            let report = VerificationReport::from_parts(
-                identity.name.clone(),
-                routine_symbol,
-                SemanticGates::from_error(&error, 0),
-                ExecutableGate::skipped(),
+            let report = attach_oracle(
+                VerificationReport::from_parts(
+                    identity.name.clone(),
+                    routine_symbol,
+                    SemanticGates::from_error(&error, 0),
+                    ExecutableGate::skipped(),
+                    None,
+                    ExecutionIsolation::StaticOnly,
+                ),
                 None,
-                ExecutionIsolation::StaticOnly,
             );
             let _ = std::fs::remove_dir_all(&directory);
             return VerifyCore::Done {
@@ -484,17 +511,16 @@ fn run_agent_verify_core(
         Ok(source) => source,
         Err(reason) => {
             eprintln!("behavioral harness unavailable: {reason}");
-            let report = VerificationReport::from_parts(
-                identity.name.clone(),
-                routine_symbol,
-                semantic,
-                ExecutableGate::skipped(),
+            let report = attach_oracle(
+                VerificationReport::from_parts(
+                    identity.name.clone(),
+                    routine_symbol,
+                    semantic,
+                    ExecutableGate::skipped(),
+                    None,
+                    ExecutionIsolation::StaticOnly,
+                ),
                 None,
-                ExecutionIsolation::StaticOnly,
-            );
-            let _ = std::fs::remove_dir_all(&directory);
-            eprintln!(
-                "execution denied: static semantic gates passed; behavioral harness not available for this target"
             );
             return VerifyCore::Done {
                 report: Box::new(report),
@@ -555,13 +581,16 @@ fn run_agent_verify_core(
         if let Some(error) = executable_error {
             eprintln!("executable object gate failed: {error}");
         }
-        let report = VerificationReport::from_parts(
-            identity.name.clone(),
-            routine_symbol,
-            semantic,
-            executable_gate,
+        let report = attach_oracle(
+            VerificationReport::from_parts(
+                identity.name.clone(),
+                routine_symbol,
+                semantic,
+                executable_gate,
+                None,
+                ExecutionIsolation::StaticOnly,
+            ),
             None,
-            ExecutionIsolation::StaticOnly,
         );
         let _ = std::fs::remove_dir_all(&directory);
         return VerifyCore::Done {
@@ -573,13 +602,16 @@ fn run_agent_verify_core(
     }
 
     if !allow_execution {
-        let report = VerificationReport::from_parts(
-            identity.name.clone(),
-            routine_symbol,
-            semantic,
-            executable_gate,
+        let report = attach_oracle(
+            VerificationReport::from_parts(
+                identity.name.clone(),
+                routine_symbol,
+                semantic,
+                executable_gate,
+                None,
+                ExecutionIsolation::StaticOnly,
+            ),
             None,
-            ExecutionIsolation::StaticOnly,
         );
         let _ = std::fs::remove_dir_all(&directory);
         eprintln!(
@@ -603,7 +635,16 @@ fn run_agent_verify_core(
     };
     let behavior = harness::evaluate(&run.stdout, &vectors);
     let _ = std::fs::remove_dir_all(&directory);
-    let report = VerificationReport::from_parts(
+    let oracle = recognized_oracle.map(|recognized| {
+        harness::build_behavior_oracle(
+            recognized,
+            &contract_label,
+            &contract_bytes,
+            &vectors,
+            Some(&behavior),
+        )
+    });
+    let mut report = VerificationReport::from_parts(
         identity.name.clone(),
         routine_symbol,
         semantic,
@@ -611,6 +652,9 @@ fn run_agent_verify_core(
         Some(behavior),
         run_isolation,
     );
+    if let Some(oracle) = oracle {
+        report = report.with_behavior_oracle(oracle);
+    }
 
     let exit = match report.status {
         VerificationStatus::Verified => ExitCode::SUCCESS,
@@ -662,6 +706,17 @@ fn print_verification_terminal(report: &VerificationReport) {
         semantic.control.as_str(),
     );
     println!("Executable gate: {}", report.executable.status.as_str());
+    if let Some(oracle) = &report.behavior_oracle {
+        println!(
+            "Behavior oracle: {} v{} (passed={}/{} hash={})",
+            oracle.id,
+            oracle.version,
+            oracle.vectors_passed,
+            oracle.vectors_total,
+            oracle.evidence_hash
+        );
+        println!("Oracle claim: {}", oracle.claim);
+    }
 
     match &report.behavior {
         Some(behavior) => {

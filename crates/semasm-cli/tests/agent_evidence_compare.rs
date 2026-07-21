@@ -25,11 +25,8 @@ fn agent_verify_sysv_writes_evidence_card() {
     let workspace = workspace_root();
     let source = workspace.join("fixtures/asm/count_byte.asm");
     let contract = workspace.join("fixtures/contracts/count_byte.sem.toml");
-    let card = std::env::temp_dir().join(format!(
-        "semasm-card-{}-{}.md",
-        std::process::id(),
-        "sysv"
-    ));
+    let card =
+        std::env::temp_dir().join(format!("semasm-card-{}-{}.md", std::process::id(), "sysv"));
     let _ = std::fs::remove_file(&card);
 
     let output = Command::new(env!("CARGO_BIN_EXE_semasm"))

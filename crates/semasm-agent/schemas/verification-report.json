@@ -15,6 +15,17 @@
         }
       ]
     },
+    "behavior_oracle": {
+      "description": "Named, versioned behavioral oracle for the recognized routine shape.\n\nPresent when the contract matches a builtin harness profile. Equality\nbehavior for golden shapes (e.g. count-equal-byte) is proven by this\noracle plus vectors — not by weak contract `ensures` alone.",
+      "anyOf": [
+        {
+          "$ref": "#/$defs/BehaviorOracle"
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
     "executable": {
       "description": "Post-link executable gate result.",
       "$ref": "#/$defs/ExecutableGate"
@@ -54,6 +65,67 @@
     "executable"
   ],
   "$defs": {
+    "BehaviorOracle": {
+      "description": "Named deterministic behavioral oracle attached to a verification report.",
+      "type": "object",
+      "properties": {
+        "claim": {
+          "description": "Human-readable claim checked by the oracle (not a formal ensures AST).",
+          "type": "string"
+        },
+        "contract": {
+          "description": "Contract path or basename supplied to verify.",
+          "type": "string"
+        },
+        "contract_hash": {
+          "description": "Short SHA-256 of contract bytes.",
+          "type": "string"
+        },
+        "evidence_hash": {
+          "description": "Deterministic hash over oracle identity and vector evidence.",
+          "type": "string"
+        },
+        "id": {
+          "description": "Stable oracle id (`builtin.buffer.count_equal_u8`, …).",
+          "type": "string"
+        },
+        "vectors_failed": {
+          "description": "Vectors that failed (0 when execution was not run).",
+          "type": "integer",
+          "format": "uint",
+          "minimum": 0
+        },
+        "vectors_passed": {
+          "description": "Vectors that passed (0 when execution was not run).",
+          "type": "integer",
+          "format": "uint",
+          "minimum": 0
+        },
+        "vectors_total": {
+          "description": "Total vectors planned or evaluated.",
+          "type": "integer",
+          "format": "uint",
+          "minimum": 0
+        },
+        "version": {
+          "description": "Integer profile version for this oracle id.",
+          "type": "integer",
+          "format": "uint32",
+          "minimum": 0
+        }
+      },
+      "required": [
+        "id",
+        "version",
+        "contract",
+        "contract_hash",
+        "claim",
+        "vectors_passed",
+        "vectors_failed",
+        "vectors_total",
+        "evidence_hash"
+      ]
+    },
     "Coverage": {
       "description": "Instruction-level coverage counts (unknown ≠ verified).\n\nDecode and lowering gates always use instruction counts here. Byte-level\ndetail belongs in error messages, not in these fields.",
       "type": "object",

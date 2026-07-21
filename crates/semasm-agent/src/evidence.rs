@@ -119,7 +119,7 @@ pub fn render_evidence_card_markdown(ctx: &EvidenceCardContext<'_>) -> String {
 | Control | `{control}` |
 | Executable gate | `{executable}` |
 | Vectors | {passed} passed / {failed} failed / {total} total |
-
+{oracle_rows}
 ## Reproduce
 
 ```
@@ -140,6 +140,16 @@ pub fn render_evidence_card_markdown(ctx: &EvidenceCardContext<'_>) -> String {
         capability = semantic.capability.as_str(),
         control = semantic.control.as_str(),
         executable = report.executable.status.as_str(),
+        oracle_rows = match &report.behavior_oracle {
+            Some(oracle) => format!(
+                "| Behavior oracle | `{id}` v{version} |\n| Oracle claim | {claim} |\n| Oracle evidence | `{hash}` |\n",
+                id = oracle.id,
+                version = oracle.version,
+                claim = oracle.claim,
+                hash = oracle.evidence_hash,
+            ),
+            None => String::new(),
+        },
         reproduce = ctx.reproduce_cmd,
     )
 }
@@ -149,7 +159,9 @@ pub fn render_evidence_card_markdown(ctx: &EvidenceCardContext<'_>) -> String {
 /// # Errors
 ///
 /// Returns an error when serialization fails.
-pub fn render_evidence_card_json(ctx: &EvidenceCardContext<'_>) -> Result<String, serde_json::Error> {
+pub fn render_evidence_card_json(
+    ctx: &EvidenceCardContext<'_>,
+) -> Result<String, serde_json::Error> {
     let report = ctx.report;
     let semantic = &report.semantic;
     let contract_name = ctx
@@ -367,8 +379,7 @@ fn push_gate_diff(out: &mut Vec<String>, name: &str, a: GateStatus, b: GateStatu
 mod tests {
     use super::*;
     use crate::verify::{
-        Coverage, ExecutableGate, ExecutionIsolation, GateStatus, SemanticGates,
-        VerificationReport,
+        Coverage, ExecutableGate, ExecutionIsolation, GateStatus, SemanticGates, VerificationReport,
     };
 
     fn sample_report(status_control: GateStatus) -> VerificationReport {
@@ -433,9 +444,6 @@ mod tests {
         let cmp = compare_reports(&a, &b, "a.asm", "b.asm");
         assert_eq!(cmp.status_a, "execution_denied");
         assert_eq!(cmp.status_b, "semantic_failed");
-        assert!(cmp
-            .gate_diffs
-            .iter()
-            .any(|d| d.starts_with("control:")));
+        assert!(cmp.gate_diffs.iter().any(|d| d.starts_with("control:")));
     }
 }

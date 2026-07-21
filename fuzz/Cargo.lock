@@ -285,6 +285,7 @@ dependencies = [
  "semasm-decode",
  "semasm-obj",
  "semasm-riscv",
+ "semasm-target",
  "semasm-x86",
 ]
 

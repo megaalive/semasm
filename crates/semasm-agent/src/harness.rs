@@ -73,6 +73,121 @@ pub fn synthesize_vectors(contract: &CheckedContract) -> Vec<TestVector> {
     Vec::new()
 }
 
+/// Builtin oracle id for buffer-scan count-equal-u8 (`count_byte` shape).
+pub const ORACLE_BUFFER_COUNT_EQUAL_U8: &str = "builtin.buffer.count_equal_u8";
+/// Profile version for [`ORACLE_BUFFER_COUNT_EQUAL_U8`].
+pub const ORACLE_BUFFER_COUNT_EQUAL_U8_VERSION: u32 = 1;
+/// Builtin oracle id for pure two-`usize` integer shapes (`min_usize`).
+pub const ORACLE_PURE_INT_BINARY_USIZE: &str = "builtin.pure_int.binary_usize";
+/// Profile version for [`ORACLE_PURE_INT_BINARY_USIZE`].
+pub const ORACLE_PURE_INT_BINARY_USIZE_VERSION: u32 = 1;
+
+/// Recognized builtin behavioral oracle for a contract shape, if any.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct RecognizedOracle {
+    /// Stable oracle id.
+    pub id: &'static str,
+    /// Integer profile version.
+    pub version: u32,
+    /// Human-readable claim checked by vectors (not a formal ensures AST).
+    pub claim: &'static str,
+}
+
+/// Detect which named behavioral oracle applies to a contract.
+///
+/// Contracts may only state weak `ensures` (e.g. `count <= length`). Equality
+/// for golden shapes is proven by the returned oracle plus synthesized vectors.
+#[must_use]
+pub fn recognize_behavior_oracle(contract: &CheckedContract) -> Option<RecognizedOracle> {
+    if scan_shape(contract).is_some() {
+        return Some(RecognizedOracle {
+            id: ORACLE_BUFFER_COUNT_EQUAL_U8,
+            version: ORACLE_BUFFER_COUNT_EQUAL_U8_VERSION,
+            claim: "result equals the number of bytes in buffer[0..length] equal to needle",
+        });
+    }
+    if pure_int_shape(contract).is_some() {
+        return Some(RecognizedOracle {
+            id: ORACLE_PURE_INT_BINARY_USIZE,
+            version: ORACLE_PURE_INT_BINARY_USIZE_VERSION,
+            claim: "result equals the pure-integer oracle for the recognized two-usize shape",
+        });
+    }
+    None
+}
+
+/// Build a [`crate::verify::BehaviorOracle`] snapshot for a verification report.
+#[must_use]
+pub fn build_behavior_oracle(
+    recognized: RecognizedOracle,
+    contract_path: &str,
+    contract_bytes: &[u8],
+    planned_vectors: &[TestVector],
+    behavior: Option<&HarnessReport>,
+) -> crate::verify::BehaviorOracle {
+    use sha2::{Digest, Sha256};
+
+    let contract_hash = {
+        let digest = Sha256::digest(contract_bytes);
+        let mut out = String::with_capacity(12);
+        for byte in digest.iter().take(6) {
+            let _ = write!(out, "{byte:02x}");
+        }
+        out
+    };
+
+    let (vectors_passed, vectors_failed, vectors_total) = match behavior {
+        Some(report) => {
+            let passed = report.cases.iter().filter(|c| c.passed).count();
+            let total = report.cases.len();
+            (passed, total.saturating_sub(passed), total)
+        }
+        None => (0, 0, planned_vectors.len()),
+    };
+
+    let mut hasher = Sha256::new();
+    hasher.update(recognized.id.as_bytes());
+    hasher.update(b"\0");
+    hasher.update(recognized.version.to_string().as_bytes());
+    hasher.update(b"\0");
+    if let Some(report) = behavior {
+        for case in &report.cases {
+            hasher.update(case.name.as_bytes());
+            hasher.update(b"\0");
+            hasher.update(case.expected.as_bytes());
+            hasher.update(b"\0");
+            hasher.update(case.observed.as_bytes());
+            hasher.update(b"\0");
+            hasher.update([u8::from(case.passed)]);
+            hasher.update(b"\n");
+        }
+    } else {
+        for vector in planned_vectors {
+            hasher.update(vector.name.as_bytes());
+            hasher.update(b"\0");
+            hasher.update(vector.expected.to_string().as_bytes());
+            hasher.update(b"\n");
+        }
+    }
+    let digest = hasher.finalize();
+    let mut evidence_hash = String::with_capacity(32);
+    for byte in digest.iter().take(16) {
+        let _ = write!(evidence_hash, "{byte:02x}");
+    }
+
+    crate::verify::BehaviorOracle {
+        id: recognized.id.to_string(),
+        version: recognized.version,
+        contract: contract_path.to_string(),
+        contract_hash,
+        claim: recognized.claim.to_string(),
+        vectors_passed,
+        vectors_failed,
+        vectors_total,
+        evidence_hash,
+    }
+}
+
 /// Resolved calling shape for the harness generator.
 enum HarnessShape {
     BufferScan,
@@ -1169,6 +1284,21 @@ expression = "count <= length"
             Some(MAX_FIXTURE_CAP as u64),
             "length <= 4096 must clamp to MAX_FIXTURE_CAP, not bounded_stack_bytes"
         );
+    }
+
+    #[test]
+    fn recognizes_named_count_equal_oracle() {
+        let c = count_byte_shape();
+        let oracle = recognize_behavior_oracle(&c).expect("count_byte shape");
+        assert_eq!(oracle.id, ORACLE_BUFFER_COUNT_EQUAL_U8);
+        assert_eq!(oracle.version, ORACLE_BUFFER_COUNT_EQUAL_U8_VERSION);
+        assert!(oracle.claim.contains("equal to needle"));
+        let vectors = synthesize_vectors(&c);
+        let built =
+            build_behavior_oracle(oracle, "count_byte.sem.toml", b"contract", &vectors, None);
+        assert_eq!(built.vectors_total, vectors.len());
+        assert_eq!(built.vectors_passed, 0);
+        assert!(!built.evidence_hash.is_empty());
     }
 
     #[test]

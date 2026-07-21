@@ -304,10 +304,41 @@ pub struct VerificationReport {
     pub executable: ExecutableGate,
     /// Behavioral harness results when execution was allowed.
     pub behavior: Option<HarnessReport>,
+    /// Named, versioned behavioral oracle for the recognized routine shape.
+    ///
+    /// Present when the contract matches a builtin harness profile. Equality
+    /// behavior for golden shapes (e.g. count-equal-byte) is proven by this
+    /// oracle plus vectors — not by weak contract `ensures` alone.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub behavior_oracle: Option<BehaviorOracle>,
+}
+
+/// Named deterministic behavioral oracle attached to a verification report.
+#[derive(Serialize, Deserialize, Clone, Debug, PartialEq, Eq)]
+#[cfg_attr(feature = "schema", derive(schemars::JsonSchema))]
+pub struct BehaviorOracle {
+    /// Stable oracle id (`builtin.buffer.count_equal_u8`, …).
+    pub id: String,
+    /// Integer profile version for this oracle id.
+    pub version: u32,
+    /// Contract path or basename supplied to verify.
+    pub contract: String,
+    /// Short SHA-256 of contract bytes.
+    pub contract_hash: String,
+    /// Human-readable claim checked by the oracle (not a formal ensures AST).
+    pub claim: String,
+    /// Vectors that passed (0 when execution was not run).
+    pub vectors_passed: usize,
+    /// Vectors that failed (0 when execution was not run).
+    pub vectors_failed: usize,
+    /// Total vectors planned or evaluated.
+    pub vectors_total: usize,
+    /// Deterministic hash over oracle identity and vector evidence.
+    pub evidence_hash: String,
 }
 
 /// Current experimental schema version for [`VerificationReport`] JSON.
-pub const VERIFICATION_REPORT_SCHEMA_VERSION: &str = "0.1";
+pub const VERIFICATION_REPORT_SCHEMA_VERSION: &str = "0.2";
 
 impl VerificationReport {
     /// Compose an immutable report from completed stage results.
@@ -344,7 +375,15 @@ impl VerificationReport {
             semantic,
             executable,
             behavior,
+            behavior_oracle: None,
         }
+    }
+
+    /// Attach a named behavioral oracle (fluent builder for callers).
+    #[must_use]
+    pub fn with_behavior_oracle(mut self, oracle: BehaviorOracle) -> Self {
+        self.behavior_oracle = Some(oracle);
+        self
     }
 }
 
