@@ -241,7 +241,7 @@ enum AgentCmd {
         /// Target triple (default: `x86_64-unknown-linux-gnu`).
         #[arg(long, default_value = "x86_64-unknown-linux-gnu")]
         target: String,
-        /// Output format: `terminal` (human) or `json` (HarnessReport).
+        /// Output format: `terminal` (human) or `json` (VerificationReport).
         #[arg(long, value_enum, default_value_t = OutputFormat::Terminal)]
         format: OutputFormat,
         /// Explicitly permit candidate execution after all static gates pass.

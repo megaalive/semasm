@@ -9,6 +9,7 @@
 
 pub mod context;
 pub mod harness;
+pub mod verify;
 
 use semasm_contract::CheckedContract;
 use semasm_core::SEMASM_VERSION;

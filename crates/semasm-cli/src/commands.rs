@@ -3,7 +3,14 @@
 use std::path::{Path, PathBuf};
 use std::process::ExitCode;
 
-use semasm_agent::{harness, ContextBundle, TargetToolchain, TaskPacket};
+use semasm_agent::{
+    harness,
+    verify::{
+        Coverage, ExecutableGate, GateStatus, SemanticGateError, SemanticGates, VerificationReport,
+        VerificationStatus,
+    },
+    ContextBundle, TargetToolchain, TaskPacket,
+};
 use semasm_build::exec;
 use semasm_build::report::{self, CommandRecordJson, ExecutionInfo};
 use semasm_build::{BuildError, Pipeline};
@@ -250,11 +257,14 @@ pub(crate) fn do_agent_verify(
         }
     }
 
-    if let Err(error) = verify_candidate_semantics(&routine_object, &identity, &routine_symbol) {
-        eprintln!("semantic gate failed: {error}");
-        let _ = std::fs::remove_dir_all(&directory);
-        return ExitCode::from(1);
-    }
+    let semantic = match verify_candidate_semantics(&routine_object, &identity, &routine_symbol) {
+        Ok(gates) => gates,
+        Err(error) => {
+            eprintln!("semantic gate failed: {error}");
+            let _ = std::fs::remove_dir_all(&directory);
+            return ExitCode::from(1);
+        }
+    };
 
     let harness_path = directory.join("harness.asm");
     if let Err(error) = std::fs::write(&harness_path, &harness_source) {
@@ -293,28 +303,30 @@ pub(crate) fn do_agent_verify(
         }
     }
 
-    match semasm_obj::read_for_target(&executable, &identity) {
-        Ok(info) if info.kind == ContainerKind::Executable => {}
-        Ok(info) => {
-            eprintln!(
-                "executable object gate failed: produced {:?} container",
-                info.kind
-            );
-            let _ = std::fs::remove_dir_all(&directory);
-            return ExitCode::from(1);
-        }
+    let executable_gate = match check_executable_object(&executable, &identity) {
+        Ok(gate) => gate,
         Err(error) => {
             eprintln!("executable object gate failed: {error}");
             let _ = std::fs::remove_dir_all(&directory);
             return ExitCode::from(1);
         }
-    }
+    };
 
     if !allow_execution {
+        let verification = VerificationReport::from_parts(
+            identity.name.clone(),
+            routine_symbol,
+            semantic,
+            executable_gate,
+            None,
+        );
+        let _ = std::fs::remove_dir_all(&directory);
+        if !emit_verification_report(&verification, format) {
+            return ExitCode::from(1);
+        }
         eprintln!(
             "execution denied: static semantic gates passed; rerun with --allow-execution to run the candidate"
         );
-        let _ = std::fs::remove_dir_all(&directory);
         return ExitCode::from(1);
     }
 
@@ -326,22 +338,68 @@ pub(crate) fn do_agent_verify(
             return ExitCode::from(1);
         }
     };
-    let report = harness::evaluate(&run.stdout, &vectors);
+    let behavior = harness::evaluate(&run.stdout, &vectors);
     let _ = std::fs::remove_dir_all(&directory);
+    let verification = VerificationReport::from_parts(
+        identity.name.clone(),
+        routine_symbol,
+        semantic,
+        executable_gate,
+        Some(behavior),
+    );
 
+    if !emit_verification_report(&verification, format) {
+        return ExitCode::from(1);
+    }
+
+    match verification.status {
+        VerificationStatus::Verified => ExitCode::SUCCESS,
+        _ => ExitCode::from(1),
+    }
+}
+
+fn emit_verification_report(report: &VerificationReport, format: OutputFormat) -> bool {
     match format {
-        OutputFormat::Json => match serde_json::to_string_pretty(&report) {
-            Ok(json) => println!("{json}"),
+        OutputFormat::Json => match serde_json::to_string_pretty(report) {
+            Ok(json) => {
+                println!("{json}");
+                true
+            }
             Err(error) => {
                 eprintln!("failed to serialize report: {error}");
-                return ExitCode::from(1);
+                false
             }
         },
         OutputFormat::Terminal => {
-            println!("Routine: {routine_symbol}");
-            println!("Vectors: {}", report.cases.len());
+            print_verification_terminal(report);
+            true
+        }
+    }
+}
+
+fn print_verification_terminal(report: &VerificationReport) {
+    let semantic = &report.semantic;
+    println!("Status: {}", report.status.as_str());
+    println!("Target: {}", report.target);
+    println!("Routine: {}", report.routine_symbol);
+    println!(
+        "Semantic gates: object={} decode={}/{} lowering={}/{} ({}%) abi={} capability={}",
+        semantic.object_policy.as_str(),
+        semantic.decode.modeled,
+        semantic.decode.total,
+        semantic.lowering.modeled,
+        semantic.lowering.total,
+        semantic.lowering.percent_modeled(),
+        semantic.abi.as_str(),
+        semantic.capability.as_str(),
+    );
+    println!("Executable gate: {}", report.executable.status.as_str());
+
+    match &report.behavior {
+        Some(behavior) => {
+            println!("Vectors: {}", behavior.cases.len());
             println!();
-            for (index, case) in report.cases.iter().enumerate() {
+            for (index, case) in behavior.cases.iter().enumerate() {
                 let status = if case.passed { "PASS" } else { "FAIL" };
                 println!(
                     "{index}. [{status}] {}  expected={} observed={}",
@@ -350,19 +408,29 @@ pub(crate) fn do_agent_verify(
             }
             println!(
                 "\nResult: {}",
-                if report.all_passed {
+                if behavior.all_passed {
                     "all vectors passed"
                 } else {
                     "one or more vectors failed"
                 }
             );
         }
+        None => {
+            println!("Behavior: skipped (execution not allowed)");
+        }
     }
+}
 
-    if report.all_passed {
-        ExitCode::SUCCESS
+fn check_executable_object(
+    executable: &Path,
+    identity: &TargetIdentity,
+) -> Result<ExecutableGate, String> {
+    let info =
+        semasm_obj::read_for_target(executable, identity).map_err(|error| error.to_string())?;
+    if info.kind == ContainerKind::Executable {
+        Ok(ExecutableGate::passed())
     } else {
-        ExitCode::from(1)
+        Err(format!("produced {:?} container", info.kind))
     }
 }
 
@@ -371,48 +439,98 @@ fn verify_candidate_semantics(
     object_path: &Path,
     identity: &TargetIdentity,
     routine_symbol: &str,
-) -> Result<(), String> {
+) -> Result<SemanticGates, SemanticGateError> {
+    require_semantic_target(identity)?;
+    check_candidate_object_policy(object_path, identity, routine_symbol)?;
+    let (physical, code_bytes) = decode_candidate_code(object_path, identity)?;
+    let decode_coverage = Coverage::complete(physical.len());
+    let lowered = lower_candidate_instructions(&physical, decode_coverage)?;
+    let lowering_coverage = Coverage::complete(lowered.len());
+    check_candidate_abi_capability(&lowered, decode_coverage, lowering_coverage)?;
+
+    Ok(SemanticGates {
+        object_policy: GateStatus::Passed,
+        executable_bytes: code_bytes,
+        decode: decode_coverage,
+        lowering: lowering_coverage,
+        abi: GateStatus::Passed,
+        capability: GateStatus::Passed,
+    })
+}
+
+#[cfg(feature = "capstone")]
+fn require_semantic_target(identity: &TargetIdentity) -> Result<(), SemanticGateError> {
     if (identity.isa, identity.abi, identity.object_format)
         != (Isa::X86_64, Abi::SysVAmd64, ObjectFormat::Elf)
     {
-        return Err(format!(
-            "agent verification currently has complete semantic gates only for x86_64-unknown-linux-gnu, not `{}`",
-            identity.name
+        return Err(SemanticGateError::new(
+            "target",
+            format!(
+                "agent verification currently has complete semantic gates only for x86_64-unknown-linux-gnu, not `{}`",
+                identity.name
+            ),
         ));
     }
+    Ok(())
+}
 
-    let info =
-        semasm_obj::read_for_target(object_path, identity).map_err(|error| error.to_string())?;
+#[cfg(feature = "capstone")]
+fn check_candidate_object_policy(
+    object_path: &Path,
+    identity: &TargetIdentity,
+    routine_symbol: &str,
+) -> Result<(), SemanticGateError> {
+    let info = semasm_obj::read_for_target(object_path, identity)
+        .map_err(|error| SemanticGateError::new("object", error.to_string()))?;
     if info.kind != ContainerKind::Relocatable {
-        return Err(format!(
-            "candidate must be relocatable, found {:?}",
-            info.kind
+        return Err(SemanticGateError::new(
+            "object",
+            format!("candidate must be relocatable, found {:?}", info.kind),
         ));
     }
     if !info.exports.iter().any(|symbol| symbol == routine_symbol) {
-        return Err(format!(
-            "required routine symbol `{routine_symbol}` is not exported"
+        return Err(SemanticGateError::new(
+            "object",
+            format!("required routine symbol `{routine_symbol}` is not exported"),
         ));
     }
     if !info.imports.is_empty() {
-        return Err(format!(
-            "candidate has forbidden external capabilities/imports: {}",
-            info.imports.join(", ")
+        return Err(SemanticGateError::new(
+            "object",
+            format!(
+                "candidate has forbidden external capabilities/imports: {}",
+                info.imports.join(", ")
+            ),
         ));
     }
+    Ok(())
+}
 
-    let sections =
-        semasm_obj::read_code_sections(object_path, identity).map_err(|error| error.to_string())?;
+#[cfg(feature = "capstone")]
+fn decode_candidate_code(
+    object_path: &Path,
+    identity: &TargetIdentity,
+) -> Result<(Vec<semasm_decode::PhysicalInstruction>, usize), SemanticGateError> {
+    let sections = semasm_obj::read_code_sections(object_path, identity)
+        .map_err(|error| SemanticGateError::new("object", error.to_string()))?;
     if sections.is_empty() {
-        return Err("candidate contains no executable code section".to_string());
+        return Err(SemanticGateError::new(
+            "object",
+            "candidate contains no executable code section",
+        ));
     }
 
     let mut physical = Vec::new();
     let mut code_bytes = 0usize;
     for section in sections {
         code_bytes += section.bytes.len();
-        let mut decoded = semasm_decode::decode_x86_64(&section.bytes, section.address)
-            .map_err(|error| format!("decode failed for {}: {error}", section.name))?;
+        let mut decoded =
+            semasm_decode::decode_x86_64(&section.bytes, section.address).map_err(|error| {
+                SemanticGateError::new(
+                    "decode",
+                    format!("decode failed for {}: {error}", section.name),
+                )
+            })?;
         physical.append(&mut decoded);
     }
     let decoded_bytes = physical
@@ -420,25 +538,60 @@ fn verify_candidate_semantics(
         .map(|instruction| instruction.bytes.len())
         .sum::<usize>();
     if decoded_bytes != code_bytes {
-        return Err(format!(
-            "decode coverage incomplete: decoded {decoded_bytes} of {code_bytes} executable bytes"
-        ));
+        return Err(SemanticGateError {
+            stage: "decode",
+            message: format!(
+                "decode coverage incomplete: decoded {decoded_bytes} of {code_bytes} executable bytes"
+            ),
+            decode: Some(Coverage {
+                total: code_bytes,
+                modeled: decoded_bytes,
+                unknown: code_bytes.saturating_sub(decoded_bytes),
+            }),
+            lowering: None,
+        });
     }
+    Ok((physical, code_bytes))
+}
 
+#[cfg(feature = "capstone")]
+fn lower_candidate_instructions(
+    physical: &[semasm_decode::PhysicalInstruction],
+    decode_coverage: Coverage,
+) -> Result<Vec<semasm_x86::lower::LoweredInstr>, SemanticGateError> {
     let mut lowered = Vec::with_capacity(physical.len());
-    for instruction in &physical {
+    for instruction in physical {
         match semasm_x86::lower::lower(instruction) {
             semasm_x86::lower::Lowering::Lowered(instruction) => lowered.push(instruction),
             semasm_x86::lower::Lowering::Unsupported { mnemonic } => {
-                return Err(format!(
-                    "lowering coverage incomplete at {:#x}: unsupported `{mnemonic}`",
-                    instruction.address
-                ));
+                let modeled = lowered.len();
+                let total = physical.len();
+                return Err(SemanticGateError {
+                    stage: "lowering",
+                    message: format!(
+                        "lowering coverage incomplete at {:#x}: unsupported `{mnemonic}`",
+                        instruction.address
+                    ),
+                    decode: Some(decode_coverage),
+                    lowering: Some(Coverage {
+                        total,
+                        modeled,
+                        unknown: total - modeled,
+                    }),
+                });
             }
         }
     }
+    Ok(lowered)
+}
 
-    let abi = semasm_x86::abi::analyze(&lowered);
+#[cfg(feature = "capstone")]
+fn check_candidate_abi_capability(
+    lowered: &[semasm_x86::lower::LoweredInstr],
+    decode_coverage: Coverage,
+    lowering_coverage: Coverage,
+) -> Result<(), SemanticGateError> {
+    let abi = semasm_x86::abi::analyze(lowered);
     if !abi.is_clean() {
         let findings = abi
             .findings
@@ -446,10 +599,20 @@ fn verify_candidate_semantics(
             .map(|finding| format!("{}: {}", finding.code, finding.message))
             .collect::<Vec<_>>()
             .join("; ");
-        return Err(format!("System V ABI verification failed: {findings}"));
+        return Err(SemanticGateError {
+            stage: "abi",
+            message: format!("System V ABI verification failed: {findings}"),
+            decode: Some(decode_coverage),
+            lowering: Some(lowering_coverage),
+        });
     }
     if abi.has_syscall {
-        return Err("candidate requests the forbidden syscall capability".to_string());
+        return Err(SemanticGateError {
+            stage: "capability",
+            message: "candidate requests the forbidden syscall capability".into(),
+            decode: Some(decode_coverage),
+            lowering: Some(lowering_coverage),
+        });
     }
     Ok(())
 }
@@ -459,8 +622,11 @@ fn verify_candidate_semantics(
     _object_path: &Path,
     _identity: &TargetIdentity,
     _routine_symbol: &str,
-) -> Result<(), String> {
-    Err("agent verification requires a build with the `capstone` feature".to_string())
+) -> Result<SemanticGates, SemanticGateError> {
+    Err(SemanticGateError::new(
+        "decode",
+        "agent verification requires a build with the `capstone` feature",
+    ))
 }
 
 #[cfg(all(test, feature = "capstone"))]
@@ -490,7 +656,12 @@ mod semantic_gate_tests {
             String::from_utf8_lossy(&output.stderr)
         );
         let target = TargetIdentity::parse_known("x86_64-unknown-linux-gnu").unwrap();
-        verify_candidate_semantics(&object, &target, "count_byte").unwrap();
+        let gates = verify_candidate_semantics(&object, &target, "count_byte").unwrap();
+        assert!(gates.all_passed());
+        assert_eq!(gates.lowering.unknown, 0);
+        assert_eq!(gates.lowering.modeled, gates.lowering.total);
+        assert_eq!(gates.abi, GateStatus::Passed);
+        assert_eq!(gates.capability, GateStatus::Passed);
         let _ = std::fs::remove_dir_all(scratch);
     }
 }
