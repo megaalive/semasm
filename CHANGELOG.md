@@ -24,6 +24,11 @@ follow [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   `TargetIdentity::nasm_format()` instead of a hardcoded `elf64`.
 - Decode/lowering coverage fields in verification reports are instruction
   counts only; undecoded-byte detail stays in error messages.
+- Buffer-scan harness synthesis (`AGENT-004`) derives max fixture length from
+  `requires` (`length <= N` / `length < N`), needle from `needle == K` when
+  present (else synthesizer default `0x41`), and the null-when-empty vector
+  only when a `memory_read` effect names `{ptr}[0..{len}]`. It no longer uses
+  `bounded_stack_bytes` as a buffer-length bound.
 
 ### Compatibility
 

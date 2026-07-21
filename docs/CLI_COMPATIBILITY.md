@@ -35,7 +35,9 @@ JSON document type is `VerificationReport` from `semasm-agent::verify`:
 - `semantic` — object policy, instruction-oriented `decode` / `lowering`
   coverage (`total` / `modeled` / `unknown`), ABI and capability statuses
 - `executable` — post-link container gate (`passed` / `failed` / `skipped`)
-- `behavior` — `HarnessReport` when execution ran; otherwise `null`
+- `behavior` — `HarnessReport` when execution ran; otherwise `null`.
+  Case count for the buffer-scan shape is 6 or 7 depending on whether a
+  `memory_read` region `{ptr}[0..{len}]` proves null-when-empty policy.
 
 Coverage units are instructions, never raw bytes. Byte decode gaps appear only
 in stderr / error messages. Agent JSON remains experimental in 0.1: tolerate

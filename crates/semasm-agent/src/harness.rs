@@ -3,7 +3,7 @@
 //! Given a validated contract, the harness module:
 //!
 //! 1. **Synthesises** canonical test vectors from the contract's
-//!    constraints (buffer length bounds, null-pointer policy, etc.).
+//!    requires/effects (buffer length bounds, needle, null-pointer policy).
 //! 2. **Generates** a small NASM `_start` harness that calls the
 //!    routine under test with each vector and records the returned
 //!    value (SysV: `rax`) as 8 raw little-endian bytes per vector.
@@ -16,10 +16,19 @@
 //! cases.  When the contract does not match this shape the synthesizer
 //! returns an empty vector set and the caller may fall back to a
 //! hand-written set.
+//!
+//! Synthesis rules for the buffer-scan shape (contract schema 0.1):
+//!
+//! - **max length** from `requires` of the form `length <= N` / `length < N`
+//!   (clamped to [`MAX_FIXTURE_CAP`]); not from `bounded_stack_bytes`.
+//! - **needle** from `requires` `needle == K` / `K == needle`, else
+//!   [`DEFAULT_BUFFER_SCAN_NEEDLE`].
+//! - **null when empty** only when an effect `memory_read` names region
+//!   `{ptr}[0..{len}]` for the shape's pointer and length parameters.
 
 use std::fmt::Write;
 
-use semasm_contract::{CheckedContract, SemType};
+use semasm_contract::{BinOp, CheckedContract, Expr, SemType};
 use serde::{Deserialize, Serialize};
 
 use crate::TestVector;
@@ -30,10 +39,15 @@ use crate::TestVector;
 
 /// Maximum length used for the "maximum configured fixture length" case.
 ///
-/// Derived from the contract's `bounded_stack_bytes` constraint when
-/// present (a buffer that large would not fit on the stack), capped to
-/// keep the generated harness small.
+/// Caps synthesised buffers so the generated harness stays small even when
+/// `requires` allow a larger logical bound (for example `length <= 4096`).
 const MAX_FIXTURE_CAP: usize = 256;
+
+/// Default needle when the contract does not constrain the u8 parameter.
+///
+/// This is a synthesizer fixture value (`'A'`), not a claim that the contract
+/// requires this byte.
+const DEFAULT_BUFFER_SCAN_NEEDLE: u8 = 0x41;
 
 /// Synthesise the canonical test vectors for a contract.
 ///
@@ -76,11 +90,16 @@ pub fn synthesize_vectors(contract: &CheckedContract) -> Vec<TestVector> {
         expected: serde_json::json!(1u64),
     });
 
-    // 3. No match.
+    // 3. No match (buffer bytes deliberately avoid the needle).
+    let no_match = non_needle_bytes(shape.needle);
     vectors.push(TestVector {
         name: "no match".into(),
         inputs: vec![
-            serde_json::json!([1u64, 2u64, 3u64]),
+            serde_json::json!([
+                u64::from(no_match[0]),
+                u64::from(no_match[1]),
+                u64::from(no_match[2])
+            ]),
             serde_json::json!(3u64),
             serde_json::json!(u64::from(shape.needle)),
         ],
@@ -123,7 +142,7 @@ pub fn synthesize_vectors(contract: &CheckedContract) -> Vec<TestVector> {
         expected: serde_json::json!(max_len as u64),
     });
 
-    // 7. Null pointer only when length is zero (per declared policy).
+    // 7. Null pointer only when length is zero (per derived policy).
     if shape.allows_null_when_empty {
         vectors.push(TestVector {
             name: "null pointer with zero length".into(),
@@ -139,11 +158,26 @@ pub fn synthesize_vectors(contract: &CheckedContract) -> Vec<TestVector> {
     vectors
 }
 
+/// Three distinct bytes that are not equal to `needle`.
+fn non_needle_bytes(needle: u8) -> [u8; 3] {
+    let mut out = [0u8; 3];
+    let mut value = 0u8;
+    let mut filled = 0usize;
+    while filled < 3 {
+        if value != needle {
+            out[filled] = value;
+            filled += 1;
+        }
+        value = value.wrapping_add(1);
+    }
+    out
+}
+
 /// Resolved calling shape for the canonical buffer-scan function.
 struct ScanShape {
     /// Needle value used for synthesised inputs.
     needle: u8,
-    /// Upper bound on buffer length, if derivable.
+    /// Upper bound on buffer length, if derivable from requires.
     max_length: Option<usize>,
     /// Whether a null buffer is permitted when length is zero.
     allows_null_when_empty: bool,
@@ -158,13 +192,13 @@ fn scan_shape(contract: &CheckedContract) -> Option<ScanShape> {
     for p in &contract.parameters {
         match &p.ty {
             SemType::Ptr { is_const, .. } if *is_const && ptr_param.is_none() => {
-                ptr_param = Some(p.name.clone());
+                ptr_param = Some(p);
             }
             SemType::Usize if len_param.is_none() => {
-                len_param = Some(p.name.clone());
+                len_param = Some(p);
             }
             SemType::UInt { bits: 8 } if needle_param.is_none() => {
-                needle_param = Some(p.name.clone());
+                needle_param = Some(p);
             }
             _ => {}
         }
@@ -175,18 +209,119 @@ fn scan_shape(contract: &CheckedContract) -> Option<ScanShape> {
         .iter()
         .any(|r| matches!(r.ty, SemType::Usize));
 
-    if ptr_param.is_some() && len_param.is_some() && needle_param.is_some() && returns_usize {
-        Some(ScanShape {
-            needle: 0x41, // 'A' — a value unlikely to collide with zero-byte tests.
-            max_length: contract
-                .constraints
-                .as_ref()
-                .and_then(|c| c.bounded_stack_bytes)
-                .map(|b| usize::try_from(b).unwrap_or(usize::MAX)),
-            allows_null_when_empty: true,
-        })
-    } else {
-        None
+    let (ptr_param, len_param, needle_param) = match (ptr_param, len_param, needle_param) {
+        (Some(p), Some(l), Some(n)) if returns_usize => (p, l, n),
+        _ => return None,
+    };
+
+    Some(ScanShape {
+        needle: needle_from_requires(contract, &needle_param.name)
+            .unwrap_or(DEFAULT_BUFFER_SCAN_NEEDLE),
+        max_length: length_bound_from_requires(contract, &len_param.name),
+        allows_null_when_empty: allows_null_when_empty(contract, &ptr_param.name, &len_param.name),
+    })
+}
+
+fn length_bound_from_requires(contract: &CheckedContract, length_name: &str) -> Option<usize> {
+    let mut best: Option<usize> = None;
+    for condition in &contract.requires {
+        if let Some(bound) = length_bound_from_expr(&condition.expr, length_name) {
+            best = Some(match best {
+                Some(existing) => existing.min(bound),
+                None => bound,
+            });
+        }
+    }
+    best
+}
+
+fn length_bound_from_expr(expr: &Expr, length_name: &str) -> Option<usize> {
+    let Expr::Binary {
+        op, left, right, ..
+    } = expr
+    else {
+        return None;
+    };
+
+    let ident_left = ident_name(left);
+    let ident_right = ident_name(right);
+    let int_left = int_value(left);
+    let int_right = int_value(right);
+
+    match (*op, ident_left, ident_right, int_left, int_right) {
+        (BinOp::Le, Some(name), None, None, Some(n)) if name == length_name => {
+            usize::try_from(n).ok()
+        }
+        (BinOp::Lt, Some(name), None, None, Some(n)) if name == length_name => {
+            usize::try_from(n).ok().map(|n| n.saturating_sub(1))
+        }
+        (BinOp::Ge, None, Some(name), Some(n), None) if name == length_name => {
+            usize::try_from(n).ok()
+        }
+        (BinOp::Gt, None, Some(name), Some(n), None) if name == length_name => {
+            usize::try_from(n).ok().map(|n| n.saturating_sub(1))
+        }
+        _ => None,
+    }
+}
+
+fn needle_from_requires(contract: &CheckedContract, needle_name: &str) -> Option<u8> {
+    for condition in &contract.requires {
+        if let Some(needle) = needle_from_expr(&condition.expr, needle_name) {
+            return Some(needle);
+        }
+    }
+    None
+}
+
+fn needle_from_expr(expr: &Expr, needle_name: &str) -> Option<u8> {
+    let Expr::Binary {
+        op: BinOp::Eq,
+        left,
+        right,
+        ..
+    } = expr
+    else {
+        return None;
+    };
+
+    match (
+        ident_name(left),
+        ident_name(right),
+        int_value(left),
+        int_value(right),
+    ) {
+        (Some(name), None, None, Some(n)) | (None, Some(name), Some(n), None)
+            if name == needle_name =>
+        {
+            u8::try_from(n).ok()
+        }
+        _ => None,
+    }
+}
+
+fn allows_null_when_empty(contract: &CheckedContract, ptr_name: &str, length_name: &str) -> bool {
+    let expected = format!("{ptr_name}[0..{length_name}]");
+    contract.effects.iter().any(|effect| {
+        effect.kind == "memory_read"
+            && effect
+                .region
+                .as_deref()
+                .is_some_and(|region| region.trim() == expected)
+    })
+}
+
+fn ident_name(expr: &Expr) -> Option<&str> {
+    match expr {
+        Expr::Ident { name, .. } => Some(name.as_str()),
+        _ => None,
+    }
+}
+
+fn int_value(expr: &Expr) -> Option<i64> {
+    match expr {
+        Expr::Int { value, .. } => Some(*value),
+        _ => None,
     }
 }
 
@@ -364,9 +499,64 @@ pub fn evaluate(stdout: &[u8], vectors: &[TestVector]) -> HarnessReport {
 mod tests {
     use super::*;
     use crate::tests::sample_check;
+    use semasm_contract::check_str;
 
     fn count_byte_shape() -> CheckedContract {
         sample_check()
+    }
+
+    fn check_contract(toml: &str) -> CheckedContract {
+        let result = check_str(toml);
+        assert!(
+            result.ok(),
+            "contract should validate: {:?}",
+            result.diagnostics
+        );
+        result.contract.expect("ok implies Some")
+    }
+
+    fn buffer_scan_toml(extra_requires: &str, effects: &str, constraints: &str) -> String {
+        format!(
+            r#"
+contract_version = "0.1"
+
+[function]
+name = "count_byte"
+summary = "Count occurrences of a byte in a buffer"
+
+[[function.parameters]]
+name = "buffer"
+type = "ptr<const u8>"
+role = "input"
+
+[[function.parameters]]
+name = "length"
+type = "usize"
+role = "input"
+
+[[function.parameters]]
+name = "needle"
+type = "u8"
+role = "input"
+
+[[function.returns]]
+name = "count"
+type = "usize"
+
+{extra_requires}
+
+[[function.ensures]]
+expression = "count <= length"
+
+{effects}
+
+{constraints}
+"#
+        )
+    }
+
+    fn vector_needle(v: &TestVector) -> u64 {
+        v.inputs[2].as_u64().expect("needle input")
     }
 
     #[test]
@@ -382,6 +572,101 @@ mod tests {
         assert!(names.contains(&"embedded zero bytes"));
         assert!(names.contains(&"maximum configured fixture length"));
         assert!(names.contains(&"null pointer with zero length"));
+        assert!(
+            v.iter()
+                .all(|case| vector_needle(case) == u64::from(DEFAULT_BUFFER_SCAN_NEEDLE)),
+            "default needle should be 0x41 when requires omit needle =="
+        );
+        let max_case = v
+            .iter()
+            .find(|case| case.name == "maximum configured fixture length")
+            .expect("max length case");
+        assert_eq!(
+            max_case.inputs[1].as_u64(),
+            Some(MAX_FIXTURE_CAP as u64),
+            "length <= 4096 must clamp to MAX_FIXTURE_CAP, not bounded_stack_bytes"
+        );
+    }
+
+    #[test]
+    fn needle_from_requires_equality() {
+        let toml = buffer_scan_toml(
+            r#"
+[[function.requires]]
+expression = "length <= 64"
+
+[[function.requires]]
+expression = "needle == 7"
+"#,
+            r#"
+[[function.effects]]
+kind = "memory_read"
+region = "buffer[0..length]"
+"#,
+            r"
+[function.constraints]
+no_heap = true
+",
+        );
+        let v = synthesize_vectors(&check_contract(&toml));
+        assert_eq!(v.len(), 7);
+        assert!(v.iter().all(|case| vector_needle(case) == 7));
+        let no_match = v.iter().find(|case| case.name == "no match").unwrap();
+        let buffer = no_match.inputs[0].as_array().expect("buffer array");
+        assert!(
+            buffer.iter().all(|byte| byte.as_u64() != Some(7)),
+            "no-match buffer must not contain the needle"
+        );
+    }
+
+    #[test]
+    fn length_bound_from_requires_not_stack_bytes() {
+        let toml = buffer_scan_toml(
+            r#"
+[[function.requires]]
+expression = "length <= 32"
+"#,
+            r#"
+[[function.effects]]
+kind = "memory_read"
+region = "buffer[0..length]"
+"#,
+            r"
+[function.constraints]
+no_heap = true
+bounded_stack_bytes = 128
+",
+        );
+        let v = synthesize_vectors(&check_contract(&toml));
+        let max_case = v
+            .iter()
+            .find(|case| case.name == "maximum configured fixture length")
+            .expect("max length case");
+        assert_eq!(max_case.inputs[1].as_u64(), Some(32));
+        assert_eq!(max_case.expected.as_u64(), Some(32));
+    }
+
+    #[test]
+    fn omits_null_vector_without_matching_memory_read_region() {
+        let toml = buffer_scan_toml(
+            r#"
+[[function.requires]]
+expression = "length <= 64"
+"#,
+            r#"
+[[function.effects]]
+kind = "no_memory"
+"#,
+            r"
+[function.constraints]
+no_heap = true
+",
+        );
+        let v = synthesize_vectors(&check_contract(&toml));
+        assert_eq!(v.len(), 6);
+        assert!(!v
+            .iter()
+            .any(|case| case.name == "null pointer with zero length"));
     }
 
     #[test]
