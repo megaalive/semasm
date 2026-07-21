@@ -64,6 +64,19 @@ and a second harness shape `min_usize` (`fixtures/contracts/min_usize.sem.toml`)
 Report field `isolation` is `static_only`, `qemu_user`, or `native_host` —
 honesty about how (or whether) a process ran, not an OS sandbox claim.
 
+One-shot scripts (print `status` / `isolation` / vector count for correct +
+wrong):
+
+```bash
+# Linux SysV (needs nasm + linker + qemu-x86_64)
+bash scripts/golden-demo.sh
+```
+
+```powershell
+# Windows PE (default) or pass -SysV for Linux tools
+powershell -ExecutionPolicy Bypass -File scripts/golden-demo.ps1
+```
+
 ## Quick start (tooling)
 
 ```bash

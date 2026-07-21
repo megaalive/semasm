@@ -26,17 +26,27 @@ before work advances past a failed item.
 
 ## Current focus
 
-Stabilization PR-01…18 is complete. The **SemASM Bulletproof Roadmap**
-phases P0–P5 are implemented:
+Stabilization PR-01…18 and the **Bulletproof Roadmap (P0–P5)** are complete.
+Active work is the **X86 Golden Path Depth** vertical slice (SysV + Win64):
 
-| Phase | Status |
-|---|---|
-| P0 | CI owner jobs set `SEMASM_REQUIRE_TOOLCHAIN=1`; soft-skip local-only |
-| P1 | Additive `pipeline_verify` / `agent_verify` in capabilities + status/README |
-| P2 | Adversarial agent fixtures + ignored e2e on owner jobs |
-| P3 | `isolation` on verify/build reports; SECURITY.md honesty; prefer qemu_user |
-| P4 | High-value mnemonic batch (A64/RV/x86) + natural count_byte fixtures |
-| P5 | Pure-integer `(usize, usize) → usize` harness shape + wrong-fixture |
+| Step | Focus | Status |
+|---|---|---|
+| S0 | E2E symmetry (`count_byte` SysV verified; `min_usize` Win64) | done |
+| S1 | ABI adversarial (stack, callee-saved, red-zone, Win64 shadow) | done |
+| S2 | Decode/lower adversarial (unknown insn, trailing bytes) | done |
+| S3 | Object policy rejects W+X sections | done |
+| S4 | Demo scripts + docs / deferred list | done |
+
+### Deferred (explicitly out of this slice)
+
+- Wiring CFG / indirect-branch policy into `agent verify`
+- Memory alias analysis on the buffer-scan shape
+- C compiler `-O2` / `-Os` binary-size bake-off in CI
+- New ISAs or broad mnemonic expansion
+- GitHub Release `v0.1.0` (checklist-gated separately)
+
+Demo: `scripts/golden-demo.sh` (Linux SysV) or `scripts/golden-demo.ps1`
+(Windows PE by default; `-SysV` for Linux tools).
 
 The 0.1 release workflow remains prepared and must only be triggered from a
 reviewed `v0.1.0` tag after checklist gates stay green. See

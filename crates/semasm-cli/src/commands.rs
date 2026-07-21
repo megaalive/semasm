@@ -613,6 +613,21 @@ fn check_candidate_object_policy(
             ),
         ));
     }
+    let wx: Vec<&str> = info
+        .sections
+        .iter()
+        .filter(|section| section.writable && section.executable)
+        .map(|section| section.name.as_str())
+        .collect();
+    if !wx.is_empty() {
+        return Err(SemanticGateError::new(
+            "object",
+            format!(
+                "candidate has forbidden writable+executable section(s): {}",
+                wx.join(", ")
+            ),
+        ));
+    }
     Ok(())
 }
 

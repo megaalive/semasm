@@ -189,3 +189,94 @@ fn agent_verify_ecall_riscv64_is_semantic_failed() {
     }
     assert_status(&output, "semantic_failed");
 }
+
+#[test]
+#[ignore = "requires nasm, ld, objdump, and qemu-user on PATH"]
+fn agent_verify_stack_imbalance_sysv_is_semantic_failed() {
+    let source = workspace_root().join("fixtures/asm/count_byte_stack_imbalance.asm");
+    let contract = workspace_root().join("fixtures/contracts/count_byte.sem.toml");
+    let output = run_agent_verify(&source, &contract, None, false);
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    if skip_if_incomplete(&stderr) {
+        return;
+    }
+    assert_status(&output, "semantic_failed");
+}
+
+#[test]
+#[ignore = "requires nasm, ld, objdump, and qemu-user on PATH"]
+fn agent_verify_callee_saved_sysv_is_semantic_failed() {
+    let source = workspace_root().join("fixtures/asm/count_byte_callee_saved.asm");
+    let contract = workspace_root().join("fixtures/contracts/count_byte.sem.toml");
+    let output = run_agent_verify(&source, &contract, None, false);
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    if skip_if_incomplete(&stderr) {
+        return;
+    }
+    assert_status(&output, "semantic_failed");
+}
+
+#[test]
+#[ignore = "requires nasm, ld, objdump, and qemu-user on PATH"]
+fn agent_verify_red_zone_sysv_is_semantic_failed() {
+    let source = workspace_root().join("fixtures/asm/count_byte_red_zone.asm");
+    let contract = workspace_root().join("fixtures/contracts/count_byte.sem.toml");
+    let output = run_agent_verify(&source, &contract, None, false);
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    if skip_if_incomplete(&stderr) {
+        return;
+    }
+    assert_status(&output, "semantic_failed");
+}
+
+#[test]
+#[ignore = "requires nasm, lld-link, and native Windows host"]
+fn agent_verify_shadow_win64_is_semantic_failed() {
+    let source = workspace_root().join("fixtures/asm/count_byte_win64_shadow.asm");
+    let contract = workspace_root().join("fixtures/contracts/count_byte.sem.toml");
+    let output = run_agent_verify(&source, &contract, Some("x86_64-pc-windows-msvc"), false);
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    if skip_if_incomplete(&stderr) {
+        return;
+    }
+    assert_status(&output, "semantic_failed");
+}
+
+#[test]
+#[ignore = "requires nasm, ld, objdump, and qemu-user on PATH"]
+fn agent_verify_unknown_insn_sysv_is_semantic_failed() {
+    let source = workspace_root().join("fixtures/asm/count_byte_unknown_insn.asm");
+    let contract = workspace_root().join("fixtures/contracts/count_byte.sem.toml");
+    let output = run_agent_verify(&source, &contract, None, false);
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    if skip_if_incomplete(&stderr) {
+        return;
+    }
+    assert_status(&output, "semantic_failed");
+}
+
+#[test]
+#[ignore = "requires nasm, ld, objdump, and qemu-user on PATH"]
+fn agent_verify_trailing_bytes_sysv_is_semantic_failed() {
+    let source = workspace_root().join("fixtures/asm/count_byte_trailing_bytes.asm");
+    let contract = workspace_root().join("fixtures/contracts/count_byte.sem.toml");
+    let output = run_agent_verify(&source, &contract, None, false);
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    if skip_if_incomplete(&stderr) {
+        return;
+    }
+    assert_status(&output, "semantic_failed");
+}
+
+#[test]
+#[ignore = "requires nasm, ld, objdump, and qemu-user on PATH"]
+fn agent_verify_wx_sysv_is_semantic_failed() {
+    let source = workspace_root().join("fixtures/asm/count_byte_wx.asm");
+    let contract = workspace_root().join("fixtures/contracts/count_byte.sem.toml");
+    let output = run_agent_verify(&source, &contract, None, false);
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    if skip_if_incomplete(&stderr) {
+        return;
+    }
+    assert_status(&output, "semantic_failed");
+}

@@ -12,8 +12,8 @@
 use std::path::Path;
 
 use object::{
-    Architecture, BinaryFormat, Endianness, Object, ObjectKind, ObjectSection, ObjectSymbol,
-    RelocationTarget, SectionKind, SymbolKind,
+    elf, pe, Architecture, BinaryFormat, Endianness, Object, ObjectKind, ObjectSection,
+    ObjectSymbol, RelocationTarget, SectionFlags, SectionKind, SymbolKind,
 };
 use semasm_target::{Isa, ObjectFormat, TargetIdentity};
 use serde::Serialize;
@@ -227,6 +227,36 @@ fn map_architecture(a: Architecture) -> Result<Isa, ObjectError> {
     }
 }
 
+/// Derive writable/executable from format-native section flags when available.
+///
+/// Falls back to [`SectionKind`] heuristics for formats without flag detail.
+fn section_permissions<'data, S>(section: &S) -> (bool, bool)
+where
+    S: ObjectSection<'data>,
+{
+    match section.flags() {
+        SectionFlags::Elf { sh_flags } => (
+            sh_flags & u64::from(elf::SHF_WRITE) != 0,
+            sh_flags & u64::from(elf::SHF_EXECINSTR) != 0,
+        ),
+        SectionFlags::Coff { characteristics } => (
+            characteristics & pe::IMAGE_SCN_MEM_WRITE != 0,
+            characteristics & pe::IMAGE_SCN_MEM_EXECUTE != 0,
+        ),
+        _ => (
+            matches!(
+                section.kind(),
+                SectionKind::Data
+                    | SectionKind::UninitializedData
+                    | SectionKind::Common
+                    | SectionKind::Tls
+                    | SectionKind::TlsVariables
+            ),
+            section.kind() == SectionKind::Text,
+        ),
+    }
+}
+
 fn section_kind_name(k: SectionKind) -> String {
     match k {
         SectionKind::Text => "text",
@@ -303,15 +333,7 @@ pub fn parse(bytes: &[u8]) -> Result<ObjectInfo, ObjectError> {
     for section in file.sections() {
         let name = section.name().unwrap_or("").to_string();
         let kind = section_kind_name(section.kind());
-        let writable = matches!(
-            section.kind(),
-            SectionKind::Data
-                | SectionKind::UninitializedData
-                | SectionKind::Common
-                | SectionKind::Tls
-                | SectionKind::TlsVariables
-        );
-        let executable = section.kind() == SectionKind::Text;
+        let (writable, executable) = section_permissions(&section);
         sections.push(SectionInfo {
             name,
             address: section.address(),

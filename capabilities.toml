@@ -47,7 +47,22 @@ agent_verify = "verified_in_ci"
 
 [target.evidence]
 unit_tests = ["semasm-target::tests", "semasm-x86::abi", "semasm-build::pipeline"]
-fixtures = ["fixtures/asm/exit.asm", "fixtures/asm/count_byte.asm"]
+fixtures = [
+    "fixtures/asm/exit.asm",
+    "fixtures/asm/count_byte.asm",
+    "fixtures/asm/count_byte_wrong.asm",
+    "fixtures/asm/count_byte_syscall.asm",
+    "fixtures/asm/count_byte_import.asm",
+    "fixtures/asm/count_byte_noexport.asm",
+    "fixtures/asm/count_byte_stack_imbalance.asm",
+    "fixtures/asm/count_byte_callee_saved.asm",
+    "fixtures/asm/count_byte_red_zone.asm",
+    "fixtures/asm/count_byte_unknown_insn.asm",
+    "fixtures/asm/count_byte_trailing_bytes.asm",
+    "fixtures/asm/count_byte_wx.asm",
+    "fixtures/asm/min_usize.asm",
+    "fixtures/asm/min_usize_wrong.asm",
+]
 ci_jobs = ["decode (capstone)"]
 
 [[target]]
@@ -68,7 +83,15 @@ agent_verify = "verified_in_ci"
 
 [target.evidence]
 unit_tests = ["semasm-target::tests", "semasm-x86::abi_win64", "semasm-obj::tests"]
-fixtures = ["fixtures/asm/hello_win64.asm", "fixtures/asm/win64_clean.asm", "fixtures/asm/count_byte_win64.asm"]
+fixtures = [
+    "fixtures/asm/hello_win64.asm",
+    "fixtures/asm/win64_clean.asm",
+    "fixtures/asm/count_byte_win64.asm",
+    "fixtures/asm/count_byte_wrong_win64.asm",
+    "fixtures/asm/count_byte_win64_shadow.asm",
+    "fixtures/asm/min_usize_win64.asm",
+    "fixtures/asm/min_usize_wrong_win64.asm",
+]
 ci_jobs = ["e2e (x86-64 Windows)"]
 
 [[target]]

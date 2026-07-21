@@ -11,7 +11,8 @@ CI-proven support.
 | VS-00 | Repository bootstrap and governance | **done** |
 | VS-01 | Contract parser and deterministic diagnostics | **done** |
 | VS-02–VS-08 | Build/report, agents, object/decode/CFG, and architecture experiments | **implemented** |
-| Stabilization | Fail-closed execution, honest claims, adversarial corpus, isolation truth | **bulletproof P0–P5 done; deepen x86 golden path next** |
+| Stabilization | Fail-closed execution, honest claims, adversarial corpus, isolation truth | **bulletproof P0–P5 done** |
+| X86 Golden Depth | SysV+Win64 e2e symmetry, ABI/decode/W+X adversarial CI, golden demo | **done** |
 
 ## Declared target identities
 
@@ -31,18 +32,14 @@ x86-32, ARMv7, Windows ARM64, UEFI, WebAssembly, AVR, many MCU boards,
 kernel modules, eBPF, and GPU ISAs are deferred until target-kit contracts and
 conformance evidence are proven.
 
-## Near-term stabilization criteria
+## Near-term criteria (after X86 Golden Depth)
 
-- Clean workspace checks on Linux and Windows.
-- Named Linux, Windows, and cross-target end-to-end CI jobs (owner jobs set
-  `SEMASM_REQUIRE_TOOLCHAIN=1`; soft-skip is local-only).
-- Unsupported instructions produce an incomplete result, never a clean result.
-- Capability documentation stays synchronized with `capabilities.toml`
-  (Pipeline vs Agent columns must not be conflated).
-- Agent verify emits structured `VerificationReport` evidence on every gate
-  outcome; deepen soundness on the x86-64 golden path (`count_byte` /
-  `min_usize`) before adding new ISAs.
+- Keep CI owner jobs green with `SEMASM_REQUIRE_TOOLCHAIN=1`.
 - Prefer fail-closed adversarial fixtures over broader mnemonic coverage.
+- Do **not** add new ISAs until the x86 golden path stays deep and honest.
+- Follow-ups (queued, not this slice): CFG/indirect policy in verify; memory
+  aliasing on buffer-scan; contract/harness mismatch refinements; optional
+  offline C size comparison (not a CI gate).
 
 See `semasm-complete-project-plan.md` for the original ordered vertical slices
 and `docs/status/BASELINE-2026-07.md` for the stabilization baseline.
