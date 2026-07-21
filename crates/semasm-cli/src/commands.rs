@@ -1477,6 +1477,56 @@ mod semantic_gate_tests {
         let _ = std::fs::remove_dir_all(scratch);
     }
 
+    #[cfg(feature = "capstone")]
+    #[test]
+    fn memory_write_classifier_allows_rbp_spill_not_arg_buffer() {
+        use semasm_asir::OpKind as Kind;
+        use semasm_x86::lower::{LoweredInstr, MemOperand, Operand};
+        use semasm_x86::{Gp, Width};
+
+        let rbp_spill = LoweredInstr {
+            mnemonic: "mov".into(),
+            kind: Kind::Store,
+            width: Width::B64,
+            signed: None,
+            operands: vec![
+                Operand::Mem(MemOperand {
+                    base: Some(Gp::Rbp.full()),
+                    index: None,
+                    scale: 1,
+                    disp: -8,
+                    width: Width::B64,
+                }),
+                Operand::Reg(Gp::Rcx.full()),
+            ],
+        };
+        assert!(
+            !is_x86_explicit_memory_write(&rbp_spill),
+            "frame spill via [rbp] must not trip the buffer leaf"
+        );
+
+        let buffer_store = LoweredInstr {
+            mnemonic: "mov".into(),
+            kind: Kind::Store,
+            width: Width::B64,
+            signed: None,
+            operands: vec![
+                Operand::Mem(MemOperand {
+                    base: Some(Gp::Rcx.full()),
+                    index: None,
+                    scale: 1,
+                    disp: 0,
+                    width: Width::B64,
+                }),
+                Operand::Imm(0),
+            ],
+        };
+        assert!(
+            is_x86_explicit_memory_write(&buffer_store),
+            "store via argument pointer must still fail the buffer leaf"
+        );
+    }
+
     #[test]
     #[ignore = "requires aarch64-linux-gnu-as on PATH"]
     fn aarch64_candidate_passes_static_semantic_gates() {

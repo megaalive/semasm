@@ -603,6 +603,42 @@ mod tests {
         assert!(r.is_clean(), "expected clean: {:?}", r.findings);
     }
 
+    #[test]
+    fn framed_prologue_with_mov_rsp_rbp_is_balanced() {
+        // Typical HlaX64 / compiler frame: push rbp; mov rbp,rsp; sub rsp,N; …
+        // epilogue: mov rsp,rbp; pop rbp; ret
+        let body = vec![
+            ins("push", Kind::Store, vec![reg(Gp::Rbp)]),
+            ins("mov", Kind::Store, vec![reg(Gp::Rbp), reg(Gp::Rsp)]),
+            ins("sub", Kind::Binary, vec![reg(Gp::Rsp), imm(32)]),
+            ins(
+                "mov",
+                Kind::Store,
+                vec![
+                    Operand::Mem(MemOperand {
+                        base: Some(Gp::Rbp.full()),
+                        index: None,
+                        scale: 1,
+                        disp: -8,
+                        width: Width::B64,
+                    }),
+                    reg(Gp::Rcx),
+                ],
+            ),
+            ins("mov", Kind::Store, vec![reg(Gp::Rsp), reg(Gp::Rbp)]),
+            ins("pop", Kind::Store, vec![reg(Gp::Rbp)]),
+            ins("ret", Kind::Return, vec![]),
+        ];
+        let r = analyze(&body);
+        assert!(
+            r.is_clean(),
+            "framed mov rsp,rbp epilogue must balance: {:?}",
+            r.findings
+        );
+        assert_eq!(r.final_rsp_delta, 0);
+        assert!(!r.findings.iter().any(|f| f.code == "STACK_BALANCE_RET"));
+    }
+
     // --- no red zone ----------------------------------------------------
 
     fn below_rsp_load(disp: i64) -> LoweredInstr {
