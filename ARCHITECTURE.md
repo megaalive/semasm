@@ -61,9 +61,10 @@ semasm-cli
     +-- semasm-target    --> semasm-core, capability manifest
 ```
 
-The workspace contains thirteen crates. Their boundaries remain subject to the
-stabilization crate-boundary audit; this map records current implementation and
-does not assert that every split requires independent versioning.
+The workspace contains thirteen crates. Boundaries are documented in
+[ADR 0002](adr/0002-crate-boundaries.md); this map records current
+implementation and does not assert that every split requires independent
+versioning.
 
 ## Target identity
 

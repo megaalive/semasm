@@ -31,6 +31,9 @@ Otherwise exit `1` and still emit a structured report when gates were reached:
 
 JSON document type is `VerificationReport` from `semasm-agent::verify`:
 
+- `schema_version` — experimental agent schema (`0.1`); see
+  `AGENT_SCHEMA_POLICY.md` and
+  `crates/semasm-agent/schemas/verification-report.json`
 - `status`, `target`, `routine_symbol`
 - `semantic` — object policy, instruction-oriented `decode` / `lowering`
   coverage (`total` / `modeled` / `unknown`), ABI and capability statuses
@@ -41,7 +44,8 @@ JSON document type is `VerificationReport` from `semasm-agent::verify`:
 
 Coverage units are instructions, never raw bytes. Byte decode gaps appear only
 in stderr / error messages. Agent JSON remains experimental in 0.1: tolerate
-additive fields; do not treat unknown coverage as verified.
+additive fields; do not treat unknown coverage as verified. Versioning rules
+are in `AGENT_SCHEMA_POLICY.md` (not the artifact-report evidence-hash policy).
 
 Semantic gate runners currently complete only for `x86_64` + System V + ELF
 (with the `capstone` feature). Other targets fail closed before claiming

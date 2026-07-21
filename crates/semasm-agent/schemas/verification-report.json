@@ -1,0 +1,234 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "VerificationReport",
+  "description": "Full agent verification report: one compose, no pending mutation.",
+  "type": "object",
+  "properties": {
+    "behavior": {
+      "description": "Behavioral harness results when execution was allowed.",
+      "anyOf": [
+        {
+          "$ref": "#/$defs/HarnessReport"
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "executable": {
+      "description": "Post-link executable gate result.",
+      "$ref": "#/$defs/ExecutableGate"
+    },
+    "routine_symbol": {
+      "description": "Routine symbol under verification.",
+      "type": "string"
+    },
+    "schema_version": {
+      "description": "Agent verification-report schema version (`MAJOR.MINOR`).",
+      "type": "string"
+    },
+    "semantic": {
+      "description": "Static semantic gate results.",
+      "$ref": "#/$defs/SemanticGates"
+    },
+    "status": {
+      "description": "Aggregate status derived from stage results.",
+      "$ref": "#/$defs/VerificationStatus"
+    },
+    "target": {
+      "description": "Target identity name.",
+      "type": "string"
+    }
+  },
+  "required": [
+    "schema_version",
+    "status",
+    "target",
+    "routine_symbol",
+    "semantic",
+    "executable"
+  ],
+  "$defs": {
+    "Coverage": {
+      "description": "Instruction-level coverage counts (unknown ≠ verified).\n\nDecode and lowering gates always use instruction counts here. Byte-level\ndetail belongs in error messages, not in these fields.",
+      "type": "object",
+      "properties": {
+        "modeled": {
+          "description": "Instructions with modeled / accepted semantics.",
+          "type": "integer",
+          "format": "uint",
+          "minimum": 0
+        },
+        "total": {
+          "description": "Total instructions presented to the gate.",
+          "type": "integer",
+          "format": "uint",
+          "minimum": 0
+        },
+        "unknown": {
+          "description": "Instructions left unknown or unsupported.",
+          "type": "integer",
+          "format": "uint",
+          "minimum": 0
+        }
+      },
+      "required": [
+        "total",
+        "modeled",
+        "unknown"
+      ]
+    },
+    "ExecutableGate": {
+      "description": "Linked-image object-format gate (run only after link).",
+      "type": "object",
+      "properties": {
+        "status": {
+          "description": "Whether the linked image is an executable container.",
+          "$ref": "#/$defs/GateStatus"
+        }
+      },
+      "required": [
+        "status"
+      ]
+    },
+    "GateStatus": {
+      "description": "Outcome of a single verification gate.",
+      "oneOf": [
+        {
+          "description": "Gate ran and passed.",
+          "type": "string",
+          "const": "passed"
+        },
+        {
+          "description": "Gate ran and failed.",
+          "type": "string",
+          "const": "failed"
+        },
+        {
+          "description": "Gate was not applicable or intentionally not run.",
+          "type": "string",
+          "const": "skipped"
+        }
+      ]
+    },
+    "HarnessReport": {
+      "description": "Full harness evaluation report.",
+      "type": "object",
+      "properties": {
+        "all_passed": {
+          "description": "True when every case passed.",
+          "type": "boolean"
+        },
+        "cases": {
+          "description": "Per-vector results.",
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/VectorResult"
+          }
+        }
+      },
+      "required": [
+        "cases",
+        "all_passed"
+      ]
+    },
+    "SemanticGates": {
+      "description": "Static semantic gates applied to the candidate relocatable object.",
+      "type": "object",
+      "properties": {
+        "abi": {
+          "description": "ABI cleanliness gate.",
+          "$ref": "#/$defs/GateStatus"
+        },
+        "capability": {
+          "description": "Capability policy (e.g. no syscall in the candidate).",
+          "$ref": "#/$defs/GateStatus"
+        },
+        "decode": {
+          "description": "Decode coverage as instruction counts.",
+          "$ref": "#/$defs/Coverage"
+        },
+        "executable_bytes": {
+          "description": "Total executable bytes examined (metadata; not coverage units).",
+          "type": "integer",
+          "format": "uint",
+          "minimum": 0
+        },
+        "lowering": {
+          "description": "Lowering coverage over decoded instructions.",
+          "$ref": "#/$defs/Coverage"
+        },
+        "object_policy": {
+          "description": "Relocatable object, exports, and import policy.",
+          "$ref": "#/$defs/GateStatus"
+        }
+      },
+      "required": [
+        "object_policy",
+        "executable_bytes",
+        "decode",
+        "lowering",
+        "abi",
+        "capability"
+      ]
+    },
+    "VectorResult": {
+      "description": "Outcome of running the harness against a routine.",
+      "type": "object",
+      "properties": {
+        "expected": {
+          "description": "Expected value (decimal string).",
+          "type": "string"
+        },
+        "name": {
+          "description": "Name of the test vector.",
+          "type": "string"
+        },
+        "observed": {
+          "description": "Observed value (decimal string), or `<no output>` on parse failure.",
+          "type": "string"
+        },
+        "passed": {
+          "description": "Whether observed matched expected.",
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "name",
+        "passed",
+        "expected",
+        "observed"
+      ]
+    },
+    "VerificationStatus": {
+      "description": "Overall verification outcome after composing immutable stage results.",
+      "oneOf": [
+        {
+          "description": "Static gates and all behavioral vectors passed.",
+          "type": "string",
+          "const": "verified"
+        },
+        {
+          "description": "A static semantic gate failed.",
+          "type": "string",
+          "const": "semantic_failed"
+        },
+        {
+          "description": "Linked image failed the executable-container policy.",
+          "type": "string",
+          "const": "executable_failed"
+        },
+        {
+          "description": "Execution ran but one or more vectors failed.",
+          "type": "string",
+          "const": "behavior_failed"
+        },
+        {
+          "description": "Static gates passed; execution was not opted in.",
+          "type": "string",
+          "const": "execution_denied"
+        }
+      ]
+    }
+  }
+}

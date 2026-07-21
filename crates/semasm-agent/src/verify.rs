@@ -261,6 +261,8 @@ impl VerificationStatus {
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq)]
 #[cfg_attr(feature = "schema", derive(schemars::JsonSchema))]
 pub struct VerificationReport {
+    /// Agent verification-report schema version (`MAJOR.MINOR`).
+    pub schema_version: String,
     /// Aggregate status derived from stage results.
     pub status: VerificationStatus,
     /// Target identity name.
@@ -274,6 +276,9 @@ pub struct VerificationReport {
     /// Behavioral harness results when execution was allowed.
     pub behavior: Option<HarnessReport>,
 }
+
+/// Current experimental schema version for [`VerificationReport`] JSON.
+pub const VERIFICATION_REPORT_SCHEMA_VERSION: &str = "0.1";
 
 impl VerificationReport {
     /// Compose an immutable report from completed stage results.
@@ -301,6 +306,7 @@ impl VerificationReport {
         };
 
         Self {
+            schema_version: VERIFICATION_REPORT_SCHEMA_VERSION.to_string(),
             status,
             target,
             routine_symbol,
@@ -460,6 +466,7 @@ mod tests {
         assert!(value.get("semantic").is_some());
         assert!(value.get("executable").is_some());
         assert!(value.get("behavior").is_some());
+        assert_eq!(value["schema_version"], VERIFICATION_REPORT_SCHEMA_VERSION);
         assert_eq!(value["status"], "execution_denied");
         assert_eq!(value["semantic"]["abi"], "passed");
         assert_eq!(value["semantic"]["lowering"]["unknown"], 0);

@@ -17,6 +17,8 @@ follow [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - Ignored end-to-end test that asserts `"status": "execution_denied"` JSON when
   the Linux verification toolchain is present; CI `decode` installs nasm,
   binutils, and qemu-user for that path.
+- [ADR 0002](adr/0002-crate-boundaries.md): crate-boundary audit keeps the
+  thirteen-crate workspace without merges (PR-16).
 
 ### Changed
 
@@ -37,6 +39,9 @@ follow [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   execution was allowed; otherwise `behavior` is `null`.
 - Status strings are snake_case: `verified`, `semantic_failed`,
   `executable_failed`, `behavior_failed`, `execution_denied`.
+- Experimental `VerificationReport` JSON Schema `0.1` is published at
+  `crates/semasm-agent/schemas/verification-report.json` with policy in
+  `docs/AGENT_SCHEMA_POLICY.md` (includes root `schema_version`).
 
 ## [0.1.0] - 2026-07-18
 

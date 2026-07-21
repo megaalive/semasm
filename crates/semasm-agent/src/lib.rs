@@ -552,22 +552,41 @@ bounded_stack_bytes = 128
 
     #[cfg(feature = "schema")]
     #[test]
-    fn generate_json_schema() {
-        use std::io::Write;
+    fn schema_json_matches_checked_in() {
+        use crate::verify::VerificationReport;
 
-        let schema = schemars::schema_for!(TaskPacket);
-        let json = serde_json::to_string_pretty(&schema).expect("schema serialisation");
+        assert_schema_file("task-packet.json", &schemars::schema_for!(TaskPacket));
+        assert_schema_file(
+            "verification-report.json",
+            &schemars::schema_for!(VerificationReport),
+        );
+    }
 
-        let path = std::env::current_dir()
-            .unwrap()
+    #[cfg(feature = "schema")]
+    fn assert_schema_file(file_name: &str, schema: &schemars::Schema) {
+        let generated = serde_json::to_string_pretty(schema).expect("schema serialisation");
+        let generated = format!("{generated}\n");
+        let path = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
             .join("schemas")
-            .join("task-packet.json");
+            .join(file_name);
 
-        std::fs::create_dir_all(path.parent().unwrap()).ok();
-        let mut file = std::fs::File::create(&path).expect("create schema file");
-        file.write_all(json.as_bytes()).expect("write schema");
-        file.flush().expect("flush");
+        if std::env::var_os("SEMASM_WRITE_SCHEMAS").is_some() {
+            std::fs::create_dir_all(path.parent().unwrap()).expect("create schemas dir");
+            std::fs::write(&path, &generated).expect("write schema file");
+            eprintln!("wrote JSON schema to {}", path.display());
+            return;
+        }
 
-        eprintln!("wrote JSON schema to {}", path.display());
+        let on_disk = std::fs::read_to_string(&path).unwrap_or_else(|error| {
+            panic!(
+                "missing checked-in schema {}: {error}; regenerate with SEMASM_WRITE_SCHEMAS=1",
+                path.display()
+            )
+        });
+        assert_eq!(
+            on_disk, generated,
+            "schema drift in {}; regenerate with SEMASM_WRITE_SCHEMAS=1 cargo test -p semasm-agent --features schema schema_json_matches_checked_in",
+            path.display()
+        );
     }
 }

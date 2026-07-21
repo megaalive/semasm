@@ -20,20 +20,18 @@ before work advances past a failed item.
 - [x] PR-13 — Cross-target executable evidence
 - [x] PR-14 — CLI modularization
 - [x] PR-15 — Schema and deterministic report versioning
-- [ ] PR-16 — Crate-boundary ADR and targeted consolidation
+- [x] PR-16 — Crate-boundary ADR and targeted consolidation
 - [x] PR-17 — Negative corpus and fuzz entry points
 - [x] PR-18 — 0.1 release preparation
 
 ## Current focus
 
-PR-16 remains: document crate-boundary decisions and consolidate only the
-boundaries whose separation no longer provides a clear ownership benefit. The
-0.1 release workflow is prepared but must only be triggered from a reviewed
-`v0.1.0` tag after every checklist gate is green.
+PR-16 is complete: [ADR 0002](../adr/0002-crate-boundaries.md) keeps the
+thirteen-crate map without merges (no split lacked a clear ownership or
+isolation benefit). The 0.1 release workflow remains prepared and must only be
+triggered from a reviewed `v0.1.0` tag after checklist gates stay green.
 
-Agent verification report composition (`semasm-agent::verify`) and fail-closed
-CLI emit-on-fail are in place. Next agent work (broader harness shapes beyond
-the `count_byte` slice, multi-target semantic gates) must keep emitting
-`VerificationReport` for every gate outcome and must not reintroduce pending
-mutation or hardcoded assembler formats — see `docs/CLI_COMPATIBILITY.md` and
-`ARCHITECTURE.md` verification plane.
+Next agent-facing work after the experimental `VerificationReport` schema is
+published: broader harness shapes / multi-target semantic gates without
+weakening emit-on-fail evidence — see `docs/CLI_COMPATIBILITY.md`,
+`docs/AGENT_SCHEMA_POLICY.md`, and `ARCHITECTURE.md`.

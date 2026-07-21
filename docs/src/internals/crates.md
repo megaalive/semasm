@@ -18,5 +18,5 @@ Current workspace crates:
 | `semasm-aarch64` | AArch64 lowering and ABI analysis |
 | `semasm-riscv` | RISC-V lowering and ABI analysis |
 
-The crate-boundary stabilization audit will document which of these boundaries
-have lasting dependency or feature-isolation value.
+Boundaries are documented in [ADR 0002](../../../adr/0002-crate-boundaries.md).
+Crate count is not itself evidence of independent versioning.
