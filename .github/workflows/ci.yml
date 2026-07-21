@@ -137,6 +137,12 @@ jobs:
       - name: Run Windows PE build, inspect, and execute scenario
         run: cargo test -p semasm-build pipeline::tests::build_windows_pe_and_run -- --ignored --exact --nocapture
 
+      - name: Win64 agent semantic gates and verify
+        run: |
+          cargo test -p semasm-cli --all-features commands::semantic_gate_tests::win64_candidate_passes_static_semantic_gates -- --ignored --exact --nocapture
+          cargo test -p semasm-cli --all-features --test agent_verify_win64_execution_denied -- --ignored --nocapture
+          cargo test -p semasm-cli --all-features --test agent_verify_win64_allow_execution -- --ignored --nocapture
+
   cross-target-e2e:
     name: e2e (${{ matrix.name }})
     runs-on: ubuntu-latest
@@ -183,6 +189,16 @@ jobs:
           status=$?
           set -e
           test "$status" -eq 42
+
+      - name: Agent static semantic gates for count_byte
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [ "${{ matrix.target }}" = "aarch64-unknown-linux-gnu" ]; then
+            cargo test -p semasm-cli --all-features commands::semantic_gate_tests::aarch64_candidate_passes_static_semantic_gates -- --ignored --exact --nocapture
+          else
+            cargo test -p semasm-cli --all-features commands::semantic_gate_tests::riscv64_candidate_passes_static_semantic_gates -- --ignored --exact --nocapture
+          fi
 
   decode:
     name: decode (capstone)

@@ -70,7 +70,9 @@ cargo doc --workspace --no-deps
 - Canonical report reproducibility is checked across independent output roots;
   this does not promise byte-identical artifacts from every toolchain.
 - AArch64 and RV64 have structural and QEMU CI evidence where recorded in the
-  capability manifest.
+  capability manifest. Manifest `verify = CI-verified` means pipeline
+  assemble/link/run evidence, not complete agent semantic gates (see
+  `docs/CLI_COMPATIBILITY.md`).
 - ABI commands propagate unsupported instructions as incomplete evidence;
   callers must not treat incomplete analysis as a clean full verification.
 
@@ -85,7 +87,7 @@ and evidence maturity; they are not a blanket support promise.
 | `x86_64-unknown-linux-gnu` | partial | partial | unit-tested | experimental | experimental | experimental | experimental |
 | `x86_64-pc-windows-msvc` | partial | partial | unit-tested | experimental | experimental | experimental | experimental |
 | `aarch64-unknown-linux-gnu` | partial | partial | unit-tested | CI-verified | CI-verified | CI-verified | CI-verified |
-| `riscv64gc-unknown-linux-gnu` | declared | partial | unit-tested | CI-verified | CI-verified | CI-verified | CI-verified |
+| `riscv64gc-unknown-linux-gnu` | partial | partial | unit-tested | CI-verified | CI-verified | CI-verified | CI-verified |
 | `riscv32imac-unknown-none-elf` | declared | partial | unit-tested | unavailable | unavailable | unavailable | experimental |
 <!-- capabilities:end -->
 

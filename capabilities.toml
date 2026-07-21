@@ -1,3 +1,18 @@
+# Capability claims for SemASM targets.
+#
+# `verify` / assemble / link / execute maturity levels describe the **build
+# pipeline** (fixture assemble → link → run), for example the exit-code e2e
+# jobs. They are **not** a claim that `semasm agent verify` semantic gates
+# (decode → lower → ABI → capability → optional behavioral harness) are
+# complete for that target.
+#
+# Agent semantic-gate coverage is documented in `docs/CLI_COMPATIBILITY.md`.
+# Today those gates are implemented for:
+#   - x86_64-unknown-linux-gnu (SysV ELF) — static + behavioral harness
+#   - x86_64-pc-windows-msvc (Win64 PE) — static + behavioral harness
+#   - aarch64-unknown-linux-gnu — static gates (gas path); harness later
+#   - riscv64gc-unknown-linux-gnu — static gates (gas path); harness later
+
 schema_version = "0.1"
 
 [workspace]
@@ -52,12 +67,12 @@ verify = "experimental"
 
 [target.evidence]
 unit_tests = ["semasm-target::tests", "semasm-x86::abi_win64", "semasm-obj::tests"]
-fixtures = ["fixtures/asm/hello_win64.asm", "fixtures/asm/win64_clean.asm"]
+fixtures = ["fixtures/asm/hello_win64.asm", "fixtures/asm/win64_clean.asm", "fixtures/asm/count_byte_win64.asm"]
 ci_jobs = []
 
 [[target]]
 id = "aarch64-unknown-linux-gnu"
-description = "AArch64 Linux, AAPCS64 ABI, ELF"
+description = "AArch64 Linux, AAPCS64 ABI, ELF (pipeline verify = exit fixture e2e; not agent-complete)"
 
 [target.capabilities]
 declared = "verified_in_ci"
@@ -67,30 +82,32 @@ abi_analysis = "verified_in_unit_tests"
 assemble = "verified_in_ci"
 link = "verified_in_ci"
 execute = "verified_in_ci"
+# Pipeline assemble/link/run of fixtures/asm/exit_aarch64.S in CI — not agent semantic gates.
 verify = "verified_in_ci"
 
 [target.evidence]
 unit_tests = ["semasm-decode::tests", "semasm-aarch64::lower", "semasm-aarch64::abi"]
-fixtures = ["fixtures/asm/exit_aarch64.S"]
+fixtures = ["fixtures/asm/exit_aarch64.S", "fixtures/asm/count_byte_aarch64.S"]
 ci_jobs = ["e2e (AArch64 Linux)"]
 
 [[target]]
 id = "riscv64gc-unknown-linux-gnu"
-description = "RV64 Linux, RISC-V psABI, ELF"
+description = "RV64 Linux, RISC-V psABI, ELF (pipeline verify = exit fixture e2e; not agent-complete)"
 
 [target.capabilities]
 declared = "verified_in_ci"
-decode = "declared"
+decode = "partial"
 lower = "partial"
 abi_analysis = "verified_in_unit_tests"
 assemble = "verified_in_ci"
 link = "verified_in_ci"
 execute = "verified_in_ci"
+# Pipeline assemble/link/run of fixtures/asm/exit_riscv64.S in CI — not agent semantic gates.
 verify = "verified_in_ci"
 
 [target.evidence]
-unit_tests = ["semasm-riscv::lower", "semasm-riscv::abi"]
-fixtures = ["fixtures/asm/exit_riscv64.S"]
+unit_tests = ["semasm-riscv::lower", "semasm-riscv::abi", "semasm-decode::tests"]
+fixtures = ["fixtures/asm/exit_riscv64.S", "fixtures/asm/count_byte_riscv64.S"]
 ci_jobs = ["e2e (RV64 Linux)"]
 
 [[target]]

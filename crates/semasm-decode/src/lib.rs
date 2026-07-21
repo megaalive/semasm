@@ -255,6 +255,99 @@ fn decode_aarch64_inner(
     ))
 }
 
+/// Decode a RISC-V 64-bit machine-code buffer into normalised instructions.
+///
+/// `base_address` is the load address assigned to the first byte of `code`.
+///
+/// When the `capstone` feature is disabled this returns
+/// [`DecodeError::Unsupported`]; the normalised types are still usable
+/// downstream so core builds without Capstone.
+pub fn decode_riscv64(
+    code: &[u8],
+    base_address: u64,
+) -> Result<Vec<PhysicalInstruction>, DecodeError> {
+    if code.is_empty() {
+        return Err(DecodeError::EmptyInput);
+    }
+    decode_riscv64_inner(code, base_address)
+}
+
+#[cfg(feature = "capstone")]
+fn decode_riscv64_inner(
+    code: &[u8],
+    base_address: u64,
+) -> Result<Vec<PhysicalInstruction>, DecodeError> {
+    use capstone::prelude::*;
+
+    let cs = Capstone::new()
+        .riscv()
+        .mode(capstone::arch::riscv::ArchMode::RiscV64)
+        .detail(true)
+        .build()
+        .map_err(|e| DecodeError::InitFailed(format!("{e:?}")))?;
+
+    let insns = cs
+        .disasm_all(code, base_address)
+        .map_err(|e| DecodeError::DisasmFailed(format!("{e:?}")))?;
+
+    let mut out = Vec::with_capacity(insns.len());
+    for insn in insns.iter() {
+        let address = insn.address();
+        let bytes = insn.bytes().to_vec();
+        let mnemonic = insn.mnemonic().unwrap_or("").to_string();
+        let op_str = insn.op_str().unwrap_or("");
+        let operands: Vec<String> = if op_str.is_empty() {
+            Vec::new()
+        } else {
+            op_str.split(',').map(|s| s.trim().to_string()).collect()
+        };
+
+        let (read_regs, write_regs, groups) = match cs.insn_detail(insn) {
+            Ok(detail) => {
+                let read_regs = detail
+                    .regs_read()
+                    .iter()
+                    .filter_map(|r| cs.reg_name(*r))
+                    .collect();
+                let write_regs = detail
+                    .regs_write()
+                    .iter()
+                    .filter_map(|r| cs.reg_name(*r))
+                    .collect();
+                let groups: Vec<String> = detail
+                    .groups()
+                    .iter()
+                    .filter_map(|g| cs.group_name(*g))
+                    .collect();
+                (read_regs, write_regs, groups)
+            }
+            Err(_) => (Vec::new(), Vec::new(), Vec::new()),
+        };
+
+        out.push(PhysicalInstruction {
+            address,
+            bytes,
+            mnemonic,
+            operands,
+            read_regs,
+            write_regs,
+            groups,
+            detail_available: true,
+        });
+    }
+    Ok(out)
+}
+
+#[cfg(not(feature = "capstone"))]
+fn decode_riscv64_inner(
+    _code: &[u8],
+    _base_address: u64,
+) -> Result<Vec<PhysicalInstruction>, DecodeError> {
+    Err(DecodeError::Unsupported(
+        "RISC-V decoding requires the `capstone` feature".to_string(),
+    ))
+}
+
 /// Serialise a slice of instructions to stable, deterministic JSON.
 pub fn to_json(instrs: &[PhysicalInstruction]) -> Result<String, DecodeError> {
     serde_json::to_string_pretty(instrs).map_err(|e| DecodeError::DisasmFailed(e.to_string()))
@@ -377,5 +470,22 @@ mod tests {
         assert!(instrs[0].mnemonic.starts_with("mov"));
         assert!(!instrs[0].operands.is_empty());
         assert_eq!(instrs[1].mnemonic, "ret");
+    }
+
+    #[cfg(feature = "capstone")]
+    #[test]
+    fn riscv64_ret_decodes() {
+        // `ret` / `jalr zero, 0(ra)` — little-endian 0x00008067.
+        let code = [0x67u8, 0x80, 0x00, 0x00];
+        let instrs = decode_riscv64(&code, 0x1000).expect("decode");
+        assert_eq!(instrs.len(), 1);
+        assert_eq!(instrs[0].address, 0x1000);
+        assert_eq!(instrs[0].bytes, vec![0x67, 0x80, 0x00, 0x00]);
+        assert!(
+            instrs[0].mnemonic == "ret" || instrs[0].mnemonic == "jalr",
+            "unexpected mnemonic {}",
+            instrs[0].mnemonic
+        );
+        assert!(instrs[0].detail_available);
     }
 }

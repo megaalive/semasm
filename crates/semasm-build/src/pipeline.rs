@@ -7,7 +7,7 @@
 use std::path::Path;
 
 use semasm_target::tools;
-use semasm_target::TargetIdentity;
+use semasm_target::{Dialect, ObjectFormat, TargetIdentity};
 
 use crate::exec::{self, BuildError, CommandOutput, CommandSpec};
 
@@ -236,6 +236,34 @@ impl Pipeline {
         )
     }
 
+    /// Assemble source for this pipeline's target dialect (NASM or GNU `as`).
+    pub fn assemble_for_target(
+        &self,
+        source: &Path,
+        output: &Path,
+    ) -> Result<CommandOutput, BuildError> {
+        let spec = self.assemble_for_target_spec(source, output);
+        exec::exec(&spec)
+    }
+
+    /// Construct the assembler command for this target's dialect.
+    #[must_use]
+    pub fn assemble_for_target_spec(&self, source: &Path, output: &Path) -> CommandSpec {
+        match self.target.dialect {
+            Dialect::GasUnified | Dialect::GasAtt => CommandSpec::new(
+                &self.toolchain.assembler,
+                vec![
+                    source.to_string_lossy().into_owned(),
+                    "-o".into(),
+                    output.to_string_lossy().into_owned(),
+                ],
+            ),
+            Dialect::NasmIntel => {
+                self.assemble_reproducible_spec(source, output, self.target.nasm_format())
+            }
+        }
+    }
+
     // -- Link -----------------------------------------------------------
 
     /// Link object files into an executable.
@@ -275,6 +303,71 @@ impl Pipeline {
             args.push(obj.to_string_lossy().into_owned());
         }
         CommandSpec::new(&self.toolchain.linker, args)
+    }
+
+    /// Link a static ELF with an explicit entry symbol (GNU cross `ld` / QEMU path).
+    pub fn link_static_elf(
+        &self,
+        objects: &[&Path],
+        output: &Path,
+        entry: &str,
+    ) -> Result<CommandOutput, BuildError> {
+        let spec = self.link_static_elf_spec(objects, output, entry);
+        exec::exec(&spec)
+    }
+
+    /// Construct a static ELF link command with `-e entry`.
+    #[must_use]
+    pub fn link_static_elf_spec(
+        &self,
+        objects: &[&Path],
+        output: &Path,
+        entry: &str,
+    ) -> CommandSpec {
+        let mut args = vec![
+            "-static".into(),
+            "-e".into(),
+            entry.to_string(),
+            "-o".into(),
+            output.to_string_lossy().into_owned(),
+        ];
+        for obj in objects {
+            args.push(obj.to_string_lossy().into_owned());
+        }
+        CommandSpec::new(&self.toolchain.linker, args)
+    }
+
+    /// Link objects for this target (PE via `lld-link`, static gas ELF, or ELF reproducible).
+    pub fn link_for_target(
+        &self,
+        objects: &[&Path],
+        output: &Path,
+        entry: &str,
+    ) -> Result<CommandOutput, BuildError> {
+        let spec = self.link_for_target_spec(objects, output, entry);
+        exec::exec(&spec)
+    }
+
+    /// Construct the linker command for this target.
+    #[must_use]
+    pub fn link_for_target_spec(
+        &self,
+        objects: &[&Path],
+        output: &Path,
+        entry: &str,
+    ) -> CommandSpec {
+        match self.target.object_format {
+            ObjectFormat::PeCoff => self.link_pe_spec(objects, output, entry, "console"),
+            ObjectFormat::Elf
+                if matches!(
+                    self.target.dialect,
+                    Dialect::GasUnified | Dialect::GasAtt
+                ) =>
+            {
+                self.link_static_elf_spec(objects, output, entry)
+            }
+            ObjectFormat::Elf => self.link_reproducible_spec(objects, output),
+        }
     }
 
     // -- Verify ---------------------------------------------------------

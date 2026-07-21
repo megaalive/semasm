@@ -47,9 +47,27 @@ in stderr / error messages. Agent JSON remains experimental in 0.1: tolerate
 additive fields; do not treat unknown coverage as verified. Versioning rules
 are in `AGENT_SCHEMA_POLICY.md` (not the artifact-report evidence-hash policy).
 
-Semantic gate runners currently complete only for `x86_64` + System V + ELF
-(with the `capstone` feature). Other targets fail closed before claiming
-verification.
+Semantic gate runners (with the `capstone` feature) complete static
+object/decode/lowering/ABI/capability checks for:
+
+- `x86_64-unknown-linux-gnu` (System V + ELF)
+- `x86_64-pc-windows-msvc` (Microsoft x64 + PE)
+- `aarch64-unknown-linux-gnu` (AAPCS64 + ELF, GNU `as` assemble path)
+- `riscv64gc-unknown-linux-gnu` (RISC-V LP64 + ELF, GNU `as` assemble path)
+
+Behavioral harness execution (`--allow-execution`) is implemented for the two
+x86_64 targets (SysV Linux syscalls and Win64 `WriteFile`/`ExitProcess`).
+AArch64 and RV64 still fail closed after static gates with
+`execution_denied` and `executable.skipped` until a gas harness lands.
+
+Other targets fail closed before claiming verification.
+
+### Capability manifest vs agent gates
+
+`capabilities.toml` field `verify` (and assemble/link/execute at
+`verified_in_ci`) records **pipeline** evidence — typically an exit-fixture
+assemble/link/run job — not agent semantic-gate completeness. See the header
+comment in `capabilities.toml` and target descriptions for AArch64/RV64.
 
 ## JSON status
 

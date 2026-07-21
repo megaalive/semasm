@@ -30,10 +30,11 @@ semasm-decode = { workspace = true, optional = true }
 semasm-cfg = { workspace = true, optional = true }
 semasm-x86 = { workspace = true, optional = true }
 semasm-aarch64 = { workspace = true, optional = true }
+semasm-riscv = { workspace = true, optional = true }
 
 [features]
 default = ["capstone"]
-capstone = ["semasm-decode/capstone", "semasm-cfg/capstone", "semasm-x86", "semasm-aarch64"]
+capstone = ["semasm-decode/capstone", "semasm-cfg/capstone", "semasm-x86", "semasm-aarch64", "semasm-riscv"]
 
 [dev-dependencies]
 serde_json = { workspace = true }

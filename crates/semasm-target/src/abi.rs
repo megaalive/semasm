@@ -123,6 +123,30 @@ fn aapcs64() -> ABIRegisterMap {
     }
 }
 
+/// RISC-V LP64 integer ABI (psABI).
+///
+/// - Integer args: a0–a7, then stack.
+/// - Return:       a0.
+/// - Callee-saved: sp, s0–s11.
+/// - Volatile:     ra, t0–t6, a0–a7.
+fn riscv_lp64() -> ABIRegisterMap {
+    ABIRegisterMap {
+        parameter_registers: (0..8).map(|i| format!("a{i}")).collect(),
+        return_register: "a0".into(),
+        preserved_registers: {
+            let mut regs = vec!["sp".into(), "s0".into(), "s1".into()];
+            regs.extend((2..=11).map(|i| format!("s{i}")));
+            regs
+        },
+        volatile_registers: {
+            let mut regs = vec!["ra".into()];
+            regs.extend((0..=6).map(|i| format!("t{i}")));
+            regs.extend((0..=7).map(|i| format!("a{i}")));
+            regs
+        },
+    }
+}
+
 // ---------------------------------------------------------------------------
 // TargetIdentity integration
 // ---------------------------------------------------------------------------
@@ -137,7 +161,7 @@ impl TargetIdentity {
             Abi::SysVAmd64 => Some(sysv_amd64()),
             Abi::WindowsX64 => Some(win64()),
             Abi::Aapcs64 => Some(aapcs64()),
-            Abi::Riscv => None, // not yet registered
+            Abi::Riscv => Some(riscv_lp64()),
         }
     }
 }
@@ -215,7 +239,7 @@ mod tests {
     }
 
     #[test]
-    fn riscv_returns_none() {
+    fn riscv_has_eight_parameter_registers() {
         let target = TargetIdentity {
             name: "riscv64-unknown-linux-gnu".into(),
             isa: crate::Isa::Riscv64,
@@ -224,6 +248,11 @@ mod tests {
             dialect: crate::Dialect::GasUnified,
             profile: crate::ExecutionProfile::HostedMinimal,
         };
-        assert!(target.abi_register_map().is_none());
+        let map = target.abi_register_map().expect("RISC-V ABI known");
+        assert_eq!(map.parameter_registers.len(), 8);
+        assert_eq!(map.param_register(0), Some("a0"));
+        assert_eq!(map.param_register(7), Some("a7"));
+        assert_eq!(map.return_register, "a0");
+        assert!(map.param_register(8).is_none());
     }
 }

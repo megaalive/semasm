@@ -232,7 +232,6 @@ pub(crate) fn do_agent_verify(
         );
         return ExitCode::from(1);
     }
-    let harness_source = harness::generate_harness(&checked.name, &vectors);
     let routine_symbol = checked.name.clone();
 
     let directory = std::env::temp_dir().join(format!("semasm-verify-{}", std::process::id()));
@@ -242,10 +241,13 @@ pub(crate) fn do_agent_verify(
     }
     let routine_object = directory.join("routine.o");
     let harness_object = directory.join("harness.o");
-    let executable = directory.join("harness");
+    let executable = if identity.object_format == semasm_target::ObjectFormat::PeCoff {
+        directory.join("harness.exe")
+    } else {
+        directory.join("harness")
+    };
 
-    let nasm_format = identity.nasm_format();
-    match pipeline.assemble_reproducible(source, &routine_object, nasm_format) {
+    match pipeline.assemble_for_target(source, &routine_object) {
         Ok(output) if output.success() => {}
         Ok(output) => {
             eprintln!(
@@ -279,13 +281,33 @@ pub(crate) fn do_agent_verify(
         }
     };
 
+    let harness_source = match harness::generate_harness(&routine_symbol, &vectors, identity.abi) {
+        Ok(source) => source,
+        Err(reason) => {
+            eprintln!("behavioral harness unavailable: {reason}");
+            let verification = VerificationReport::from_parts(
+                identity.name.clone(),
+                routine_symbol,
+                semantic,
+                ExecutableGate::skipped(),
+                None,
+            );
+            let _ = std::fs::remove_dir_all(&directory);
+            let _ = emit_verification_report(&verification, format);
+            eprintln!(
+                "execution denied: static semantic gates passed; behavioral harness not available for this target"
+            );
+            return ExitCode::from(1);
+        }
+    };
+
     let harness_path = directory.join("harness.asm");
     if let Err(error) = std::fs::write(&harness_path, &harness_source) {
         eprintln!("error: cannot write harness source: {error}");
         let _ = std::fs::remove_dir_all(&directory);
         return ExitCode::from(1);
     }
-    match pipeline.assemble_reproducible(&harness_path, &harness_object, nasm_format) {
+    match pipeline.assemble_for_target(&harness_path, &harness_object) {
         Ok(output) if output.success() => {}
         Ok(output) => {
             eprintln!(
@@ -302,7 +324,11 @@ pub(crate) fn do_agent_verify(
         }
     }
 
-    match pipeline.link_reproducible(&[&routine_object, &harness_object], &executable) {
+    let entry = match identity.abi {
+        semasm_target::Abi::WindowsX64 => "main",
+        _ => "_start",
+    };
+    match pipeline.link_for_target(&[&routine_object, &harness_object], &executable, entry) {
         Ok(output) if output.success() => {}
         Ok(output) => {
             eprintln!("link failed: {}", String::from_utf8_lossy(&output.stderr));
@@ -464,31 +490,87 @@ fn verify_candidate_semantics(
 ) -> Result<SemanticGates, SemanticGateError> {
     require_semantic_target(identity)?;
     check_candidate_object_policy(object_path, identity, routine_symbol)?;
-    let (physical, code_bytes) = decode_candidate_code(object_path, identity)?;
-    let decode_coverage = Coverage::complete(physical.len());
-    let lowered = lower_candidate_instructions(&physical, decode_coverage)?;
-    let lowering_coverage = Coverage::complete(lowered.len());
-    check_candidate_abi_capability(&lowered, decode_coverage, lowering_coverage)?;
 
-    Ok(SemanticGates {
-        object_policy: GateStatus::Passed,
-        executable_bytes: code_bytes,
-        decode: decode_coverage,
-        lowering: lowering_coverage,
-        abi: GateStatus::Passed,
-        capability: GateStatus::Passed,
-    })
+    match (identity.isa, identity.abi, identity.object_format) {
+        (Isa::X86_64, Abi::SysVAmd64, ObjectFormat::Elf)
+        | (Isa::X86_64, Abi::WindowsX64, ObjectFormat::PeCoff) => {
+            let (physical, code_bytes) =
+                decode_candidate_code(object_path, identity, DecodeIsa::X86_64)?;
+            let decode_coverage = Coverage::complete(physical.len());
+            let lowered = lower_x86_instructions(&physical, decode_coverage)?;
+            let lowering_coverage = Coverage::complete(lowered.len());
+            check_x86_abi_capability(
+                &lowered,
+                identity.abi,
+                decode_coverage,
+                lowering_coverage,
+            )?;
+            Ok(SemanticGates {
+                object_policy: GateStatus::Passed,
+                executable_bytes: code_bytes,
+                decode: decode_coverage,
+                lowering: lowering_coverage,
+                abi: GateStatus::Passed,
+                capability: GateStatus::Passed,
+            })
+        }
+        (Isa::AArch64, Abi::Aapcs64, ObjectFormat::Elf) => {
+            let (physical, code_bytes) =
+                decode_candidate_code(object_path, identity, DecodeIsa::AArch64)?;
+            let decode_coverage = Coverage::complete(physical.len());
+            let lowered = lower_aarch64_instructions(&physical, decode_coverage)?;
+            let lowering_coverage = Coverage::complete(lowered.len());
+            check_aarch64_abi_capability(&lowered, decode_coverage, lowering_coverage)?;
+            Ok(SemanticGates {
+                object_policy: GateStatus::Passed,
+                executable_bytes: code_bytes,
+                decode: decode_coverage,
+                lowering: lowering_coverage,
+                abi: GateStatus::Passed,
+                capability: GateStatus::Passed,
+            })
+        }
+        (Isa::Riscv64, Abi::Riscv, ObjectFormat::Elf) => {
+            let (physical, code_bytes) =
+                decode_candidate_code(object_path, identity, DecodeIsa::Riscv64)?;
+            let decode_coverage = Coverage::complete(physical.len());
+            let lowered = lower_riscv_instructions(&physical, decode_coverage)?;
+            let lowering_coverage = Coverage::complete(lowered.len());
+            check_riscv_abi_capability(&lowered, decode_coverage, lowering_coverage)?;
+            Ok(SemanticGates {
+                object_policy: GateStatus::Passed,
+                executable_bytes: code_bytes,
+                decode: decode_coverage,
+                lowering: lowering_coverage,
+                abi: GateStatus::Passed,
+                capability: GateStatus::Passed,
+            })
+        }
+        _ => Err(SemanticGateError::new(
+            "target",
+            format!(
+                "agent verification has no semantic-gate dispatch for `{}`",
+                identity.name
+            ),
+        )),
+    }
 }
 
 #[cfg(feature = "capstone")]
 fn require_semantic_target(identity: &TargetIdentity) -> Result<(), SemanticGateError> {
-    if (identity.isa, identity.abi, identity.object_format)
-        != (Isa::X86_64, Abi::SysVAmd64, ObjectFormat::Elf)
-    {
+    let supported = matches!(
+        (identity.isa, identity.abi, identity.object_format),
+        (Isa::X86_64, Abi::SysVAmd64, ObjectFormat::Elf)
+            | (Isa::X86_64, Abi::WindowsX64, ObjectFormat::PeCoff)
+            | (Isa::AArch64, Abi::Aapcs64, ObjectFormat::Elf)
+            | (Isa::Riscv64, Abi::Riscv, ObjectFormat::Elf)
+    );
+    if !supported {
         return Err(SemanticGateError::new(
             "target",
             format!(
-                "agent verification currently has complete semantic gates only for x86_64-unknown-linux-gnu, not `{}`",
+                "agent verification currently has complete semantic gates for \
+                 x86_64 SysV ELF, x86_64 Win64 PE, AArch64 Linux ELF, and RV64 Linux ELF, not `{}`",
                 identity.name
             ),
         ));
@@ -529,9 +611,18 @@ fn check_candidate_object_policy(
 }
 
 #[cfg(feature = "capstone")]
+#[derive(Clone, Copy)]
+enum DecodeIsa {
+    X86_64,
+    AArch64,
+    Riscv64,
+}
+
+#[cfg(feature = "capstone")]
 fn decode_candidate_code(
     object_path: &Path,
     identity: &TargetIdentity,
+    isa: DecodeIsa,
 ) -> Result<(Vec<semasm_decode::PhysicalInstruction>, usize), SemanticGateError> {
     let sections = semasm_obj::read_code_sections(object_path, identity)
         .map_err(|error| SemanticGateError::new("object", error.to_string()))?;
@@ -546,13 +637,17 @@ fn decode_candidate_code(
     let mut code_bytes = 0usize;
     for section in sections {
         code_bytes += section.bytes.len();
-        let mut decoded =
-            semasm_decode::decode_x86_64(&section.bytes, section.address).map_err(|error| {
-                SemanticGateError::new(
-                    "decode",
-                    format!("decode failed for {}: {error}", section.name),
-                )
-            })?;
+        let mut decoded = match isa {
+            DecodeIsa::X86_64 => semasm_decode::decode_x86_64(&section.bytes, section.address),
+            DecodeIsa::AArch64 => semasm_decode::decode_aarch64(&section.bytes, section.address),
+            DecodeIsa::Riscv64 => semasm_decode::decode_riscv64(&section.bytes, section.address),
+        }
+        .map_err(|error| {
+            SemanticGateError::new(
+                "decode",
+                format!("decode failed for {}: {error}", section.name),
+            )
+        })?;
         physical.append(&mut decoded);
     }
     let decoded_bytes = physical
@@ -565,8 +660,6 @@ fn decode_candidate_code(
             message: format!(
                 "decode coverage incomplete: decoded {decoded_bytes} of {code_bytes} executable bytes"
             ),
-            // Instruction coverage is unknown when bytes remain undecoded;
-            // keep byte totals in the message only.
             decode: None,
             lowering: None,
         });
@@ -575,7 +668,7 @@ fn decode_candidate_code(
 }
 
 #[cfg(feature = "capstone")]
-fn lower_candidate_instructions(
+fn lower_x86_instructions(
     physical: &[semasm_decode::PhysicalInstruction],
     decode_coverage: Coverage,
 ) -> Result<Vec<semasm_x86::lower::LoweredInstr>, SemanticGateError> {
@@ -606,14 +699,144 @@ fn lower_candidate_instructions(
 }
 
 #[cfg(feature = "capstone")]
-fn check_candidate_abi_capability(
+fn lower_aarch64_instructions(
+    physical: &[semasm_decode::PhysicalInstruction],
+    decode_coverage: Coverage,
+) -> Result<Vec<semasm_aarch64::lower::LoweredInstr>, SemanticGateError> {
+    let mut lowered = Vec::with_capacity(physical.len());
+    for instruction in physical {
+        match semasm_aarch64::lower::lower(instruction) {
+            semasm_aarch64::lower::Lowering::Lowered(instruction) => lowered.push(instruction),
+            semasm_aarch64::lower::Lowering::Unsupported { mnemonic } => {
+                let modeled = lowered.len();
+                let total = physical.len();
+                return Err(SemanticGateError {
+                    stage: "lowering",
+                    message: format!(
+                        "lowering coverage incomplete at {:#x}: unsupported `{mnemonic}`",
+                        instruction.address
+                    ),
+                    decode: Some(decode_coverage),
+                    lowering: Some(Coverage {
+                        total,
+                        modeled,
+                        unknown: total - modeled,
+                    }),
+                });
+            }
+        }
+    }
+    Ok(lowered)
+}
+
+#[cfg(feature = "capstone")]
+fn lower_riscv_instructions(
+    physical: &[semasm_decode::PhysicalInstruction],
+    decode_coverage: Coverage,
+) -> Result<Vec<semasm_riscv::lower::LoweredInstr>, SemanticGateError> {
+    let mut lowered = Vec::with_capacity(physical.len());
+    for instruction in physical {
+        match semasm_riscv::lower::lower(instruction) {
+            semasm_riscv::lower::Lowering::Lowered(instruction) => lowered.push(instruction),
+            semasm_riscv::lower::Lowering::Unsupported { mnemonic } => {
+                let modeled = lowered.len();
+                let total = physical.len();
+                return Err(SemanticGateError {
+                    stage: "lowering",
+                    message: format!(
+                        "lowering coverage incomplete at {:#x}: unsupported `{mnemonic}`",
+                        instruction.address
+                    ),
+                    decode: Some(decode_coverage),
+                    lowering: Some(Coverage {
+                        total,
+                        modeled,
+                        unknown: total - modeled,
+                    }),
+                });
+            }
+        }
+    }
+    Ok(lowered)
+}
+
+#[cfg(feature = "capstone")]
+fn check_x86_abi_capability(
     lowered: &[semasm_x86::lower::LoweredInstr],
+    abi: Abi,
     decode_coverage: Coverage,
     lowering_coverage: Coverage,
 ) -> Result<(), SemanticGateError> {
-    let abi = semasm_x86::abi::analyze(lowered);
-    if !abi.is_clean() {
-        let findings = abi
+    match abi {
+        Abi::SysVAmd64 => {
+            let report = semasm_x86::abi::analyze(lowered);
+            if !report.is_clean() {
+                let findings = report
+                    .findings
+                    .iter()
+                    .map(|finding| format!("{}: {}", finding.code, finding.message))
+                    .collect::<Vec<_>>()
+                    .join("; ");
+                return Err(SemanticGateError {
+                    stage: "abi",
+                    message: format!("System V ABI verification failed: {findings}"),
+                    decode: Some(decode_coverage),
+                    lowering: Some(lowering_coverage),
+                });
+            }
+            if report.has_syscall {
+                return Err(SemanticGateError {
+                    stage: "capability",
+                    message: "candidate requests the forbidden syscall capability".into(),
+                    decode: Some(decode_coverage),
+                    lowering: Some(lowering_coverage),
+                });
+            }
+        }
+        Abi::WindowsX64 => {
+            let report = semasm_x86::abi_win64::analyze(lowered);
+            if !report.is_clean() {
+                let findings = report
+                    .findings
+                    .iter()
+                    .map(|finding| format!("{}: {}", finding.code, finding.message))
+                    .collect::<Vec<_>>()
+                    .join("; ");
+                return Err(SemanticGateError {
+                    stage: "abi",
+                    message: format!("Microsoft x64 ABI verification failed: {findings}"),
+                    decode: Some(decode_coverage),
+                    lowering: Some(lowering_coverage),
+                });
+            }
+            if lowered.iter().any(|ins| ins.mnemonic == "syscall") {
+                return Err(SemanticGateError {
+                    stage: "capability",
+                    message: "candidate requests the forbidden syscall capability".into(),
+                    decode: Some(decode_coverage),
+                    lowering: Some(lowering_coverage),
+                });
+            }
+        }
+        _ => {
+            return Err(SemanticGateError::new(
+                "abi",
+                format!("unexpected x86 ABI `{abi}`"),
+            ));
+        }
+    }
+    Ok(())
+}
+
+#[cfg(feature = "capstone")]
+fn check_aarch64_abi_capability(
+    lowered: &[semasm_aarch64::lower::LoweredInstr],
+    decode_coverage: Coverage,
+    lowering_coverage: Coverage,
+) -> Result<(), SemanticGateError> {
+    let report = semasm_aarch64::abi::analyze(lowered);
+    if !report.is_clean() {
+        let findings = report
             .findings
             .iter()
             .map(|finding| format!("{}: {}", finding.code, finding.message))
@@ -621,15 +844,47 @@ fn check_candidate_abi_capability(
             .join("; ");
         return Err(SemanticGateError {
             stage: "abi",
-            message: format!("System V ABI verification failed: {findings}"),
+            message: format!("AAPCS64 ABI verification failed: {findings}"),
             decode: Some(decode_coverage),
             lowering: Some(lowering_coverage),
         });
     }
-    if abi.has_syscall {
+    if lowered.iter().any(|ins| ins.mnemonic == "svc") {
         return Err(SemanticGateError {
             stage: "capability",
-            message: "candidate requests the forbidden syscall capability".into(),
+            message: "candidate requests the forbidden svc capability".into(),
+            decode: Some(decode_coverage),
+            lowering: Some(lowering_coverage),
+        });
+    }
+    Ok(())
+}
+
+#[cfg(feature = "capstone")]
+fn check_riscv_abi_capability(
+    lowered: &[semasm_riscv::lower::LoweredInstr],
+    decode_coverage: Coverage,
+    lowering_coverage: Coverage,
+) -> Result<(), SemanticGateError> {
+    let report = semasm_riscv::abi::analyze(lowered);
+    if !report.is_clean() {
+        let findings = report
+            .findings
+            .iter()
+            .map(|finding| format!("{}: {}", finding.code, finding.message))
+            .collect::<Vec<_>>()
+            .join("; ");
+        return Err(SemanticGateError {
+            stage: "abi",
+            message: format!("RISC-V LP64 ABI verification failed: {findings}"),
+            decode: Some(decode_coverage),
+            lowering: Some(lowering_coverage),
+        });
+    }
+    if lowered.iter().any(|ins| ins.mnemonic == "ecall") {
+        return Err(SemanticGateError {
+            stage: "capability",
+            message: "candidate requests the forbidden ecall capability".into(),
             decode: Some(decode_coverage),
             lowering: Some(lowering_coverage),
         });
@@ -680,6 +935,92 @@ mod semantic_gate_tests {
         assert!(gates.all_passed());
         assert_eq!(gates.lowering.unknown, 0);
         assert_eq!(gates.lowering.modeled, gates.lowering.total);
+        assert_eq!(gates.abi, GateStatus::Passed);
+        assert_eq!(gates.capability, GateStatus::Passed);
+        let _ = std::fs::remove_dir_all(scratch);
+    }
+
+    #[test]
+    #[ignore = "requires nasm on PATH"]
+    fn win64_candidate_passes_static_semantic_gates() {
+        let workspace = Path::new(env!("CARGO_MANIFEST_DIR")).join("../..");
+        let source = workspace.join("fixtures/asm/count_byte_win64.asm");
+        let scratch =
+            std::env::temp_dir().join(format!("semasm-semantic-win64-{}", std::process::id()));
+        std::fs::create_dir_all(&scratch).unwrap();
+        let object = scratch.join("count_byte.obj");
+        let output = Command::new("nasm")
+            .args(["-f", "win64"])
+            .arg(&source)
+            .arg("-o")
+            .arg(&object)
+            .output()
+            .unwrap();
+        assert!(
+            output.status.success(),
+            "nasm failed: {}",
+            String::from_utf8_lossy(&output.stderr)
+        );
+        let target = TargetIdentity::parse_known("x86_64-pc-windows-msvc").unwrap();
+        let gates = verify_candidate_semantics(&object, &target, "count_byte").unwrap();
+        assert!(gates.all_passed());
+        assert_eq!(gates.lowering.unknown, 0);
+        assert_eq!(gates.abi, GateStatus::Passed);
+        assert_eq!(gates.capability, GateStatus::Passed);
+        let _ = std::fs::remove_dir_all(scratch);
+    }
+
+    #[test]
+    #[ignore = "requires aarch64-linux-gnu-as on PATH"]
+    fn aarch64_candidate_passes_static_semantic_gates() {
+        let workspace = Path::new(env!("CARGO_MANIFEST_DIR")).join("../..");
+        let source = workspace.join("fixtures/asm/count_byte_aarch64.S");
+        let scratch =
+            std::env::temp_dir().join(format!("semasm-semantic-a64-{}", std::process::id()));
+        std::fs::create_dir_all(&scratch).unwrap();
+        let object = scratch.join("count_byte.o");
+        let output = Command::new("aarch64-linux-gnu-as")
+            .arg(&source)
+            .arg("-o")
+            .arg(&object)
+            .output()
+            .unwrap();
+        assert!(
+            output.status.success(),
+            "as failed: {}",
+            String::from_utf8_lossy(&output.stderr)
+        );
+        let target = TargetIdentity::parse_known("aarch64-unknown-linux-gnu").unwrap();
+        let gates = verify_candidate_semantics(&object, &target, "count_byte").unwrap();
+        assert!(gates.all_passed());
+        assert_eq!(gates.abi, GateStatus::Passed);
+        assert_eq!(gates.capability, GateStatus::Passed);
+        let _ = std::fs::remove_dir_all(scratch);
+    }
+
+    #[test]
+    #[ignore = "requires riscv64-linux-gnu-as on PATH"]
+    fn riscv64_candidate_passes_static_semantic_gates() {
+        let workspace = Path::new(env!("CARGO_MANIFEST_DIR")).join("../..");
+        let source = workspace.join("fixtures/asm/count_byte_riscv64.S");
+        let scratch =
+            std::env::temp_dir().join(format!("semasm-semantic-rv64-{}", std::process::id()));
+        std::fs::create_dir_all(&scratch).unwrap();
+        let object = scratch.join("count_byte.o");
+        let output = Command::new("riscv64-linux-gnu-as")
+            .arg(&source)
+            .arg("-o")
+            .arg(&object)
+            .output()
+            .unwrap();
+        assert!(
+            output.status.success(),
+            "as failed: {}",
+            String::from_utf8_lossy(&output.stderr)
+        );
+        let target = TargetIdentity::parse_known("riscv64gc-unknown-linux-gnu").unwrap();
+        let gates = verify_candidate_semantics(&object, &target, "count_byte").unwrap();
+        assert!(gates.all_passed());
         assert_eq!(gates.abi, GateStatus::Passed);
         assert_eq!(gates.capability, GateStatus::Passed);
         let _ = std::fs::remove_dir_all(scratch);
@@ -938,7 +1279,7 @@ pub(crate) fn do_build(
         out_dir.join("exit")
     };
 
-    let assemble_spec = pipe.assemble_reproducible_spec(source, &obj_path, identity.nasm_format());
+    let assemble_spec = pipe.assemble_for_target_spec(source, &obj_path);
     let ao = match exec::exec(&assemble_spec) {
         Ok(o) => o,
         Err(e) => {
@@ -956,12 +1297,17 @@ pub(crate) fn do_build(
     }
 
     // Step 2: link
-    let link_spec = if identity.object_format == semasm_target::ObjectFormat::PeCoff {
-        let entry = link_entry_of(&obj_path).unwrap_or_else(|| "main".to_string());
-        pipe.link_pe_spec(&[&obj_path], &exe_path, &entry, "console")
+    let entry = if identity.object_format == semasm_target::ObjectFormat::PeCoff {
+        link_entry_of(&obj_path).unwrap_or_else(|| "main".to_string())
+    } else if matches!(
+        identity.dialect,
+        semasm_target::Dialect::GasUnified | semasm_target::Dialect::GasAtt
+    ) {
+        link_entry_of(&obj_path).unwrap_or_else(|| "_start".to_string())
     } else {
-        pipe.link_reproducible_spec(&[&obj_path], &exe_path)
+        "_start".to_string()
     };
+    let link_spec = pipe.link_for_target_spec(&[&obj_path], &exe_path, &entry);
     let lo = match exec::exec(&link_spec) {
         Ok(output) => output,
         Err(error) => {

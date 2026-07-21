@@ -1,0 +1,22 @@
+# count_byte — count occurrences of needle in buffer[0..length].
+# RISC-V LP64: a0=buffer, a1=length, a2=needle, returns a0.
+# Uses only the modelled RV64-002 mnemonic subset (no li pseudo).
+.global count_byte
+.text
+count_byte:
+    mv t0, a0
+    mv t1, a1
+    mv t2, a2
+    addi t3, zero, 0
+    beq t1, zero, .done
+.loop:
+    lbu t4, 0(t0)
+    addi t0, t0, 1
+    bne t4, t2, .skip
+    addi t3, t3, 1
+.skip:
+    addi t1, t1, -1
+    bne t1, zero, .loop
+.done:
+    mv a0, t3
+    ret

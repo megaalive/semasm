@@ -18,12 +18,16 @@ use crate::{Abi, Isa, ObjectFormat, TargetIdentity};
 pub enum ToolKind {
     /// NASM assembler.
     Nasm,
+    /// Prefixed GNU assembler binary (e.g. `aarch64-linux-gnu-as`).
+    GnuAs(&'static str),
     /// LLD linker (ELF / COFF).
     Lld,
     /// LLVM/LLD `lld-link` COFF/PE linker for Windows targets.
     LldLink,
     /// GNU ld linker fallback.
     LdBfd,
+    /// Prefixed GNU linker binary (e.g. `aarch64-linux-gnu-ld`).
+    GnuLd(&'static str),
     /// LLVM object dumper.
     LlvmObjdump,
     /// GNU objdump fallback.
@@ -42,6 +46,7 @@ impl ToolKind {
     pub fn label(&self) -> &str {
         match self {
             Self::Nasm => "nasm",
+            Self::GnuAs(name) | Self::GnuLd(name) => name,
             Self::Lld => "ld.lld",
             Self::LldLink => "lld-link",
             Self::LdBfd => "ld.bfd",
@@ -57,6 +62,7 @@ impl ToolKind {
     pub fn binary(&self) -> &str {
         match self {
             Self::Nasm => "nasm",
+            Self::GnuAs(name) | Self::GnuLd(name) => name,
             Self::Lld => "ld.lld",
             Self::LldLink => "lld-link",
             Self::LdBfd => "ld.bfd",
@@ -73,8 +79,8 @@ impl ToolKind {
     #[must_use]
     pub fn category(&self) -> &str {
         match self {
-            Self::Nasm => "assembler",
-            Self::Lld | Self::LldLink | Self::LdBfd => "linker",
+            Self::Nasm | Self::GnuAs(_) => "assembler",
+            Self::Lld | Self::LldLink | Self::LdBfd | Self::GnuLd(_) => "linker",
             Self::LlvmObjdump | Self::Objdump => "disassembler",
             Self::Qemu(_) | Self::NativeHost => "runner",
         }
@@ -88,6 +94,10 @@ impl ToolKind {
                 "apt install nasm",
                 "brew install nasm",
                 "choco install nasm",
+            ],
+            Self::GnuAs(_) | Self::GnuLd(_) => vec![
+                "apt install binutils-aarch64-linux-gnu  # or binutils-riscv64-linux-gnu",
+                "Ensure the cross GNU assembler/linker for the target is on PATH",
             ],
             Self::Lld => vec![
                 "apt install lld",
@@ -300,6 +310,36 @@ pub fn required_tools(target: &TargetIdentity) -> Vec<ToolSlot> {
             ),
             // Native Windows execution — no emulator required on a Windows host.
             ToolSlot::probe("runner", vec![ToolKind::NativeHost]),
+        ],
+        (Isa::AArch64, Abi::Aapcs64, ObjectFormat::Elf) => vec![
+            ToolSlot::probe(
+                "assembler",
+                vec![ToolKind::GnuAs("aarch64-linux-gnu-as")],
+            ),
+            ToolSlot::probe(
+                "linker",
+                vec![ToolKind::GnuLd("aarch64-linux-gnu-ld"), ToolKind::Lld],
+            ),
+            ToolSlot::probe(
+                "disassembler",
+                vec![ToolKind::LlvmObjdump, ToolKind::Objdump],
+            ),
+            ToolSlot::probe("runner", vec![ToolKind::Qemu("qemu-aarch64")]),
+        ],
+        (Isa::Riscv64, Abi::Riscv, ObjectFormat::Elf) => vec![
+            ToolSlot::probe(
+                "assembler",
+                vec![ToolKind::GnuAs("riscv64-linux-gnu-as")],
+            ),
+            ToolSlot::probe(
+                "linker",
+                vec![ToolKind::GnuLd("riscv64-linux-gnu-ld"), ToolKind::Lld],
+            ),
+            ToolSlot::probe(
+                "disassembler",
+                vec![ToolKind::LlvmObjdump, ToolKind::Objdump],
+            ),
+            ToolSlot::probe("runner", vec![ToolKind::Qemu("qemu-riscv64")]),
         ],
         _ => vec![],
     }

@@ -4,9 +4,11 @@
 //!
 //! 1. **Synthesises** canonical test vectors from the contract's
 //!    requires/effects (buffer length bounds, needle, null-pointer policy).
-//! 2. **Generates** a small NASM `_start` harness that calls the
-//!    routine under test with each vector and records the returned
-//!    value (SysV: `rax`) as 8 raw little-endian bytes per vector.
+//! 2. **Generates** a small assembler harness that calls the routine under
+//!    test with each vector and records the returned value as 8 raw
+//!    little-endian bytes per vector:
+//!    - System V AMD64 ELF: NASM `_start` + Linux `write`/`exit` syscalls
+//!    - Microsoft x64 PE: NASM `main` + `WriteFile` / `ExitProcess`
 //! 3. **Evaluates** observed results against expected values and
 //!    produces a per-vector [`HarnessReport`].
 //!
@@ -29,6 +31,7 @@
 use std::fmt::Write;
 
 use semasm_contract::{BinOp, CheckedContract, Expr, SemType};
+use semasm_target::Abi;
 use serde::{Deserialize, Serialize};
 
 use crate::TestVector;
@@ -329,25 +332,29 @@ fn int_value(expr: &Expr) -> Option<i64> {
 // Harness source generation
 // ---------------------------------------------------------------------------
 
-/// Generate NASM source for a `_start` harness that exercises `vectors`
+/// Generate assembler source for a harness that exercises `vectors`
 /// against the routine named `routine_symbol`.
 ///
-/// The harness lays out each vector's buffer in `.data`, loads the SysV
-/// registers (`rdi` = buffer, `rsi` = length, `rdx` = needle), calls
-/// the routine, and stores the returned `rax` (8 bytes, little-endian)
-/// into a results array.  After all vectors it writes the results to
-/// stdout and exits 0.
+/// Supported ABIs:
+/// - [`Abi::SysVAmd64`]: NASM `_start`, args in `rdi`/`rsi`/`rdx`, Linux syscalls
+/// - [`Abi::WindowsX64`]: NASM `main`, args in `rcx`/`rdx`/`r8`, Win32 I/O
 ///
-/// The observed values are recovered by parsing stdout as a sequence of
-/// 8-byte little-endian `u64` words, one per vector.
-#[must_use]
-pub fn generate_harness(routine_symbol: &str, vectors: &[TestVector]) -> String {
-    let mut out = String::new();
+/// Other ABIs return an error; callers may still run static semantic gates.
+pub fn generate_harness(
+    routine_symbol: &str,
+    vectors: &[TestVector],
+    abi: Abi,
+) -> Result<String, String> {
+    match abi {
+        Abi::SysVAmd64 => Ok(generate_sysv_harness(routine_symbol, vectors)),
+        Abi::WindowsX64 => Ok(generate_win64_harness(routine_symbol, vectors)),
+        Abi::Aapcs64 | Abi::Riscv => Err(format!(
+            "behavioral harness generation is not yet available for ABI `{abi}`"
+        )),
+    }
+}
 
-    out.push_str("BITS 64\n");
-    out.push_str("DEFAULT REL\n\n");
-
-    // --- Data: buffers + scalar inputs per vector -----------------------
+fn emit_vector_data(out: &mut String, vectors: &[TestVector]) {
     out.push_str("section .data\n");
     for (i, v) in vectors.iter().enumerate() {
         let bytes = vector_buffer_bytes(v);
@@ -359,12 +366,20 @@ pub fn generate_harness(routine_symbol: &str, vectors: &[TestVector]) -> String 
         }
         out.push('\n');
     }
+}
 
-    // --- BSS: results array ------------------------------------------
+/// Generate NASM source for a `_start` harness (System V + Linux syscalls).
+fn generate_sysv_harness(routine_symbol: &str, vectors: &[TestVector]) -> String {
+    let mut out = String::new();
+
+    out.push_str("BITS 64\n");
+    out.push_str("DEFAULT REL\n\n");
+
+    emit_vector_data(&mut out, vectors);
+
     out.push_str("\nsection .bss\n");
     let _ = writeln!(out, "results: resb {}", vectors.len() * 8);
 
-    // --- Text: _start ------------------------------------------------
     out.push_str("\nsection .text\n");
     let _ = writeln!(out, "extern {routine_symbol}");
     out.push_str("global _start\n");
@@ -379,17 +394,66 @@ pub fn generate_harness(routine_symbol: &str, vectors: &[TestVector]) -> String 
         let _ = writeln!(out, "    mov [results + {i}*8], rax");
     }
 
-    // Write results to stdout.
     out.push_str("    ; write(results, len)\n");
     out.push_str("    mov eax, 1          ; sys_write\n");
     out.push_str("    mov edi, 1          ; stdout\n");
     let _ = writeln!(out, "    lea rsi, [results]");
     let _ = writeln!(out, "    mov edx, {}", vectors.len() * 8);
     out.push_str("    syscall\n");
-    // Exit 0.
     out.push_str("    mov eax, 60         ; sys_exit\n");
     out.push_str("    xor edi, edi\n");
     out.push_str("    syscall\n");
+
+    out
+}
+
+/// Generate NASM source for a Win64 `main` harness (kernel32 WriteFile/ExitProcess).
+fn generate_win64_harness(routine_symbol: &str, vectors: &[TestVector]) -> String {
+    let mut out = String::new();
+
+    out.push_str("BITS 64\n");
+    out.push_str("DEFAULT REL\n\n");
+    out.push_str("EXTERN GetStdHandle\n");
+    out.push_str("EXTERN WriteFile\n");
+    out.push_str("EXTERN ExitProcess\n\n");
+
+    emit_vector_data(&mut out, vectors);
+
+    out.push_str("\nsection .bss\n");
+    let _ = writeln!(out, "results: resb {}", vectors.len() * 8);
+    out.push_str("written: resq 1\n");
+
+    out.push_str("\nsection .text\n");
+    let _ = writeln!(out, "extern {routine_symbol}");
+    out.push_str("global main\n");
+    out.push_str("main:\n");
+
+    for (i, _v) in vectors.iter().enumerate() {
+        let _ = writeln!(out, "    ; vector {i}: {}", vectors[i].name);
+        out.push_str("    sub rsp, 40\n");
+        let _ = writeln!(out, "    lea rcx, [vec{i}_buf]");
+        let _ = writeln!(out, "    mov rdx, [vec{i}_len]");
+        let _ = writeln!(out, "    movzx r8d, byte [vec{i}_needle]");
+        let _ = writeln!(out, "    call {routine_symbol}");
+        out.push_str("    add rsp, 40\n");
+        let _ = writeln!(out, "    mov [results + {i}*8], rax");
+    }
+
+    out.push_str("    ; WriteFile(stdout, results, len, &written, NULL)\n");
+    out.push_str("    sub rsp, 40\n");
+    out.push_str("    mov ecx, -11        ; STD_OUTPUT_HANDLE\n");
+    out.push_str("    call GetStdHandle\n");
+    out.push_str("    mov rcx, rax\n");
+    out.push_str("    lea rdx, [results]\n");
+    let _ = writeln!(out, "    mov r8d, {}", vectors.len() * 8);
+    out.push_str("    lea r9, [written]\n");
+    out.push_str("    mov qword [rsp + 32], 0\n");
+    out.push_str("    call WriteFile\n");
+    out.push_str("    add rsp, 40\n");
+
+    out.push_str("    sub rsp, 40\n");
+    out.push_str("    xor ecx, ecx\n");
+    out.push_str("    call ExitProcess\n");
 
     out
 }
@@ -709,7 +773,7 @@ no_heap = true
     fn harness_source_references_routine_and_all_vectors() {
         let c = count_byte_shape();
         let v = synthesize_vectors(&c);
-        let src = generate_harness("count_byte", &v);
+        let src = generate_harness("count_byte", &v, Abi::SysVAmd64).unwrap();
         assert!(src.contains("extern count_byte"));
         assert!(src.contains("global _start"));
         assert!(src.contains("call count_byte"));
@@ -718,6 +782,28 @@ no_heap = true
         }
         assert!(src.contains("sys_write"));
         assert!(src.contains("sys_exit"));
+    }
+
+    #[test]
+    fn win64_harness_uses_microsoft_registers_and_win32_io() {
+        let c = count_byte_shape();
+        let v = synthesize_vectors(&c);
+        let src = generate_harness("count_byte", &v, Abi::WindowsX64).unwrap();
+        assert!(src.contains("global main"));
+        assert!(src.contains("lea rcx,"));
+        assert!(src.contains("mov rdx,"));
+        assert!(src.contains("movzx r8d,"));
+        assert!(src.contains("WriteFile"));
+        assert!(src.contains("ExitProcess"));
+        assert!(!src.contains("syscall"));
+    }
+
+    #[test]
+    fn aarch64_harness_is_not_yet_available() {
+        let c = count_byte_shape();
+        let v = synthesize_vectors(&c);
+        let err = generate_harness("count_byte", &v, Abi::Aapcs64).unwrap_err();
+        assert!(err.contains("not yet available"));
     }
 
     #[test]
