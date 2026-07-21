@@ -277,14 +277,11 @@ fn is_mov_rsp_from_rbp(ins: &LoweredInstr) -> bool {
     if !matches!(ins.mnemonic.as_str(), "mov" | "movabs") {
         return false;
     }
-    match (ins.operands.first(), ins.operands.get(1)) {
+    matches!(
+        (ins.operands.first(), ins.operands.get(1)),
         (Some(Operand::Reg(dst)), Some(Operand::Reg(src)))
-            if is_rsp(*dst) && matches!(src.storage, Storage::Gp(Gp::Rbp)) =>
-        {
-            true
-        }
-        _ => false,
-    }
+            if is_rsp(*dst) && matches!(src.storage, Storage::Gp(Gp::Rbp))
+    )
 }
 
 /// Classify one lowered instruction into its effect on the ABI walk.
