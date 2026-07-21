@@ -129,14 +129,23 @@ fn gate_status_passed() -> GateStatus {
 }
 
 impl SemanticGates {
-    /// True when every semantic sub-gate passed with full coverage.
+    /// True when every required semantic sub-gate passed with full coverage.
+    ///
+    /// [`GateStatus::Skipped`] is allowed for `control` / `memory` when those
+    /// leaf policies are not implemented for the target (AArch64 / RV64 today).
     #[must_use]
     pub fn all_passed(&self) -> bool {
-        self.object_policy == GateStatus::Passed
-            && self.abi == GateStatus::Passed
-            && self.capability == GateStatus::Passed
-            && self.control == GateStatus::Passed
-            && self.memory == GateStatus::Passed
+        fn required(status: GateStatus) -> bool {
+            matches!(status, GateStatus::Passed)
+        }
+        fn leaf_ok(status: GateStatus) -> bool {
+            matches!(status, GateStatus::Passed | GateStatus::Skipped)
+        }
+        required(self.object_policy)
+            && required(self.abi)
+            && required(self.capability)
+            && leaf_ok(self.control)
+            && leaf_ok(self.memory)
             && self.decode.unknown == 0
             && self.lowering.unknown == 0
             && self.decode.modeled == self.decode.total
@@ -520,6 +529,16 @@ mod tests {
     }
 
     #[test]
+    fn all_passed_allows_skipped_control_and_memory_leaves() {
+        let mut gates = passed_semantic();
+        gates.control = GateStatus::Skipped;
+        gates.memory = GateStatus::Skipped;
+        assert!(gates.all_passed());
+        gates.control = GateStatus::Failed;
+        assert!(!gates.all_passed());
+    }
+
+    #[test]
     fn compose_execution_denied_when_behavior_absent() {
         let report = VerificationReport::from_parts(
             "x86_64-unknown-linux-gnu".into(),
@@ -760,6 +779,46 @@ mod tests {
         assert!(!behavior.cases.is_empty());
         assert!(behavior.cases.iter().all(|c| c.passed));
         let oracle = report.behavior_oracle.expect("oracle present");
+        assert!(oracle.vectors_passed > 0);
+        assert_eq!(oracle.vectors_failed, 0);
+    }
+
+    #[test]
+    fn golden_sum_i64_execution_denied_report_deserializes() {
+        let json =
+            include_str!("../fixtures/verification-report-sum_i64.execution_denied.json");
+        let report: VerificationReport =
+            serde_json::from_str(json).expect("sum_i64 golden must deserialize");
+        assert_eq!(report.schema_version, VERIFICATION_REPORT_SCHEMA_VERSION);
+        assert_eq!(report.status, VerificationStatus::ExecutionDenied);
+        assert_eq!(report.routine_symbol, "sum_i64");
+        assert_eq!(report.isolation, ExecutionIsolation::StaticOnly);
+        assert!(report.behavior.is_none());
+        let oracle = report.behavior_oracle.expect("golden includes oracle");
+        assert_eq!(oracle.id, "builtin.buffer.wrapping_sum_i64");
+        assert_eq!(oracle.version, 2);
+        assert_eq!(oracle.proof_basis, ProofBasis::OracleAndVectors);
+        assert!(oracle.contract_ensures.iter().any(|e| e == "true"));
+        assert!(oracle.claim.contains("wrapping sum"));
+    }
+
+    #[test]
+    fn golden_sum_i64_verified_report_deserializes() {
+        let json = include_str!("../fixtures/verification-report-sum_i64.verified.json");
+        let report: VerificationReport =
+            serde_json::from_str(json).expect("sum_i64 verified golden must deserialize");
+        assert_eq!(report.schema_version, VERIFICATION_REPORT_SCHEMA_VERSION);
+        assert_eq!(report.status, VerificationStatus::Verified);
+        assert_eq!(report.routine_symbol, "sum_i64");
+        assert_eq!(report.isolation, ExecutionIsolation::NativeHost);
+        let behavior = report.behavior.expect("verified golden includes behavior");
+        assert!(behavior.all_passed);
+        assert!(!behavior.cases.is_empty());
+        assert!(behavior.cases.iter().all(|c| c.passed));
+        let oracle = report.behavior_oracle.expect("oracle present");
+        assert_eq!(oracle.id, "builtin.buffer.wrapping_sum_i64");
+        assert_eq!(oracle.version, 2);
+        assert_eq!(oracle.proof_basis, ProofBasis::OracleAndVectors);
         assert!(oracle.vectors_passed > 0);
         assert_eq!(oracle.vectors_failed, 0);
     }

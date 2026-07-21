@@ -84,8 +84,8 @@ pub const ORACLE_BUFFER_COUNT_EQUAL_U8: &str = "builtin.buffer.count_equal_u8";
 pub const ORACLE_BUFFER_COUNT_EQUAL_U8_VERSION: u32 = 2;
 /// Builtin oracle id for i64 wrapping-sum shapes (`sum_i64`).
 pub const ORACLE_BUFFER_WRAPPING_SUM_I64: &str = "builtin.buffer.wrapping_sum_i64";
-/// Profile version for [`ORACLE_BUFFER_WRAPPING_SUM_I64`].
-pub const ORACLE_BUFFER_WRAPPING_SUM_I64_VERSION: u32 = 1;
+/// Profile version for [`ORACLE_BUFFER_WRAPPING_SUM_I64`] (v2: ensures vs claim split).
+pub const ORACLE_BUFFER_WRAPPING_SUM_I64_VERSION: u32 = 2;
 /// Builtin oracle id for pure two-`usize` integer shapes (`min_usize`).
 pub const ORACLE_PURE_INT_BINARY_USIZE: &str = "builtin.pure_int.binary_usize";
 /// Profile version for [`ORACLE_PURE_INT_BINARY_USIZE`].
@@ -126,7 +126,7 @@ pub fn recognize_behavior_oracle(contract: &CheckedContract) -> Option<Recognize
         return Some(RecognizedOracle {
             id: ORACLE_PURE_INT_BINARY_USIZE,
             version: ORACLE_PURE_INT_BINARY_USIZE_VERSION,
-            claim: "result equals the pure-integer oracle for the recognized two-usize shape",
+            claim: "result equals min(a, b) for the recognized two-usize pure-integer shape",
         });
     }
     None
@@ -239,7 +239,37 @@ pub fn build_behavior_oracle(
     }
 }
 
+/// Validate that synthesised vectors match the named oracle for `contract`.
+///
+/// Fail-closed when a recognized oracle's calling shape does not match the
+/// vector layout (prevents coincidental harness passes).
+pub fn validate_vectors_match_oracle(
+    contract: &CheckedContract,
+    vectors: &[TestVector],
+) -> Result<(), String> {
+    let Some(oracle) = recognize_behavior_oracle(contract) else {
+        return Err("no recognized behavior oracle for contract shape".into());
+    };
+    let shape = detect_harness_shape(vectors)?;
+    let expected = match oracle.id {
+        ORACLE_BUFFER_COUNT_EQUAL_U8 => HarnessShape::BufferScan,
+        ORACLE_BUFFER_WRAPPING_SUM_I64 => HarnessShape::I64Sum,
+        ORACLE_PURE_INT_BINARY_USIZE => HarnessShape::PureInt,
+        other => {
+            return Err(format!("unrecognized oracle id `{other}`"));
+        }
+    };
+    if shape != expected {
+        return Err(format!(
+            "oracle `{}` expects {:?} vectors but harness detected {:?}",
+            oracle.id, expected, shape
+        ));
+    }
+    Ok(())
+}
+
 /// Resolved calling shape for the harness generator.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
 enum HarnessShape {
     BufferScan,
     I64Sum,
@@ -1626,11 +1656,55 @@ expression = "count <= length"
         assert_eq!(v[4].expected, serde_json::json!(i64::MIN));
         let oracle = recognize_behavior_oracle(&c).expect("sum_i64 shape");
         assert_eq!(oracle.id, ORACLE_BUFFER_WRAPPING_SUM_I64);
+        assert_eq!(oracle.version, ORACLE_BUFFER_WRAPPING_SUM_I64_VERSION);
+        assert_eq!(ORACLE_BUFFER_WRAPPING_SUM_I64_VERSION, 2);
+        assert!(oracle.claim.contains("wrapping sum"));
         assert!(is_read_only_buffer_scan(&c));
+        let built = build_behavior_oracle(
+            oracle,
+            &c,
+            "sum_i64.sem.toml",
+            b"contract",
+            &v,
+            None,
+        );
+        assert!(built.contract_ensures.iter().any(|e| e == "true"));
+        assert_eq!(
+            built.proof_basis,
+            crate::verify::ProofBasis::OracleAndVectors
+        );
         let src = generate_harness("sum_i64", &v, Abi::SysVAmd64).expect("sysv harness");
         assert!(src.contains("lea rdi, [vec0_buf]"));
         assert!(src.contains("mov rsi, [vec0_len]"));
         assert!(!src.contains("needle"));
+    }
+
+    #[test]
+    fn validate_vectors_match_oracle_accepts_sum_i64_shape() {
+        let c = sum_i64_contract();
+        let v = synthesize_vectors(&c);
+        validate_vectors_match_oracle(&c, &v).expect("matching shape");
+    }
+
+    #[test]
+    fn validate_vectors_match_oracle_rejects_mismatched_shape() {
+        let c = sum_i64_contract();
+        let foreign = synthesize_vectors(&count_byte_shape());
+        let err = validate_vectors_match_oracle(&c, &foreign).expect_err("mismatch");
+        assert!(err.contains("expects"));
+        assert!(err.contains("I64Sum") || err.contains("wrapping_sum"));
+    }
+
+    #[test]
+    fn pure_int_oracle_claim_names_min() {
+        let c = min_usize_contract();
+        let oracle = recognize_behavior_oracle(&c).expect("pure-int shape");
+        assert_eq!(oracle.id, ORACLE_PURE_INT_BINARY_USIZE);
+        assert!(
+            oracle.claim.contains("min"),
+            "claim must name the operation, got {:?}",
+            oracle.claim
+        );
     }
 
     #[test]

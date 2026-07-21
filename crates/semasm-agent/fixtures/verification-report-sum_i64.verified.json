@@ -1,0 +1,69 @@
+{
+  "schema_version": "0.4",
+  "status": "verified",
+  "target": "x86_64-unknown-linux-gnu",
+  "routine_symbol": "sum_i64",
+  "isolation": "native_host",
+  "tool_version": "semasm 0.1.0",
+  "contract_digest": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+  "source_digest": "sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+  "semantic": {
+    "object_policy": "passed",
+    "executable_bytes": 32,
+    "decode": {
+      "total": 10,
+      "modeled": 10,
+      "unknown": 0
+    },
+    "lowering": {
+      "total": 10,
+      "modeled": 10,
+      "unknown": 0
+    },
+    "abi": "passed",
+    "capability": "passed",
+    "control": "passed",
+    "memory": "passed"
+  },
+  "executable": {
+    "status": "passed"
+  },
+  "behavior": {
+    "all_passed": true,
+    "cases": [
+      {
+        "name": "empty",
+        "expected": "0",
+        "observed": "0",
+        "passed": true
+      },
+      {
+        "name": "positive",
+        "expected": "10",
+        "observed": "10",
+        "passed": true
+      },
+      {
+        "name": "mixed",
+        "expected": "7",
+        "observed": "7",
+        "passed": true
+      }
+    ]
+  },
+  "behavior_oracle": {
+    "id": "builtin.buffer.wrapping_sum_i64",
+    "version": 2,
+    "contract": "sum_i64.sem.toml",
+    "contract_hash": "aaaaaaaaaaaa",
+    "contract_ensures": [
+      "true"
+    ],
+    "proof_basis": "oracle_and_vectors",
+    "claim": "result equals the wrapping sum of i64 elements in values[0..length]",
+    "vectors_passed": 3,
+    "vectors_failed": 0,
+    "vectors_total": 3,
+    "evidence_hash": "fedcba9876543210fedcba9876543210"
+  }
+}
