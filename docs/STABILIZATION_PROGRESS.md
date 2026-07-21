@@ -77,13 +77,13 @@ vertical slice. Gate-2 requires opt-in execution.
 
 | Wave | Focus | Status |
 |---|---|---|
-| T0 | Sync this progress doc (S2–S4 honesty + T* table) | in progress |
-| T1 | Lock framed Win64 ABI + rbp-spill exemption with tests | planned |
-| T2 | `sum_i64` consumer goldens + oracle v2 | planned |
-| T3 | `sum_i64` adversarial memory-write twins | planned |
-| T4 | Contract/harness mismatch fail-closed | planned |
-| T5 | A64/RV `control`/`memory` → `skipped` when unimplemented | planned |
-| T6 | Pure-int oracle claim names `min` | planned |
+| T0 | Sync this progress doc (S2–S4 honesty + T* table) | done |
+| T1 | Lock framed Win64 ABI + rbp-spill exemption with tests | done |
+| T2 | `sum_i64` consumer goldens + oracle v2 | done |
+| T3 | `sum_i64` adversarial memory-write twins | done |
+| T4 | Contract/harness mismatch fail-closed | done |
+| T5 | A64/RV `control`/`memory` → `skipped` when unimplemented | done |
+| T6 | Pure-int oracle claim names `min` | done |
 
 Demo: `scripts/golden-demo.sh` (Linux SysV) or `scripts/golden-demo.ps1`
 (Windows PE by default; `-SysV` for Linux tools).
