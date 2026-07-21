@@ -301,7 +301,11 @@ pub(crate) fn do_agent_verify(
         }
     };
 
-    let harness_path = directory.join("harness.asm");
+    let harness_ext = match identity.dialect {
+        semasm_target::Dialect::GasUnified | semasm_target::Dialect::GasAtt => "S",
+        semasm_target::Dialect::NasmIntel => "asm",
+    };
+    let harness_path = directory.join(format!("harness.{harness_ext}"));
     if let Err(error) = std::fs::write(&harness_path, &harness_source) {
         eprintln!("error: cannot write harness source: {error}");
         let _ = std::fs::remove_dir_all(&directory);
@@ -499,12 +503,7 @@ fn verify_candidate_semantics(
             let decode_coverage = Coverage::complete(physical.len());
             let lowered = lower_x86_instructions(&physical, decode_coverage)?;
             let lowering_coverage = Coverage::complete(lowered.len());
-            check_x86_abi_capability(
-                &lowered,
-                identity.abi,
-                decode_coverage,
-                lowering_coverage,
-            )?;
+            check_x86_abi_capability(&lowered, identity.abi, decode_coverage, lowering_coverage)?;
             Ok(SemanticGates {
                 object_policy: GateStatus::Passed,
                 executable_bytes: code_bytes,
@@ -979,12 +978,20 @@ mod semantic_gate_tests {
             std::env::temp_dir().join(format!("semasm-semantic-a64-{}", std::process::id()));
         std::fs::create_dir_all(&scratch).unwrap();
         let object = scratch.join("count_byte.o");
-        let output = Command::new("aarch64-linux-gnu-as")
+        let output = match Command::new("aarch64-linux-gnu-as")
             .arg(&source)
             .arg("-o")
             .arg(&object)
             .output()
-            .unwrap();
+        {
+            Ok(output) => output,
+            Err(error) if error.kind() == std::io::ErrorKind::NotFound => {
+                eprintln!("skipping: aarch64-linux-gnu-as not on PATH");
+                let _ = std::fs::remove_dir_all(&scratch);
+                return;
+            }
+            Err(error) => panic!("failed to spawn aarch64-linux-gnu-as: {error}"),
+        };
         assert!(
             output.status.success(),
             "as failed: {}",
@@ -1007,12 +1014,20 @@ mod semantic_gate_tests {
             std::env::temp_dir().join(format!("semasm-semantic-rv64-{}", std::process::id()));
         std::fs::create_dir_all(&scratch).unwrap();
         let object = scratch.join("count_byte.o");
-        let output = Command::new("riscv64-linux-gnu-as")
+        let output = match Command::new("riscv64-linux-gnu-as")
             .arg(&source)
             .arg("-o")
             .arg(&object)
             .output()
-            .unwrap();
+        {
+            Ok(output) => output,
+            Err(error) if error.kind() == std::io::ErrorKind::NotFound => {
+                eprintln!("skipping: riscv64-linux-gnu-as not on PATH");
+                let _ = std::fs::remove_dir_all(&scratch);
+                return;
+            }
+            Err(error) => panic!("failed to spawn riscv64-linux-gnu-as: {error}"),
+        };
         assert!(
             output.status.success(),
             "as failed: {}",

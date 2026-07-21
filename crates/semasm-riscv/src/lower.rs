@@ -173,7 +173,7 @@ fn classify(base: &str) -> Option<OpKind> {
         "sd" | "sb" | "sh" | "sw" | "mv" => Some(OpKind::Store),
         "addi" | "addiw" | "subw" | "addw" => Some(OpKind::Binary),
         "slt" | "sltu" | "slti" | "sltiu" => Some(OpKind::Compare),
-        "beq" | "bne" | "blt" | "bge" | "bltu" | "bgeu" => Some(OpKind::Branch),
+        "beq" | "bne" | "blt" | "bge" | "bltu" | "bgeu" | "beqz" | "bnez" => Some(OpKind::Branch),
         "jalr" | "jal" => Some(OpKind::Call), // jalr also used for returns; lower() disambiguates
         "ret" => Some(OpKind::Return),
         "ecall" | "ebreak" => Some(OpKind::Unknown),
@@ -469,6 +469,15 @@ mod tests {
     #[test]
     fn beq_is_branch() {
         let l = lower(&dec("beq", &["a0", "a1", "label"])).expect_lowered();
+        assert_eq!(l.kind, Kind::Branch);
+    }
+
+    #[test]
+    fn beqz_bnez_are_branches() {
+        // GNU as / Capstone often emit compressed-zero compares as beqz/bnez.
+        let l = lower(&dec("beqz", &["a0", "label"])).expect_lowered();
+        assert_eq!(l.kind, Kind::Branch);
+        let l = lower(&dec("bnez", &["a1", "label"])).expect_lowered();
         assert_eq!(l.kind, Kind::Branch);
     }
 

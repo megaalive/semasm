@@ -312,10 +312,7 @@ pub fn required_tools(target: &TargetIdentity) -> Vec<ToolSlot> {
             ToolSlot::probe("runner", vec![ToolKind::NativeHost]),
         ],
         (Isa::AArch64, Abi::Aapcs64, ObjectFormat::Elf) => vec![
-            ToolSlot::probe(
-                "assembler",
-                vec![ToolKind::GnuAs("aarch64-linux-gnu-as")],
-            ),
+            ToolSlot::probe("assembler", vec![ToolKind::GnuAs("aarch64-linux-gnu-as")]),
             ToolSlot::probe(
                 "linker",
                 vec![ToolKind::GnuLd("aarch64-linux-gnu-ld"), ToolKind::Lld],
@@ -327,10 +324,7 @@ pub fn required_tools(target: &TargetIdentity) -> Vec<ToolSlot> {
             ToolSlot::probe("runner", vec![ToolKind::Qemu("qemu-aarch64")]),
         ],
         (Isa::Riscv64, Abi::Riscv, ObjectFormat::Elf) => vec![
-            ToolSlot::probe(
-                "assembler",
-                vec![ToolKind::GnuAs("riscv64-linux-gnu-as")],
-            ),
+            ToolSlot::probe("assembler", vec![ToolKind::GnuAs("riscv64-linux-gnu-as")]),
             ToolSlot::probe(
                 "linker",
                 vec![ToolKind::GnuLd("riscv64-linux-gnu-ld"), ToolKind::Lld],

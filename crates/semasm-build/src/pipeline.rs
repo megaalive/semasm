@@ -359,10 +359,7 @@ impl Pipeline {
         match self.target.object_format {
             ObjectFormat::PeCoff => self.link_pe_spec(objects, output, entry, "console"),
             ObjectFormat::Elf
-                if matches!(
-                    self.target.dialect,
-                    Dialect::GasUnified | Dialect::GasAtt
-                ) =>
+                if matches!(self.target.dialect, Dialect::GasUnified | Dialect::GasAtt) =>
             {
                 self.link_static_elf_spec(objects, output, entry)
             }

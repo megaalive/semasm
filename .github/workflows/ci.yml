@@ -196,8 +196,10 @@ jobs:
           set -euo pipefail
           if [ "${{ matrix.target }}" = "aarch64-unknown-linux-gnu" ]; then
             cargo test -p semasm-cli --all-features commands::semantic_gate_tests::aarch64_candidate_passes_static_semantic_gates -- --ignored --exact --nocapture
+            cargo test -p semasm-cli --all-features --test agent_verify_cross_target agent_verify_aarch64 -- --ignored --nocapture
           else
             cargo test -p semasm-cli --all-features commands::semantic_gate_tests::riscv64_candidate_passes_static_semantic_gates -- --ignored --exact --nocapture
+            cargo test -p semasm-cli --all-features --test agent_verify_cross_target agent_verify_riscv64 -- --ignored --nocapture
           fi
 
   decode:
@@ -224,7 +226,12 @@ jobs:
         run: cargo test --workspace --all-features
 
       - name: Agent semantic-gate and verify integration tests
-        run: cargo test -p semasm-cli --all-features -- --ignored --nocapture
+        run: |
+          cargo test -p semasm-cli --all-features \
+            commands::semantic_gate_tests::canonical_candidate_passes_static_semantic_gates \
+            commands::semantic_gate_tests::win64_candidate_passes_static_semantic_gates \
+            --test agent_verify_execution_denied \
+            -- --ignored --nocapture
 
       - name: Compile fuzz targets
         run: cargo check --manifest-path fuzz/Cargo.toml --bins --locked

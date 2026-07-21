@@ -10,8 +10,8 @@
 # Today those gates are implemented for:
 #   - x86_64-unknown-linux-gnu (SysV ELF) — static + behavioral harness
 #   - x86_64-pc-windows-msvc (Win64 PE) — static + behavioral harness
-#   - aarch64-unknown-linux-gnu — static gates (gas path); harness later
-#   - riscv64gc-unknown-linux-gnu — static gates (gas path); harness later
+#   - aarch64-unknown-linux-gnu — static gates + gas behavioral harness (qemu CI)
+#   - riscv64gc-unknown-linux-gnu — static gates + gas behavioral harness (qemu CI)
 
 schema_version = "0.1"
 

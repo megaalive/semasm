@@ -35,10 +35,7 @@ fn agent_verify_win64_allow_execution_is_verified() {
         return;
     }
 
-    assert!(
-        output.status.success(),
-        "expected success; stderr={stderr}"
-    );
+    assert!(output.status.success(), "expected success; stderr={stderr}");
     let stdout = String::from_utf8_lossy(&output.stdout);
     let value: serde_json::Value = serde_json::from_str(&stdout).unwrap_or_else(|error| {
         panic!("expected VerificationReport JSON on stdout ({error}): {stdout}\nstderr={stderr}")

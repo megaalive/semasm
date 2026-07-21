@@ -8,6 +8,9 @@ follow [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Added
 
+- Gas buffer-scan behavioral harnesses for AArch64 (`svc` write/exit) and
+  RV64 (`ecall` write/exit); `semasm agent verify --allow-execution` works
+  under qemu in cross-target CI.
 - Multi-target agent semantic gates: Win64 PE (`abi_win64`), AArch64 Linux
   (gas + `decode_aarch64`), and RV64 Linux (`decode_riscv64` + gas) in addition
   to existing SysV ELF. Buffer-scan behavioral harness for Win64 (`main` +
@@ -30,10 +33,12 @@ follow [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Changed
 
+- Agent verify writes harness sources as `.S` for gas dialects and `.asm` for
+  NASM.
 - Agent verify assemble/link steps dispatch by target dialect and object format
   instead of always using NASM `elf64` + ELF `ld` flags.
-- `generate_harness` takes an `Abi` and returns `Result` (AArch64/RV unsupported
-  for behavioral runs; static gates still apply).
+- `generate_harness` takes an `Abi` and returns `Result` covering SysV, Win64,
+  AAPCS64, and RISC-V buffer-scan harnesses.
 - Capability manifest documents that `verify = verified_in_ci` is **pipeline**
   evidence, not agent semantic-gate completeness.
 - Agent verify assemble steps and context acceptance commands use
@@ -56,7 +61,8 @@ follow [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - Experimental `VerificationReport` JSON Schema `0.1` is published at
   `crates/semasm-agent/schemas/verification-report.json` with policy in
   `docs/AGENT_SCHEMA_POLICY.md` (includes root `schema_version`).
-- Harness API: `generate_harness(symbol, vectors, abi) -> Result<String, String>`.
+- Harness API: `generate_harness(symbol, vectors, abi) -> Result<String, String>`
+  (SysV, Win64, AAPCS64, and RISC-V buffer-scan generators).
 
 ## [0.1.0] - 2026-07-18
 

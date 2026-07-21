@@ -9,6 +9,8 @@
 //!    little-endian bytes per vector:
 //!    - System V AMD64 ELF: NASM `_start` + Linux `write`/`exit` syscalls
 //!    - Microsoft x64 PE: NASM `main` + `WriteFile` / `ExitProcess`
+//!    - AArch64 Linux ELF: GNU as `_start` + Linux `svc` write/exit
+//!    - RISC-V Linux ELF: GNU as `_start` + Linux `ecall` write/exit
 //! 3. **Evaluates** observed results against expected values and
 //!    produces a per-vector [`HarnessReport`].
 //!
@@ -338,8 +340,8 @@ fn int_value(expr: &Expr) -> Option<i64> {
 /// Supported ABIs:
 /// - [`Abi::SysVAmd64`]: NASM `_start`, args in `rdi`/`rsi`/`rdx`, Linux syscalls
 /// - [`Abi::WindowsX64`]: NASM `main`, args in `rcx`/`rdx`/`r8`, Win32 I/O
-///
-/// Other ABIs return an error; callers may still run static semantic gates.
+/// - [`Abi::Aapcs64`]: GNU as `_start`, args in `x0`/`x1`/`x2`, Linux `svc`
+/// - [`Abi::Riscv`]: GNU as `_start`, args in `a0`/`a1`/`a2`, Linux `ecall`
 pub fn generate_harness(
     routine_symbol: &str,
     vectors: &[TestVector],
@@ -348,9 +350,8 @@ pub fn generate_harness(
     match abi {
         Abi::SysVAmd64 => Ok(generate_sysv_harness(routine_symbol, vectors)),
         Abi::WindowsX64 => Ok(generate_win64_harness(routine_symbol, vectors)),
-        Abi::Aapcs64 | Abi::Riscv => Err(format!(
-            "behavioral harness generation is not yet available for ABI `{abi}`"
-        )),
+        Abi::Aapcs64 => Ok(generate_aapcs64_harness(routine_symbol, vectors)),
+        Abi::Riscv => Ok(generate_riscv_harness(routine_symbol, vectors)),
     }
 }
 
@@ -365,6 +366,22 @@ fn emit_vector_data(out: &mut String, vectors: &[TestVector]) {
             out.push_str(" 0"); // NASM rejects an empty db list.
         }
         out.push('\n');
+    }
+}
+
+fn emit_gas_vector_data(out: &mut String, vectors: &[TestVector]) {
+    out.push_str(".section .data\n");
+    for (i, v) in vectors.iter().enumerate() {
+        let bytes = vector_buffer_bytes(v);
+        let _ = writeln!(out, "vec{i}_len:\n    .quad {}", vector_length(v));
+        let _ = writeln!(out, "vec{i}_needle:\n    .byte {}", vector_needle(v));
+        let _ = write!(out, "vec{i}_buf:\n    .byte ");
+        if bytes.is_empty() {
+            out.push_str("0\n");
+        } else {
+            out.push_str(&bytes.join(", "));
+            out.push('\n');
+        }
     }
 }
 
@@ -454,6 +471,90 @@ fn generate_win64_harness(routine_symbol: &str, vectors: &[TestVector]) -> Strin
     out.push_str("    sub rsp, 40\n");
     out.push_str("    xor ecx, ecx\n");
     out.push_str("    call ExitProcess\n");
+
+    out
+}
+
+/// Generate GNU as source for an AArch64 `_start` harness (Linux syscalls).
+fn generate_aapcs64_harness(routine_symbol: &str, vectors: &[TestVector]) -> String {
+    let mut out = String::new();
+    let results_len = vectors.len() * 8;
+
+    emit_gas_vector_data(&mut out, vectors);
+
+    out.push_str("\n.section .bss\n");
+    out.push_str(".align 3\n");
+    out.push_str("results:\n");
+    let _ = writeln!(out, "    .space {results_len}");
+
+    out.push_str("\n.section .text\n");
+    out.push_str(".global _start\n");
+    out.push_str("_start:\n");
+
+    for (i, _v) in vectors.iter().enumerate() {
+        let _ = writeln!(out, "    // vector {i}: {}", vectors[i].name);
+        let _ = writeln!(out, "    ldr x0, =vec{i}_buf");
+        let _ = writeln!(out, "    ldr x1, =vec{i}_len");
+        out.push_str("    ldr x1, [x1]\n");
+        let _ = writeln!(out, "    ldr x2, =vec{i}_needle");
+        out.push_str("    ldrb w2, [x2]\n");
+        let _ = writeln!(out, "    bl {routine_symbol}");
+        out.push_str("    ldr x3, =results\n");
+        let _ = writeln!(out, "    str x0, [x3, #{offset}]", offset = i * 8);
+    }
+
+    out.push_str("    // write(1, results, len)\n");
+    out.push_str("    mov x0, #1\n");
+    out.push_str("    ldr x1, =results\n");
+    let _ = writeln!(out, "    mov x2, #{results_len}");
+    out.push_str("    mov x8, #64\n");
+    out.push_str("    svc #0\n");
+    out.push_str("    // exit(0)\n");
+    out.push_str("    mov x0, #0\n");
+    out.push_str("    mov x8, #93\n");
+    out.push_str("    svc #0\n");
+
+    out
+}
+
+/// Generate GNU as source for a RISC-V `_start` harness (Linux syscalls).
+fn generate_riscv_harness(routine_symbol: &str, vectors: &[TestVector]) -> String {
+    let mut out = String::new();
+    let results_len = vectors.len() * 8;
+
+    emit_gas_vector_data(&mut out, vectors);
+
+    out.push_str("\n.section .bss\n");
+    out.push_str(".align 3\n");
+    out.push_str("results:\n");
+    let _ = writeln!(out, "    .space {results_len}");
+
+    out.push_str("\n.section .text\n");
+    out.push_str(".global _start\n");
+    out.push_str("_start:\n");
+
+    for (i, _v) in vectors.iter().enumerate() {
+        let _ = writeln!(out, "    # vector {i}: {}", vectors[i].name);
+        let _ = writeln!(out, "    la a0, vec{i}_buf");
+        let _ = writeln!(out, "    la t0, vec{i}_len");
+        out.push_str("    ld a1, 0(t0)\n");
+        let _ = writeln!(out, "    la t0, vec{i}_needle");
+        out.push_str("    lbu a2, 0(t0)\n");
+        let _ = writeln!(out, "    jal {routine_symbol}");
+        out.push_str("    la t0, results\n");
+        let _ = writeln!(out, "    sd a0, {offset}(t0)", offset = i * 8);
+    }
+
+    out.push_str("    # write(1, results, len)\n");
+    out.push_str("    li a0, 1\n");
+    out.push_str("    la a1, results\n");
+    let _ = writeln!(out, "    li a2, {results_len}");
+    out.push_str("    li a7, 64\n");
+    out.push_str("    ecall\n");
+    out.push_str("    # exit(0)\n");
+    out.push_str("    li a0, 0\n");
+    out.push_str("    li a7, 93\n");
+    out.push_str("    ecall\n");
 
     out
 }
@@ -799,11 +900,31 @@ no_heap = true
     }
 
     #[test]
-    fn aarch64_harness_is_not_yet_available() {
+    fn aarch64_harness_uses_aapcs64_registers_and_linux_syscalls() {
         let c = count_byte_shape();
         let v = synthesize_vectors(&c);
-        let err = generate_harness("count_byte", &v, Abi::Aapcs64).unwrap_err();
-        assert!(err.contains("not yet available"));
+        let src = generate_harness("count_byte", &v, Abi::Aapcs64).unwrap();
+        assert!(src.contains(".global _start"));
+        assert!(src.contains("bl count_byte"));
+        assert!(src.contains("ldr x0, =vec0_buf"));
+        assert!(src.contains("mov x8, #64"));
+        assert!(src.contains("mov x8, #93"));
+        assert!(src.contains("svc #0"));
+        assert!(!src.contains("BITS 64"));
+    }
+
+    #[test]
+    fn riscv_harness_uses_lp64_registers_and_linux_syscalls() {
+        let c = count_byte_shape();
+        let v = synthesize_vectors(&c);
+        let src = generate_harness("count_byte", &v, Abi::Riscv).unwrap();
+        assert!(src.contains(".global _start"));
+        assert!(src.contains("jal count_byte"));
+        assert!(src.contains("la a0, vec0_buf"));
+        assert!(src.contains("li a7, 64"));
+        assert!(src.contains("li a7, 93"));
+        assert!(src.contains("ecall"));
+        assert!(!src.contains("BITS 64"));
     }
 
     #[test]
