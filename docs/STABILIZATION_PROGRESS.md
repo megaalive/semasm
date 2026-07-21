@@ -66,10 +66,11 @@ lands this doc sync).
 | S1 | Consumer golden `verified` JSON for count_byte | done |
 | S2 | VAA CI Gate-1: live Incomplete (`execution_denied`) + seal chain | planned (VAA) |
 | S3 | VAA `--allow-execution` + optional Gate-2 Verified | planned (VAA) |
-| S4 | SemASM `sum_i64` contract/oracle/harness + VAA fixtures | planned |
+| S4 | SemASM `sum_i64` contract/oracle/harness + VAA fixtures | done (SemASM); VAA fixtures follow |
 
 **Honesty:** Gate-1 (`execution_denied` → VAA Incomplete) is **not** a verified vertical slice.
-Gate-2 requires opt-in execution. `sum_i64` needs a new SemASM harness shape before VAA can claim it.
+Gate-2 requires opt-in execution. `sum_i64` ships as SemASM harness shape
+`builtin.buffer.wrapping_sum_i64` (SysV + Win64 fixtures + ignored e2e).
 
 Demo: `scripts/golden-demo.sh` (Linux SysV) or `scripts/golden-demo.ps1`
 (Windows PE by default; `-SysV` for Linux tools).

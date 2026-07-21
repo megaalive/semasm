@@ -18,11 +18,13 @@
 //!
 //! - **Buffer scan** `(ptr<const u8> buffer, usize length, u8 needle) -> usize`
 //!   — canonical example `count_byte`.
+//! - **I64 wrapping sum** `(ptr<const i64> values, usize length) -> i64`
+//!   — canonical example `sum_i64`.
 //! - **Pure integer** `(usize, usize) -> usize` — canonical example `min_usize`.
 //!
-//! Synthesis tries buffer-scan first, then pure-integer.  When the contract
-//! matches neither shape the synthesizer returns an empty vector set and the
-//! caller may fall back to a hand-written set.
+//! Synthesis tries buffer-scan, then i64-sum, then pure-integer.  When the
+//! contract matches none of those shapes the synthesizer returns an empty
+//! vector set and the caller may fall back to a hand-written set.
 //!
 //! Synthesis rules for the buffer-scan shape (contract schema 0.1):
 //!
@@ -67,6 +69,9 @@ pub fn synthesize_vectors(contract: &CheckedContract) -> Vec<TestVector> {
     if let Some(shape) = scan_shape(contract) {
         return synthesize_buffer_scan_vectors(shape);
     }
+    if let Some(shape) = i64_sum_shape(contract) {
+        return synthesize_i64_sum_vectors(shape);
+    }
     if pure_int_shape(contract).is_some() {
         return synthesize_pure_int_vectors();
     }
@@ -77,6 +82,10 @@ pub fn synthesize_vectors(contract: &CheckedContract) -> Vec<TestVector> {
 pub const ORACLE_BUFFER_COUNT_EQUAL_U8: &str = "builtin.buffer.count_equal_u8";
 /// Profile version for [`ORACLE_BUFFER_COUNT_EQUAL_U8`] (v2: ensures vs claim split).
 pub const ORACLE_BUFFER_COUNT_EQUAL_U8_VERSION: u32 = 2;
+/// Builtin oracle id for i64 wrapping-sum shapes (`sum_i64`).
+pub const ORACLE_BUFFER_WRAPPING_SUM_I64: &str = "builtin.buffer.wrapping_sum_i64";
+/// Profile version for [`ORACLE_BUFFER_WRAPPING_SUM_I64`].
+pub const ORACLE_BUFFER_WRAPPING_SUM_I64_VERSION: u32 = 1;
 /// Builtin oracle id for pure two-`usize` integer shapes (`min_usize`).
 pub const ORACLE_PURE_INT_BINARY_USIZE: &str = "builtin.pure_int.binary_usize";
 /// Profile version for [`ORACLE_PURE_INT_BINARY_USIZE`].
@@ -106,6 +115,13 @@ pub fn recognize_behavior_oracle(contract: &CheckedContract) -> Option<Recognize
             claim: "result equals the number of bytes in buffer[0..length] equal to needle",
         });
     }
+    if i64_sum_shape(contract).is_some() {
+        return Some(RecognizedOracle {
+            id: ORACLE_BUFFER_WRAPPING_SUM_I64,
+            version: ORACLE_BUFFER_WRAPPING_SUM_I64_VERSION,
+            claim: "result equals the wrapping sum of i64 elements in values[0..length]",
+        });
+    }
     if pure_int_shape(contract).is_some() {
         return Some(RecognizedOracle {
             id: ORACLE_PURE_INT_BINARY_USIZE,
@@ -120,7 +136,7 @@ pub fn recognize_behavior_oracle(contract: &CheckedContract) -> Option<Recognize
 /// (no `memory_write`) — candidates must not store to memory.
 #[must_use]
 pub fn is_read_only_buffer_scan(contract: &CheckedContract) -> bool {
-    if scan_shape(contract).is_none() {
+    if scan_shape(contract).is_none() && i64_sum_shape(contract).is_none() {
         return false;
     }
     let has_read = contract
@@ -226,6 +242,7 @@ pub fn build_behavior_oracle(
 /// Resolved calling shape for the harness generator.
 enum HarnessShape {
     BufferScan,
+    I64Sum,
     PureInt,
 }
 
@@ -242,10 +259,20 @@ fn detect_harness_shape(vectors: &[TestVector]) -> Result<HarnessShape, String> 
         {
             Ok(HarnessShape::BufferScan)
         }
+        2 if matches!(
+            first.inputs.first(),
+            Some(serde_json::Value::Null | serde_json::Value::Array(_))
+        ) && first
+            .inputs
+            .get(1)
+            .is_some_and(serde_json::Value::is_number) =>
+        {
+            Ok(HarnessShape::I64Sum)
+        }
         2 if first.inputs.iter().all(serde_json::Value::is_number) => Ok(HarnessShape::PureInt),
         n => Err(format!(
             "unsupported test vector shape ({n} inputs); \
-             expected buffer-scan (3) or pure-int (2 numeric)"
+             expected buffer-scan (3), i64-sum (2: array/null + length), or pure-int (2 numeric)"
         )),
     }
 }
@@ -372,6 +399,67 @@ fn synthesize_pure_int_vectors() -> Vec<TestVector> {
         .collect()
 }
 
+/// Synthesise canonical wrapping-sum vectors for `(ptr<const i64>, usize) -> i64`.
+#[allow(clippy::vec_init_then_push)]
+fn synthesize_i64_sum_vectors(shape: I64SumShape) -> Vec<TestVector> {
+    let max_len = shape
+        .max_length
+        .unwrap_or(MAX_FIXTURE_CAP)
+        .clamp(1, MAX_FIXTURE_CAP);
+
+    let mut vectors = Vec::new();
+
+    vectors.push(TestVector {
+        name: "empty".into(),
+        inputs: vec![serde_json::Value::Null, serde_json::json!(0u64)],
+        expected: serde_json::json!(0i64),
+    });
+
+    vectors.push(TestVector {
+        name: "positive".into(),
+        inputs: vec![serde_json::json!([1i64, 2, 3, 4]), serde_json::json!(4u64)],
+        expected: serde_json::json!(10i64),
+    });
+
+    vectors.push(TestVector {
+        name: "mixed".into(),
+        inputs: vec![serde_json::json!([-5i64, 2, 10]), serde_json::json!(3u64)],
+        expected: serde_json::json!(7i64),
+    });
+
+    vectors.push(TestVector {
+        name: "single negative".into(),
+        inputs: vec![serde_json::json!([-1i64]), serde_json::json!(1u64)],
+        expected: serde_json::json!(-1i64),
+    });
+
+    vectors.push(TestVector {
+        name: "wrapping overflow".into(),
+        inputs: vec![serde_json::json!([i64::MAX, 1i64]), serde_json::json!(2u64)],
+        expected: serde_json::json!(i64::MIN),
+    });
+
+    let ones: Vec<serde_json::Value> = (0..max_len).map(|_| serde_json::json!(1i64)).collect();
+    vectors.push(TestVector {
+        name: "maximum configured fixture length".into(),
+        inputs: vec![
+            serde_json::Value::Array(ones),
+            serde_json::json!(max_len as u64),
+        ],
+        expected: serde_json::json!(i64::try_from(max_len).unwrap_or(i64::MAX)),
+    });
+
+    if shape.allows_null_when_empty {
+        vectors.push(TestVector {
+            name: "null pointer with zero length".into(),
+            inputs: vec![serde_json::Value::Null, serde_json::json!(0u64)],
+            expected: serde_json::json!(0i64),
+        });
+    }
+
+    vectors
+}
+
 /// Detect the `(usize, usize) -> usize` pure-integer shape.
 fn pure_int_shape(contract: &CheckedContract) -> Option<()> {
     let usize_count = contract
@@ -426,6 +514,54 @@ fn non_needle_bytes(needle: u8) -> [u8; 3] {
 struct ScanShape {
     /// Needle value used for synthesised inputs.
     needle: u8,
+    /// Upper bound on buffer length, if derivable from requires.
+    max_length: Option<usize>,
+    /// Whether a null buffer is permitted when length is zero.
+    allows_null_when_empty: bool,
+}
+
+/// Detect the `(ptr<const i64>, usize) -> i64` wrapping-sum shape.
+fn i64_sum_shape(contract: &CheckedContract) -> Option<I64SumShape> {
+    let mut ptr_param = None;
+    let mut len_param = None;
+
+    for p in &contract.parameters {
+        match &p.ty {
+            SemType::Ptr {
+                is_const: true,
+                inner,
+            } if ptr_param.is_none() && matches!(inner.as_ref(), SemType::Int { bits: 64 }) => {
+                ptr_param = Some(p);
+            }
+            SemType::Usize if len_param.is_none() => {
+                len_param = Some(p);
+            }
+            _ => {}
+        }
+    }
+
+    let returns_i64 = contract
+        .returns
+        .iter()
+        .any(|r| matches!(r.ty, SemType::Int { bits: 64 }));
+
+    // Reject buffer-scan / other shapes that also carry a pointer + length.
+    let extra_params = contract.parameters.len() != 2;
+
+    let (ptr_param, len_param) = match (ptr_param, len_param) {
+        (Some(p), Some(l)) if returns_i64 && !extra_params => (p, l),
+        _ => return None,
+    };
+
+    Some(I64SumShape {
+        max_length: length_bound_from_requires(contract, &len_param.name),
+        allows_null_when_empty: allows_null_when_empty(contract, &ptr_param.name, &len_param.name),
+    })
+}
+
+/// Resolved calling shape for the canonical i64 wrapping-sum function.
+#[derive(Clone, Copy)]
+struct I64SumShape {
     /// Upper bound on buffer length, if derivable from requires.
     max_length: Option<usize>,
     /// Whether a null buffer is permitted when length is zero.
@@ -598,11 +734,17 @@ pub fn generate_harness(
         (Abi::SysVAmd64, HarnessShape::BufferScan) => {
             Ok(generate_sysv_buffer_harness(routine_symbol, vectors))
         }
+        (Abi::SysVAmd64, HarnessShape::I64Sum) => {
+            Ok(generate_sysv_i64_sum_harness(routine_symbol, vectors))
+        }
         (Abi::SysVAmd64, HarnessShape::PureInt) => {
             Ok(generate_sysv_pure_int_harness(routine_symbol, vectors))
         }
         (Abi::WindowsX64, HarnessShape::BufferScan) => {
             Ok(generate_win64_buffer_harness(routine_symbol, vectors))
+        }
+        (Abi::WindowsX64, HarnessShape::I64Sum) => {
+            Ok(generate_win64_i64_sum_harness(routine_symbol, vectors))
         }
         (Abi::WindowsX64, HarnessShape::PureInt) => {
             Ok(generate_win64_pure_int_harness(routine_symbol, vectors))
@@ -610,11 +752,17 @@ pub fn generate_harness(
         (Abi::Aapcs64, HarnessShape::BufferScan) => {
             Ok(generate_aapcs64_buffer_harness(routine_symbol, vectors))
         }
+        (Abi::Aapcs64, HarnessShape::I64Sum) => {
+            Ok(generate_aapcs64_i64_sum_harness(routine_symbol, vectors))
+        }
         (Abi::Aapcs64, HarnessShape::PureInt) => {
             Ok(generate_aapcs64_pure_int_harness(routine_symbol, vectors))
         }
         (Abi::Riscv, HarnessShape::BufferScan) => {
             Ok(generate_riscv_buffer_harness(routine_symbol, vectors))
+        }
+        (Abi::Riscv, HarnessShape::I64Sum) => {
+            Ok(generate_riscv_i64_sum_harness(routine_symbol, vectors))
         }
         (Abi::Riscv, HarnessShape::PureInt) => {
             Ok(generate_riscv_pure_int_harness(routine_symbol, vectors))
@@ -660,6 +808,36 @@ fn emit_pure_int_vector_data(out: &mut String, vectors: &[TestVector]) {
     for (i, v) in vectors.iter().enumerate() {
         let _ = writeln!(out, "vec{i}_a: dq {}", vector_int_input(v, 0));
         let _ = writeln!(out, "vec{i}_b: dq {}", vector_int_input(v, 1));
+    }
+}
+
+fn emit_i64_sum_vector_data(out: &mut String, vectors: &[TestVector]) {
+    out.push_str("section .data\n");
+    for (i, v) in vectors.iter().enumerate() {
+        let words = vector_i64_words(v);
+        let _ = writeln!(out, "vec{i}_len: dq {}", vector_length(v));
+        let _ = write!(out, "vec{i}_buf: dq {}", words.join(", "));
+        if words.is_empty() {
+            out.push_str(" 0");
+        }
+        out.push('\n');
+    }
+}
+
+fn emit_gas_i64_sum_vector_data(out: &mut String, vectors: &[TestVector]) {
+    out.push_str(".section .data\n");
+    for (i, v) in vectors.iter().enumerate() {
+        let words = vector_i64_words(v);
+        out.push_str(".align 3\n");
+        let _ = writeln!(out, "vec{i}_len:\n    .quad {}", vector_length(v));
+        out.push_str(".align 3\n");
+        let _ = write!(out, "vec{i}_buf:\n    .quad ");
+        if words.is_empty() {
+            out.push_str("0\n");
+        } else {
+            out.push_str(&words.join(", "));
+            out.push('\n');
+        }
     }
 }
 
@@ -733,6 +911,44 @@ fn generate_sysv_pure_int_harness(routine_symbol: &str, vectors: &[TestVector]) 
         let _ = writeln!(out, "    ; vector {i}: {}", vectors[i].name);
         let _ = writeln!(out, "    mov rdi, [vec{i}_a]");
         let _ = writeln!(out, "    mov rsi, [vec{i}_b]");
+        let _ = writeln!(out, "    call {routine_symbol}");
+        let _ = writeln!(out, "    mov [results + {i}*8], rax");
+    }
+
+    out.push_str("    ; write(results, len)\n");
+    out.push_str("    mov eax, 1          ; sys_write\n");
+    out.push_str("    mov edi, 1          ; stdout\n");
+    let _ = writeln!(out, "    lea rsi, [results]");
+    let _ = writeln!(out, "    mov edx, {}", vectors.len() * 8);
+    out.push_str("    syscall\n");
+    out.push_str("    mov eax, 60         ; sys_exit\n");
+    out.push_str("    xor edi, edi\n");
+    out.push_str("    syscall\n");
+
+    out
+}
+
+/// Generate NASM source for a SysV i64 wrapping-sum `_start` harness.
+fn generate_sysv_i64_sum_harness(routine_symbol: &str, vectors: &[TestVector]) -> String {
+    let mut out = String::new();
+
+    out.push_str("BITS 64\n");
+    out.push_str("DEFAULT REL\n\n");
+
+    emit_i64_sum_vector_data(&mut out, vectors);
+
+    out.push_str("\nsection .bss\n");
+    let _ = writeln!(out, "results: resb {}", vectors.len() * 8);
+
+    out.push_str("\nsection .text\n");
+    let _ = writeln!(out, "extern {routine_symbol}");
+    out.push_str("global _start\n");
+    out.push_str("_start:\n");
+
+    for (i, _v) in vectors.iter().enumerate() {
+        let _ = writeln!(out, "    ; vector {i}: {}", vectors[i].name);
+        let _ = writeln!(out, "    lea rdi, [vec{i}_buf]");
+        let _ = writeln!(out, "    mov rsi, [vec{i}_len]");
         let _ = writeln!(out, "    call {routine_symbol}");
         let _ = writeln!(out, "    mov [results + {i}*8], rax");
     }
@@ -851,6 +1067,56 @@ fn generate_win64_pure_int_harness(routine_symbol: &str, vectors: &[TestVector])
     out
 }
 
+/// Generate NASM source for a Win64 i64 wrapping-sum `main` harness.
+fn generate_win64_i64_sum_harness(routine_symbol: &str, vectors: &[TestVector]) -> String {
+    let mut out = String::new();
+
+    out.push_str("BITS 64\n");
+    out.push_str("DEFAULT REL\n\n");
+    out.push_str("EXTERN GetStdHandle\n");
+    out.push_str("EXTERN WriteFile\n");
+    out.push_str("EXTERN ExitProcess\n\n");
+
+    emit_i64_sum_vector_data(&mut out, vectors);
+
+    out.push_str("\nsection .bss\n");
+    let _ = writeln!(out, "results: resb {}", vectors.len() * 8);
+    out.push_str("written: resq 1\n");
+
+    out.push_str("\nsection .text\n");
+    let _ = writeln!(out, "extern {routine_symbol}");
+    out.push_str("global main\n");
+    out.push_str("main:\n");
+
+    for (i, _v) in vectors.iter().enumerate() {
+        let _ = writeln!(out, "    ; vector {i}: {}", vectors[i].name);
+        out.push_str("    sub rsp, 40\n");
+        let _ = writeln!(out, "    lea rcx, [vec{i}_buf]");
+        let _ = writeln!(out, "    mov rdx, [vec{i}_len]");
+        let _ = writeln!(out, "    call {routine_symbol}");
+        out.push_str("    add rsp, 40\n");
+        let _ = writeln!(out, "    mov [results + {i}*8], rax");
+    }
+
+    out.push_str("    ; WriteFile(stdout, results, len, &written, NULL)\n");
+    out.push_str("    sub rsp, 40\n");
+    out.push_str("    mov ecx, -11        ; STD_OUTPUT_HANDLE\n");
+    out.push_str("    call GetStdHandle\n");
+    out.push_str("    mov rcx, rax\n");
+    out.push_str("    lea rdx, [results]\n");
+    let _ = writeln!(out, "    mov r8d, {}", vectors.len() * 8);
+    out.push_str("    lea r9, [written]\n");
+    out.push_str("    mov qword [rsp + 32], 0\n");
+    out.push_str("    call WriteFile\n");
+    out.push_str("    add rsp, 40\n");
+
+    out.push_str("    sub rsp, 40\n");
+    out.push_str("    xor ecx, ecx\n");
+    out.push_str("    call ExitProcess\n");
+
+    out
+}
+
 /// Generate GNU as source for an AArch64 `_start` harness (Linux syscalls).
 fn generate_aapcs64_buffer_harness(routine_symbol: &str, vectors: &[TestVector]) -> String {
     let mut out = String::new();
@@ -914,6 +1180,46 @@ fn generate_aapcs64_pure_int_harness(routine_symbol: &str, vectors: &[TestVector
         let _ = writeln!(out, "    ldr x0, =vec{i}_a");
         out.push_str("    ldr x0, [x0]\n");
         let _ = writeln!(out, "    ldr x1, =vec{i}_b");
+        out.push_str("    ldr x1, [x1]\n");
+        let _ = writeln!(out, "    bl {routine_symbol}");
+        out.push_str("    ldr x2, =results\n");
+        let _ = writeln!(out, "    str x0, [x2, #{offset}]", offset = i * 8);
+    }
+
+    out.push_str("    // write(1, results, len)\n");
+    out.push_str("    mov x0, #1\n");
+    out.push_str("    ldr x1, =results\n");
+    let _ = writeln!(out, "    mov x2, #{results_len}");
+    out.push_str("    mov x8, #64\n");
+    out.push_str("    svc #0\n");
+    out.push_str("    // exit(0)\n");
+    out.push_str("    mov x0, #0\n");
+    out.push_str("    mov x8, #93\n");
+    out.push_str("    svc #0\n");
+
+    out
+}
+
+/// Generate GNU as source for an AArch64 i64 wrapping-sum `_start` harness.
+fn generate_aapcs64_i64_sum_harness(routine_symbol: &str, vectors: &[TestVector]) -> String {
+    let mut out = String::new();
+    let results_len = vectors.len() * 8;
+
+    emit_gas_i64_sum_vector_data(&mut out, vectors);
+
+    out.push_str("\n.section .bss\n");
+    out.push_str(".align 3\n");
+    out.push_str("results:\n");
+    let _ = writeln!(out, "    .space {results_len}");
+
+    out.push_str("\n.section .text\n");
+    out.push_str(".global _start\n");
+    out.push_str("_start:\n");
+
+    for (i, _v) in vectors.iter().enumerate() {
+        let _ = writeln!(out, "    // vector {i}: {}", vectors[i].name);
+        let _ = writeln!(out, "    ldr x0, =vec{i}_buf");
+        let _ = writeln!(out, "    ldr x1, =vec{i}_len");
         out.push_str("    ldr x1, [x1]\n");
         let _ = writeln!(out, "    bl {routine_symbol}");
         out.push_str("    ldr x2, =results\n");
@@ -1027,6 +1333,106 @@ fn generate_riscv_pure_int_harness(routine_symbol: &str, vectors: &[TestVector])
     out
 }
 
+/// Generate GNU as source for a RISC-V i64 wrapping-sum `_start` harness.
+fn generate_riscv_i64_sum_harness(routine_symbol: &str, vectors: &[TestVector]) -> String {
+    let mut out = String::new();
+    let results_len = vectors.len() * 8;
+
+    out.push_str(".option norelax\n");
+    emit_gas_i64_sum_vector_data(&mut out, vectors);
+
+    out.push_str("\n.section .bss\n");
+    out.push_str(".align 4\n");
+    out.push_str("results:\n");
+    let _ = writeln!(out, "    .space {results_len}");
+    out.push_str(".align 4\n");
+    out.push_str("    .space 16384\n");
+    out.push_str("__stack_top:\n");
+
+    out.push_str("\n.section .text\n");
+    out.push_str(".global _start\n");
+    out.push_str("_start:\n");
+    out.push_str("    la sp, __stack_top\n");
+
+    for (i, _v) in vectors.iter().enumerate() {
+        let _ = writeln!(out, "    # vector {i}: {}", vectors[i].name);
+        let _ = writeln!(out, "    la a0, vec{i}_buf");
+        let _ = writeln!(out, "    la t0, vec{i}_len");
+        out.push_str("    ld a1, 0(t0)\n");
+        let _ = writeln!(out, "    jal {routine_symbol}");
+        out.push_str("    la t0, results\n");
+        let _ = writeln!(out, "    sd a0, {offset}(t0)", offset = i * 8);
+    }
+
+    out.push_str("    # write(1, results, len)\n");
+    out.push_str("    li a0, 1\n");
+    out.push_str("    la a1, results\n");
+    let _ = writeln!(out, "    li a2, {results_len}");
+    out.push_str("    li a7, 64\n");
+    out.push_str("    ecall\n");
+    out.push_str("    # exit(0)\n");
+    out.push_str("    li a0, 0\n");
+    out.push_str("    li a7, 93\n");
+    out.push_str("    ecall\n");
+
+    out
+}
+
+/// Extract signed/unsigned JSON numbers as decimal strings for `dq` / `.quad`.
+fn vector_i64_words(v: &TestVector) -> Vec<String> {
+    match v.inputs.first() {
+        Some(serde_json::Value::Array(items)) => items
+            .iter()
+            .map(|x| {
+                if let Some(i) = x.as_i64() {
+                    i.to_string()
+                } else if let Some(u) = x.as_u64() {
+                    u.to_string()
+                } else {
+                    "0".into()
+                }
+            })
+            .collect(),
+        _ => Vec::new(),
+    }
+}
+
+/// Map a JSON expected value to the raw 8-byte LE bit pattern returned by harnesses.
+#[allow(clippy::cast_sign_loss)] // intentional two's-complement bit pattern
+fn expected_bits(value: &serde_json::Value) -> u64 {
+    if let Some(u) = value.as_u64() {
+        return u;
+    }
+    if let Some(i) = value.as_i64() {
+        return i as u64;
+    }
+    u64::MAX
+}
+
+/// Format a harness result word for reports, preferring signed display when expected was signed.
+#[allow(clippy::cast_possible_wrap)] // reinterpret harness u64 bits as i64 when expected was signed
+fn format_observed(bits: u64, expected: &serde_json::Value) -> String {
+    if bits == u64::MAX {
+        return "<no output>".into();
+    }
+    if expected.as_i64().is_some() && expected.as_u64().is_none() {
+        return (bits as i64).to_string();
+    }
+    bits.to_string()
+}
+
+fn format_expected(expected: &serde_json::Value) -> String {
+    if let Some(i) = expected.as_i64() {
+        if expected.as_u64().is_none() {
+            return i.to_string();
+        }
+    }
+    if let Some(u) = expected.as_u64() {
+        return u.to_string();
+    }
+    expected.to_string()
+}
+
 /// Extract a numeric input for a pure-integer vector.
 fn vector_int_input(v: &TestVector, index: usize) -> u64 {
     v.inputs
@@ -1112,17 +1518,13 @@ pub fn evaluate(stdout: &[u8], vectors: &[TestVector]) -> HarnessReport {
         .iter()
         .zip(observed)
         .map(|(v, got)| {
-            let expected = v.expected.as_u64().unwrap_or(u64::MAX);
+            let expected = expected_bits(&v.expected);
             let passed = got == expected;
             VectorResult {
                 name: v.name.clone(),
                 passed,
-                expected: expected.to_string(),
-                observed: if got == u64::MAX {
-                    "<no output>".into()
-                } else {
-                    got.to_string()
-                },
+                expected: format_expected(&v.expected),
+                observed: format_observed(got, &v.expected),
             }
         })
         .collect();
@@ -1203,6 +1605,32 @@ expression = "count <= length"
     fn min_usize_contract() -> CheckedContract {
         let toml = include_str!("../../../fixtures/contracts/min_usize.sem.toml");
         check_contract(toml)
+    }
+
+    fn sum_i64_contract() -> CheckedContract {
+        let toml = include_str!("../../../fixtures/contracts/sum_i64.sem.toml");
+        check_contract(toml)
+    }
+
+    #[test]
+    fn synthesizes_seven_i64_sum_vectors() {
+        let c = sum_i64_contract();
+        let v = synthesize_vectors(&c);
+        assert_eq!(v.len(), 7);
+        assert_eq!(v[0].name, "empty");
+        assert_eq!(v[0].expected, serde_json::json!(0i64));
+        assert_eq!(v[1].name, "positive");
+        assert_eq!(v[1].expected, serde_json::json!(10i64));
+        assert_eq!(v[2].name, "mixed");
+        assert_eq!(v[2].expected, serde_json::json!(7i64));
+        assert_eq!(v[4].expected, serde_json::json!(i64::MIN));
+        let oracle = recognize_behavior_oracle(&c).expect("sum_i64 shape");
+        assert_eq!(oracle.id, ORACLE_BUFFER_WRAPPING_SUM_I64);
+        assert!(is_read_only_buffer_scan(&c));
+        let src = generate_harness("sum_i64", &v, Abi::SysVAmd64).expect("sysv harness");
+        assert!(src.contains("lea rdi, [vec0_buf]"));
+        assert!(src.contains("mov rsi, [vec0_len]"));
+        assert!(!src.contains("needle"));
     }
 
     #[test]

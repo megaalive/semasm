@@ -145,6 +145,7 @@ jobs:
           cargo test -p semasm-cli --all-features --test agent_verify_win64_execution_denied -- --ignored --nocapture
           cargo test -p semasm-cli --all-features --test agent_verify_win64_allow_execution -- --ignored --nocapture
           cargo test -p semasm-cli --all-features --test agent_verify_min_usize_win64 -- --ignored --nocapture
+          cargo test -p semasm-cli --all-features --test agent_verify_sum_i64_win64 -- --ignored --nocapture
           cargo test -p semasm-cli --all-features --test agent_verify_adversarial _win64_ -- --ignored --nocapture
 
   cross-target-e2e:
@@ -246,6 +247,8 @@ jobs:
           cargo test -p semasm-cli --all-features --test agent_verify_sysv_allow_execution \
             -- --ignored --nocapture
           cargo test -p semasm-cli --all-features --test agent_verify_min_usize \
+            -- --ignored --nocapture
+          cargo test -p semasm-cli --all-features --test agent_verify_sum_i64 \
             -- --ignored --nocapture
           cargo test -p semasm-cli --all-features --test agent_verify_adversarial _sysv_ -- --ignored --nocapture
           cargo test -p semasm-cli --all-features --test agent_evidence_compare _sysv_ -- --ignored --nocapture

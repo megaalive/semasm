@@ -1,0 +1,36 @@
+contract_version = "0.1"
+
+[function]
+name = "sum_i64"
+summary = "Return the wrapping sum of i64 elements in a buffer"
+
+[[function.parameters]]
+name = "values"
+type = "ptr<const i64>"
+role = "input"
+
+[[function.parameters]]
+name = "length"
+type = "usize"
+role = "input"
+
+[[function.returns]]
+name = "sum"
+type = "i64"
+
+[[function.requires]]
+expression = "length <= 4096"
+reason = "Arbitrary safety limit for this fixture."
+
+[[function.ensures]]
+expression = "true"
+reason = "Equality is proven by the wrapping-sum oracle and synthesized vectors."
+
+[[function.effects]]
+kind = "memory_read"
+region = "values[0..length]"
+
+[function.constraints]
+no_heap = true
+no_recursion = true
+bounded_stack_bytes = 128
