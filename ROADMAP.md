@@ -32,14 +32,19 @@ x86-32, ARMv7, Windows ARM64, UEFI, WebAssembly, AVR, many MCU boards,
 kernel modules, eBPF, and GPU ISAs are deferred until target-kit contracts and
 conformance evidence are proven.
 
-## Near-term criteria (after X86 Golden Depth)
+## Near-term criteria (after X86 Golden Depth + T0–T6)
 
 - Keep CI owner jobs green with `SEMASM_REQUIRE_TOOLCHAIN=1`.
 - Prefer fail-closed adversarial fixtures over broader mnemonic coverage.
 - Do **not** add new ISAs until the x86 golden path stays deep and honest.
-- Follow-ups (queued, not this slice): CFG/indirect policy in verify; memory
-  aliasing on buffer-scan; contract/harness mismatch refinements; optional
-  offline C size comparison (not a CI gate).
+- Done in W/T waves (not queued): CFG/indirect leaf in `agent verify`;
+  read-only buffer memory leaf; contract/harness mismatch fail-closed;
+  A64/RV `control`/`memory` reported as `skipped` until ported.
+- Still deferred: full memory alias / symbolic proof; formal `ensures`;
+  optional offline C size comparison (not a CI gate); `v0.1.0` release tag.
+
+Consumer pin / framed smoke / capability claim bind: see VAA `docs/progress.md`
+(waves N0–N4 done; next **P0–P2**).
 
 See `semasm-complete-project-plan.md` for the original ordered vertical slices
 and `docs/status/BASELINE-2026-07.md` for the stabilization baseline.

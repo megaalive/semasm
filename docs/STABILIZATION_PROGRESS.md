@@ -85,18 +85,16 @@ vertical slice. Gate-2 requires opt-in execution.
 | T5 | A64/RV `control`/`memory` → `skipped` when unimplemented | done |
 | T6 | Pure-int oracle claim names `min` | done |
 
-Tranche SemASM hardening is closed on `main`. Consumer pin / framed smoke
-continues in the VAA repo (`docs/progress.md`, waves **N0–N4**).
+Tranche SemASM hardening is closed on `main`. VAA pin / framed smoke waves
+**N0–N4** are done (see VAA `docs/progress.md`).
 
-### Next waves (VAA pin — see VAA)
+### Next waves (stack integrity P0–P2 — VAA-led)
 
 | Wave | Focus | Owner |
 |---|---|---|
-| N0 | Push SemASM tip + CI green | SemASM |
-| N1 | Pin SemASM SHA in VAA Gate CI | VAA |
-| N2 | Refresh `sum_i64` consumer goldens (oracle v2) | VAA |
-| N3 | Framed `sum_i64` Gate-1/2 + `hlax64-bridge` smoke | VAA |
-| N4 | Honesty docs sync (both repos) | both |
+| P0 | Pin HlaX64 SHA (stop floating `main` on `hlax64-bridge`) | VAA |
+| P1 | Honesty docs sync (N closed; ROADMAP / baseline stale text) | both |
+| P2 | Capability claim bind (`vaa_embedded_agent_verify_snapshot`) | VAA |
 
 Demo: `scripts/golden-demo.sh` (Linux SysV) or `scripts/golden-demo.ps1`
 (Windows PE by default; `-SysV` for Linux tools).
