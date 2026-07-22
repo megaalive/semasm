@@ -51,9 +51,17 @@ struct Cli {
 #[derive(Debug, Subcommand)]
 enum Commands {
     /// Print version and workspace status.
-    Version,
+    Version {
+        /// Output format.
+        #[arg(long, value_enum, default_value_t = OutputFormat::Terminal)]
+        format: OutputFormat,
+    },
     /// Show high-level project status.
-    Status,
+    Status {
+        /// Output format.
+        #[arg(long, value_enum, default_value_t = OutputFormat::Terminal)]
+        format: OutputFormat,
+    },
     /// Explain a diagnostic code (same as `--explain`).
     Explain {
         /// Code such as `CTR003`.
@@ -291,18 +299,38 @@ fn main() -> ExitCode {
     }
 
     match cli.command {
-        None | Some(Commands::Version) => {
+        None => {
             println!("semasm {SEMASM_VERSION}");
             ExitCode::SUCCESS
         }
-        Some(Commands::Status) => {
+        Some(Commands::Version { format }) => match format {
+            OutputFormat::Terminal => {
+                println!("semasm {SEMASM_VERSION}");
+                ExitCode::SUCCESS
+            }
+            OutputFormat::Json => {
+                let body = serde_json::json!({
+                    "name": "semasm",
+                    "version": SEMASM_VERSION,
+                });
+                println!("{body}");
+                ExitCode::SUCCESS
+            }
+        },
+        Some(Commands::Status { format }) => {
             match semasm_target::capability::CapabilityManifest::parse(include_str!(
                 "../../../capabilities.toml"
             )) {
-                Ok(manifest) => {
-                    print!("{}", manifest.render_status(SEMASM_VERSION));
-                    ExitCode::SUCCESS
-                }
+                Ok(manifest) => match format {
+                    OutputFormat::Terminal => {
+                        print!("{}", manifest.render_status(SEMASM_VERSION));
+                        ExitCode::SUCCESS
+                    }
+                    OutputFormat::Json => {
+                        println!("{}", manifest.status_json(SEMASM_VERSION));
+                        ExitCode::SUCCESS
+                    }
+                },
                 Err(error) => {
                     eprintln!("error: failed to load embedded capability manifest: {error}");
                     ExitCode::from(1)

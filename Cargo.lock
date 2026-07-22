@@ -457,6 +457,7 @@ dependencies = [
  "schemars",
  "semasm-core",
  "serde",
+ "serde_json",
  "toml",
 ]
 

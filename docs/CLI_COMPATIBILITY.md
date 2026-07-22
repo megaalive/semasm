@@ -15,6 +15,26 @@ fails. Partial or unsupported semantic coverage is never promoted to complete
 verification; commands either report incomplete evidence or require an explicit
 opt-in where that behavior is supported.
 
+## Version and status JSON
+
+`semasm version --format json` emits:
+
+```json
+{ "name": "semasm", "version": "<SEMASM_VERSION>" }
+```
+
+`semasm status --format json` emits a document derived from the embedded
+`capabilities.toml` with at least:
+
+- `name`, `version`, `capability_schema`
+- `workspace_crates` (array of strings)
+- `targets` (array of objects with `id` plus maturity strings:
+  `decode`, `lower`, `abi`, `assemble`, `link`, `execute`, `pipeline`, `agent`)
+- `notes` (array of human strings)
+
+Consumers must tolerate additive fields. This is **not** the same vocabulary as
+VAA’s embedded agent-verify capability snapshot.
+
 ## Agent verify (`semasm agent verify`)
 
 Exit `0` only when overall status is `verified` (static gates passed and every

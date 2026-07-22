@@ -14,6 +14,17 @@ Exit `0` only when `status` is `verified`. Otherwise exit non-zero; a structured
 report is still emitted on stdout when the verify pipeline reached gate
 evaluation (see `CLI_COMPATIBILITY.md`).
 
+Controllers may also probe identity with:
+
+```text
+semasm version --format json
+semasm status --format json
+```
+
+See `CLI_COMPATIBILITY.md` for field lists. These probes describe SemASM’s
+embedded `capabilities.toml` maturity and are **not** a substitute for VAA’s
+agent-verify snapshot.
+
 ## Streams
 
 | Stream | Content |

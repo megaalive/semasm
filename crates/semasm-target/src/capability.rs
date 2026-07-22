@@ -241,6 +241,42 @@ impl CapabilityManifest {
         output.push_str("note: generated programs do not link SemASM by default\n");
         output
     }
+
+    /// Machine-readable status document for `semasm status --format json`.
+    ///
+    /// Additive fields may appear in later minors; consumers must ignore unknowns.
+    #[must_use]
+    pub fn status_json(&self, version: &str) -> serde_json::Value {
+        let targets: Vec<serde_json::Value> = self
+            .targets
+            .iter()
+            .map(|target| {
+                let c = &target.capabilities;
+                serde_json::json!({
+                    "id": target.id,
+                    "decode": c.decode.as_str(),
+                    "lower": c.lower.as_str(),
+                    "abi": c.abi_analysis.as_str(),
+                    "assemble": c.assemble.as_str(),
+                    "link": c.link.as_str(),
+                    "execute": c.execute.as_str(),
+                    "pipeline": c.pipeline_verify_level().as_str(),
+                    "agent": c.agent_verify_level().as_str(),
+                })
+            })
+            .collect();
+        serde_json::json!({
+            "name": "semasm",
+            "version": version,
+            "capability_schema": self.schema_version,
+            "workspace_crates": self.workspace.crates,
+            "targets": targets,
+            "notes": [
+                "pipeline = fixture assemble/link/run; agent = semasm agent verify gates",
+                "generated programs do not link SemASM by default",
+            ],
+        })
+    }
 }
 
 fn ensure_unique<'a>(kind: &str, values: impl Iterator<Item = &'a str>) -> Result<()> {
@@ -378,5 +414,19 @@ mod tests {
         let start = readme.find(start_marker).expect("README start marker") + start_marker.len();
         let end = readme.find(end_marker).expect("README end marker");
         assert_eq!(&readme[start..end], manifest.render_readme_table());
+    }
+
+    #[test]
+    fn status_json_includes_version_and_targets() {
+        let manifest = CapabilityManifest::parse(MANIFEST).unwrap();
+        let json = manifest.status_json("0.1.0");
+        assert_eq!(json["name"], "semasm");
+        assert_eq!(json["version"], "0.1.0");
+        assert_eq!(json["capability_schema"], "0.1");
+        let targets = json["targets"].as_array().expect("targets array");
+        assert!(!targets.is_empty());
+        assert!(targets[0]["id"].is_string());
+        assert!(targets[0]["agent"].is_string());
+        assert!(targets[0]["pipeline"].is_string());
     }
 }
