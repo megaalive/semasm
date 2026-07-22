@@ -1660,14 +1660,7 @@ expression = "count <= length"
         assert_eq!(ORACLE_BUFFER_WRAPPING_SUM_I64_VERSION, 2);
         assert!(oracle.claim.contains("wrapping sum"));
         assert!(is_read_only_buffer_scan(&c));
-        let built = build_behavior_oracle(
-            oracle,
-            &c,
-            "sum_i64.sem.toml",
-            b"contract",
-            &v,
-            None,
-        );
+        let built = build_behavior_oracle(oracle, &c, "sum_i64.sem.toml", b"contract", &v, None);
         assert!(built.contract_ensures.iter().any(|e| e == "true"));
         assert_eq!(
             built.proof_basis,

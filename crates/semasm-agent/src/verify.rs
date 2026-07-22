@@ -785,8 +785,7 @@ mod tests {
 
     #[test]
     fn golden_sum_i64_execution_denied_report_deserializes() {
-        let json =
-            include_str!("../fixtures/verification-report-sum_i64.execution_denied.json");
+        let json = include_str!("../fixtures/verification-report-sum_i64.execution_denied.json");
         let report: VerificationReport =
             serde_json::from_str(json).expect("sum_i64 golden must deserialize");
         assert_eq!(report.schema_version, VERIFICATION_REPORT_SCHEMA_VERSION);
