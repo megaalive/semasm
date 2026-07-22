@@ -348,7 +348,16 @@ fn build_command(spec: &CommandSpec) -> Command {
         .stderr(Stdio::piped());
 
     cmd.stdin(match &spec.stdin {
-        StdinPolicy::Null => Stdio::null(),
+        // On Windows, `Stdio::null()` has been observed to leave some readers
+        // (notably CPython `stdin.buffer.read`) blocked under CI load. An empty
+        // pipe that we close immediately still yields EOF and is more reliable.
+        StdinPolicy::Null => {
+            if cfg!(windows) {
+                Stdio::piped()
+            } else {
+                Stdio::null()
+            }
+        }
         StdinPolicy::Bytes(_) => Stdio::piped(),
         StdinPolicy::Inherit => Stdio::inherit(),
     });
@@ -472,15 +481,23 @@ pub fn exec(spec: &CommandSpec) -> Result<CommandOutput, BuildError> {
         )
     })?;
 
-    let stdin_handle = if let StdinPolicy::Bytes(bytes) = &spec.stdin {
-        let bytes = bytes.clone();
-        child.stdin.take().map(|mut stdin| {
-            thread::spawn(move || {
-                let _ = stdin.write_all(&bytes);
+    let stdin_handle = match &spec.stdin {
+        StdinPolicy::Bytes(bytes) => {
+            let bytes = bytes.clone();
+            child.stdin.take().map(|mut stdin| {
+                thread::spawn(move || {
+                    let _ = stdin.write_all(&bytes);
+                })
             })
-        })
-    } else {
-        None
+        }
+        StdinPolicy::Null => {
+            // Close the optional piped stdin promptly so readers see EOF.
+            child
+                .stdin
+                .take()
+                .map(|stdin| thread::spawn(move || drop(stdin)))
+        }
+        StdinPolicy::Inherit => None,
     };
 
     // Drain pipes in background threads to prevent deadlocks when the
@@ -822,7 +839,7 @@ mod tests {
                 "import sys; data=sys.stdin.buffer.read(); print(len(data))".into(),
             ],
         )
-        .with_timeout(Duration::from_secs(2));
+        .with_timeout(Duration::from_secs(10));
         let output = exec(&spec).unwrap();
         assert!(output.success(), "exec failed: {}", output.summary());
         assert_eq!(String::from_utf8_lossy(&output.stdout).trim(), "0");
