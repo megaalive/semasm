@@ -73,7 +73,7 @@ W1–W5, controller handshake, and the shared `count_byte` / `sum_i64` slices
 **Honesty:** Gate-1 (`execution_denied` → VAA Incomplete) is **not** a verified
 vertical slice. Gate-2 requires opt-in execution.
 
-### Next waves (SemASM hardening T0–T6)
+### SemASM hardening (T0–T6) — closed
 
 | Wave | Focus | Status |
 |---|---|---|
@@ -84,6 +84,19 @@ vertical slice. Gate-2 requires opt-in execution.
 | T4 | Contract/harness mismatch fail-closed | done |
 | T5 | A64/RV `control`/`memory` → `skipped` when unimplemented | done |
 | T6 | Pure-int oracle claim names `min` | done |
+
+Tranche SemASM hardening is closed on `main`. Consumer pin / framed smoke
+continues in the VAA repo (`docs/progress.md`, waves **N0–N4**).
+
+### Next waves (VAA pin — see VAA)
+
+| Wave | Focus | Owner |
+|---|---|---|
+| N0 | Push SemASM tip + CI green | SemASM |
+| N1 | Pin SemASM SHA in VAA Gate CI | VAA |
+| N2 | Refresh `sum_i64` consumer goldens (oracle v2) | VAA |
+| N3 | Framed `sum_i64` Gate-1/2 + `hlax64-bridge` smoke | VAA |
+| N4 | Honesty docs sync (both repos) | both |
 
 Demo: `scripts/golden-demo.sh` (Linux SysV) or `scripts/golden-demo.ps1`
 (Windows PE by default; `-SysV` for Linux tools).
