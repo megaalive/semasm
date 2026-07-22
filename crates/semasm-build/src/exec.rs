@@ -446,6 +446,30 @@ fn is_secret_name(name: &str) -> bool {
 // Execution
 // ---------------------------------------------------------------------------
 
+fn spawn_stdin_worker(
+    child: &mut std::process::Child,
+    policy: &StdinPolicy,
+) -> Option<thread::JoinHandle<()>> {
+    match policy {
+        StdinPolicy::Bytes(bytes) => {
+            let bytes = bytes.clone();
+            child.stdin.take().map(|mut stdin| {
+                thread::spawn(move || {
+                    let _ = stdin.write_all(&bytes);
+                })
+            })
+        }
+        StdinPolicy::Null => {
+            // Close the optional piped stdin promptly so readers see EOF.
+            child
+                .stdin
+                .take()
+                .map(|stdin| thread::spawn(move || drop(stdin)))
+        }
+        StdinPolicy::Inherit => None,
+    }
+}
+
 /// Run the command described by `spec`.
 ///
 /// * Stdin is **not** provided (piped from `/dev/null` equivalent).
@@ -481,24 +505,7 @@ pub fn exec(spec: &CommandSpec) -> Result<CommandOutput, BuildError> {
         )
     })?;
 
-    let stdin_handle = match &spec.stdin {
-        StdinPolicy::Bytes(bytes) => {
-            let bytes = bytes.clone();
-            child.stdin.take().map(|mut stdin| {
-                thread::spawn(move || {
-                    let _ = stdin.write_all(&bytes);
-                })
-            })
-        }
-        StdinPolicy::Null => {
-            // Close the optional piped stdin promptly so readers see EOF.
-            child
-                .stdin
-                .take()
-                .map(|stdin| thread::spawn(move || drop(stdin)))
-        }
-        StdinPolicy::Inherit => None,
-    };
+    let stdin_handle = spawn_stdin_worker(&mut child, &spec.stdin);
 
     // Drain pipes in background threads to prevent deadlocks when the
     // child fills a pipe buffer.
