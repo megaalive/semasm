@@ -44,7 +44,7 @@ conformance evidence are proven.
   optional offline C size comparison (not a CI gate); `v0.1.0` release tag.
 
 Consumer pin / framed smoke / capability claim bind: see VAA `docs/progress.md`
-(waves N0–N4 done; next **P0–P2**).
+(waves N0–N4 and P0–P2 done; next **R0–R2**).
 
 See `semasm-complete-project-plan.md` for the original ordered vertical slices
 and `docs/status/BASELINE-2026-07.md` for the stabilization baseline.

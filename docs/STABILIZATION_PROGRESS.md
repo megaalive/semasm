@@ -86,15 +86,15 @@ vertical slice. Gate-2 requires opt-in execution.
 | T6 | Pure-int oracle claim names `min` | done |
 
 Tranche SemASM hardening is closed on `main`. VAA pin / framed smoke waves
-**N0–N4** are done (see VAA `docs/progress.md`).
+**N0–N4** and stack integrity **P0–P2** are done (see VAA `docs/progress.md`).
 
-### Next waves (stack integrity P0–P2 — VAA-led)
+### Next waves (R0–R2 — runner + SemASM JSON)
 
-| Wave | Focus | Owner |
-|---|---|---|
-| P0 | Pin HlaX64 SHA (stop floating `main` on `hlax64-bridge`) | VAA |
-| P1 | Honesty docs sync (N closed; ROADMAP / baseline stale text) | both |
-| P2 | Capability claim bind (`vaa_embedded_agent_verify_snapshot`) | VAA |
+| Wave | Focus | Owner | Status |
+|---|---|---|---|
+| R0 | Honesty docs: P* closed; next = R* | both | done |
+| R1 | VAA ProcessRunner streaming cap + Win stdin EOF | VAA | done |
+| R2 | SemASM `version`/`status --format json` | SemASM | done |
 
 Demo: `scripts/golden-demo.sh` (Linux SysV) or `scripts/golden-demo.ps1`
 (Windows PE by default; `-SysV` for Linux tools).
