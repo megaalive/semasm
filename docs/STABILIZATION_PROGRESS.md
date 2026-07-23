@@ -29,8 +29,8 @@ before work advances past a failed item.
 Stabilization PR-01…18, Bulletproof P0–P5, X86 Golden Path Depth, Evidence
 W1–W5, controller handshake, shared `count_byte` / `sum_i64` / `min_usize` slices
 (VAA Gate-1/2), hardening T0–T6, runner JSON R0–R2, and Tranche M are complete on
-`main`. GitHub Release **`v0.1.0`** is the release tip. **Tranche N**
-(`max_usize`) is closed. Next shared leaf TBD (buffer shape / adversarial depth).
+`main`. GitHub Release **`v0.1.0`** and Tranche N (`max_usize`) are complete.
+**Next = Tranche O** (x86 depth honesty) then **Tranche P** (`find_first_byte`).
 
 | Step | Focus | Status |
 |---|---|---|
@@ -130,6 +130,17 @@ Demo: `scripts/golden-demo.sh` (Linux SysV) or `scripts/golden-demo.ps1`
 (Windows PE by default; `-SysV` for Linux tools).
 
 Tranche N is closed on tip `623d22c` (SemASM) with VAA handoff `5a5c6d9`.
+
+### Next waves (O0–O1 — Tranche O, x86 depth)
+
+| Wave | Focus | Owner | Status |
+|---|---|---|---|
+| **O0** | Caps/docs honesty: x86 pipeline stays experimental; next = O→P | SemASM | **in progress** |
+| **O1** | One adversarial family around `sum_i64` / Win64 decode-gap parity | SemASM | queued |
+
+### After O — Tranche P (`find_first_byte` Gate)
+
+Buffer index-of shape (not another pure-int leaf). Pattern N0→N2 / M2→M4.
 
 See `docs/CLI_COMPATIBILITY.md`, `docs/CONTROLLER_PROTOCOL.md`,
 `docs/AGENT_SCHEMA_POLICY.md`, and `ARCHITECTURE.md`.

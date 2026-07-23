@@ -9,6 +9,16 @@
 #
 # Legacy key `verify` remains a pipeline alias (schema 0.1). Prefer reading
 # `pipeline_verify` and `agent_verify` when both are present.
+#
+# Tranche O honesty (post-v0.1.0 / post-Tranche N):
+# - x86-64 Linux/Windows keep assemble/link/execute/pipeline_verify =
+#   `experimental` even though `agent_verify = verified_in_ci`.
+# - Do **not** raise those pipeline levels without a dedicated owner CI job
+#   that proves assemble→link→run for the golden leaves end-to-end.
+# - decode/lower stay `partial` until mnemonic coverage and adversarial twins
+#   close the known gaps (unknown insn / trailing bytes / WX / indirect).
+# - AArch64/RV64 pipeline evidence is stronger than x86 decode/lower depth;
+#   that asymmetry is intentional, not an oversight.
 
 schema_version = "0.1"
 

@@ -14,6 +14,12 @@ follow [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   e2e verify tests, consumer VerificationReport goldens, and capabilities
   evidence fixtures.
 
+### Changed
+
+- Capability manifest documents Tranche O honesty: x86 assemble/link/execute
+  remain `experimental` despite `agent_verify = verified_in_ci`; no pipeline
+  level bump without dedicated owner evidence.
+
 ## [0.1.0] - 2026-07-23
 
 ### Added
