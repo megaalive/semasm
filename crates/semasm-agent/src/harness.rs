@@ -21,6 +21,8 @@
 //!   or `find_last_byte` (last index, or length if absent).
 //! - **MemCmp** `(ptr<const u8> a, ptr<const u8> b, usize length) -> isize`
 //!   - unsigned lexicographic comparison returning only `-1`, `0`, or `1`.
+//!   - Harness generation is **x86-only** (SysV + Win64); AArch64/RISC-V
+//!     fail closed with a clear error (not partial support).
 //! - **I64 wrapping sum** `(ptr<const i64> values, usize length) -> i64`
 //!   — canonical example `sum_i64`.
 //! - **Pure integer** `(usize, usize) -> usize` — canonical examples
@@ -2405,6 +2407,23 @@ expression = "count <= length"
         assert!(src.contains("mov rdx, [vec0_len]"));
         assert!(src.contains("vec0_a: db"));
         assert!(src.contains("vec0_b: db"));
+    }
+
+    #[test]
+    fn memcmp_harness_fails_closed_on_aapcs64_and_riscv() {
+        let vectors = synthesize_vectors(&memcmp_contract());
+        let a64 = generate_harness("memcmp", &vectors, Abi::Aapcs64)
+            .expect_err("AArch64 memcmp harness must fail closed");
+        assert!(
+            a64.contains("memcmp harness not yet supported on this ABI"),
+            "unexpected AArch64 error: {a64}"
+        );
+        let rv = generate_harness("memcmp", &vectors, Abi::Riscv)
+            .expect_err("RISC-V memcmp harness must fail closed");
+        assert!(
+            rv.contains("memcmp harness not yet supported on this ABI"),
+            "unexpected RISC-V error: {rv}"
+        );
     }
 
     #[test]

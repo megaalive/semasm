@@ -35,6 +35,17 @@ Tranche R (search→ingest Gate loop) are complete. **X2 + S + T** closed
 (`count_byte` Win64 callee_saved depth, `memcmp` Gate pack, VAA pin +
 search `--ingest --allow-execution` smoke).
 
+### Next waves (X4 + H4 + Y)
+
+| Wave | Focus | Owner | Status |
+|---|---|---|---|
+| **X4** | MemCmp harness fail-closed on AArch64/RISC-V + caps honesty | SemASM | **done** |
+| **H4** | HlaX64 → VAA bridge for `find_last_byte` | HlaX64+VAA | pending |
+| **Y0–Y2** | Pin tips + `memcmp` search `--ingest` Gate parity | VAA | pending |
+
+MemCmp agent harness remains **x86-only** (SysV + Win64). AArch64/RISC-V
+generation fails closed with a clear error — not partial multi-ISA support.
+
 | Step | Focus | Status |
 |---|---|---|
 | H0 | Sync this progress doc | done |
@@ -208,7 +219,8 @@ VAA Gate handoff `a9f926d` / V3 docs `789f7ad` (CI pin remains U1 `ca959f3`).
 SemASM Verified. Pipeline assemble/link/execute on x86 remains `experimental`.
 LLM / search mutator output ≠ Verified. `memcmp` oracle/vectors ≠ formal
 `ensures`/alias proof. Gate-2 `search --ingest --allow-execution` Verified ≠
-CryptOpt. NASM win64 does not emit WRITE on code sections; X0 uses
+CryptOpt. MemCmp harness is x86-only; AArch64/RISC-V fail closed (X4). NASM
+win64 does not emit WRITE on code sections; X0 uses
 `fixtures/obj/count_byte_wx_win64.obj` (WRITE|EXECUTE patched).
 
 Demo: `scripts/golden-demo.sh` (Linux SysV) or `scripts/golden-demo.ps1`

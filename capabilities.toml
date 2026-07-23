@@ -19,6 +19,9 @@
 #   close the known gaps (unknown insn / trailing bytes / WX / indirect).
 # - AArch64/RV64 pipeline evidence is stronger than x86 decode/lower depth;
 #   that asymmetry is intentional, not an oversight.
+# - MemCmp agent harness is x86-only (SysV + Win64 evidence below). AArch64 /
+#   RISC-V memcmp harness generation fails closed; do not read that as partial
+#   multi-ISA support.
 
 schema_version = "0.1"
 
