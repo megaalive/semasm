@@ -34,10 +34,13 @@ Tranche R (search→ingest Gate loop) are complete. **X2 + S + T** through
 **X5 + H5 + Z** are closed (leaf/Gate/bridge treadmill saturated).
 
 **Leaf treadmill paused** for thin HlaX64 bridges; **write-shape W0–W3** opened
-`replace_byte` (ADR 0003 Accepted) and **Wm** lands `memset` as the first
-design-compatible write-shape follow-on (harness shape resolved from the
-contract oracle, not vector layout, so `memset` can safely reuse the
-`BufferScan` wire layout). Next up: **Wc** `memcpy`. Gate-2 `ExecutionSandbox`
+`replace_byte` (ADR 0003 Accepted), **Wm** landed `memset`, and **Wc** lands
+`memcpy` as the second dual-buffer write-shape follow-on (harness shape
+resolved from the contract oracle, not vector layout, so `memcpy` can safely
+reuse the `MemCmp` wire layout). Overlap stays fail-closed per ADR 0003: every
+synthesized `dst`/`src` pair is a distinct, non-aliasing fixture buffer; the
+harness checks the post-call `dst` buffer only, never `src`. Next up:
+**Rmem** (ADR 0004, region-precise memory proof). Gate-2 `ExecutionSandbox`
 (I2) landed on VAA (`execution_isolation` + `--execution-sandbox`); this
 SemASM wave does not retouch that path.
 decode/lower stay `partial`. Exception: bugfix / pin tip only.
@@ -87,9 +90,12 @@ e2e jobs bound in `capabilities.toml`.
 | `sum_i64` | yes | yes | — | yes (H1) |
 | `min_usize` / `max_usize` | yes | yes | — | — |
 | `replace_byte` | yes (x86; A64/RV fail-closed) | W3 | — | — |
+| `memset` | yes (x86; A64/RV fail-closed) | — | — | — |
+| `memcpy` | yes (x86; A64/RV fail-closed) | — | — | — |
 
-**Not all buffer leaves are read-only:** `replace_byte` declares `memory_write`.
-Region-precise store proof remains deferred (ADR 0003).
+**Not all buffer leaves are read-only:** `replace_byte`/`memset`/`memcpy`
+declare `memory_write`. Region-precise store proof remains deferred (ADR
+0003; next candidate: **Rmem** / ADR 0004).
 
 **Intentionally not continued** in the same wave as write-shape:
 more HlaX64 bridges (`count_byte`, `find_first_byte`, pure-int), A64/RV MemCmp /
@@ -170,6 +176,27 @@ Next: **Wc** `memcpy` (dual-buffer write-shape; design-compatible follow-on
 per ADR 0003). VAA Gate/pin for `memset` is **not** part of this wave — SemASM
 only.
 
+### Write-shape v3 (Wc) — `memcpy`
+
+| Wave | Focus | Status |
+|---|---|---|
+| **Wc** | `builtin.buffer.memcpy` contract/oracle + `HarnessShape::Memcpy` + x86 asm/e2e/caps | **done** |
+
+Oracle: `builtin.buffer.memcpy`. Harness verifies the void-as-`0` return
+**and** that `dst[0..length]` equals `src[0..length]` after the call;
+`src` is unchanged input and is never echoed back (post-buffer Gate check
+covers `dst` only). `memcpy` vectors are deliberately layout-identical to
+`MemCmp` (two array/null buffers + a length); `resolve_harness_shape`
+disambiguates from the recognized contract oracle instead of vector layout
+alone, so `generate_harness` / `evaluate` never collide with the read-only
+`MemCmp` shape. **Overlap fail-closed** (ADR 0003): every synthesized vector
+uses distinct, non-aliasing `dst`/`src` fixture buffers — SemASM never
+synthesizes or claims defined behavior for aliasing regions. AArch64/RISC-V
+harness stays fail-closed, matching `replace_byte`/`memset`/MemCmp.
+Next: **Rmem** (ADR 0004, region-precise memory proof — successor to the
+"region-precise store proof remains deferred" note below). VAA Gate/pin for
+`memcpy` is **not** part of this wave — SemASM only; VAA is untouched.
+
 ### Completed recently (not deferred)
 
 - CFG / indirect-branch leaf policy wired into `agent verify` (`control` gate)
@@ -183,10 +210,9 @@ only.
 
 ### Deferred (explicitly out of current waves)
 
-- `memcpy` write-shape (Wc; `memset` landed in Wm); HlaX64 `replace_byte` /
-  `memset` bridges (W4)
+- HlaX64 `replace_byte` / `memset` / `memcpy` bridges (W4)
 - Gate-2 process isolation / `ExecutionSandbox` on Gate path (I2; VAA) — no
-  change in Wm; SemASM-only wave, VAA untouched
+  change in Wc; SemASM-only wave, VAA untouched
 - Formal `ensures result == count(...)` / general theorem proving
 - Full memory alias / symbolic / region-precise store proof
 - C compiler `-O2` / `-Os` binary-size bake-off in CI
