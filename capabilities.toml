@@ -24,6 +24,9 @@
 #   multi-ISA support.
 # - Tranche X5: SysV write/indirect + A64/RV adversarial/pure-int fixtures are
 #   listed as evidence honesty only — not a pipeline maturity bump.
+# - Maturity inflection D2: checklist before any x86 assemble/link/execute/
+#   pipeline_verify bump lives in docs/STABILIZATION_PROGRESS.md. Design notes
+#   only — this file stays experimental until that owner job is green.
 
 schema_version = "0.1"
 

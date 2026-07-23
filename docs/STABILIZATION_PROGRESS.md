@@ -30,13 +30,16 @@ Stabilization PR-01…18, Bulletproof P0–P5, X86 Golden Path Depth, Evidence
 W1–W5, controller handshake, shared `count_byte` / `sum_i64` / `min_usize` slices
 (VAA Gate-1/2), hardening T0–T6, runner JSON R0–R2, and Tranche M are complete on
 `main`. GitHub Release **`v0.1.0`**, Tranche N–Q, X0/X1 object-policy depth, and
-Tranche R (search→ingest Gate loop) are complete. **X2 + S + T** closed
-(`find_last_byte` Gate + `vaa search --ingest`). **X3 + U + V** closed
-(`count_byte` Win64 callee_saved depth, `memcmp` Gate pack, VAA pin +
-search `--ingest --allow-execution` smoke). **X4 + H4 + Y** closed
-(MemCmp A64/RV fail-closed, HlaX64 `find_last_byte` bridge, `memcmp`
-search-ingest Gate parity). **X5 + H5 + Z** closed (caps evidence sync,
-HlaX64 `memcmp` bridge, `find_first_byte` search-ingest Gate parity).
+Tranche R (search→ingest Gate loop) are complete. **X2 + S + T** through
+**X5 + H5 + Z** are closed (leaf/Gate/bridge treadmill saturated).
+
+**Leaf treadmill paused.** Next investment is the **maturity inflection** design
+tranche (D0–D2): docs/ADR only — no new oracle leaf, no new HlaX64 bridge, no
+x86 pipeline maturity bump in D*. Exception: bugfix / pin tip only.
+
+First post-design implementation cliff (separate W* plan after ADR Accept):
+**write-shape** buffer leaves (`replace_byte` / `memcpy`). Pipeline maturity
+and Gate-2 isolation get criteria notes in D2, then queue behind write-shape.
 
 ### Next waves (X4 + H4 + Y) — closed
 
@@ -46,7 +49,7 @@ HlaX64 `memcmp` bridge, `find_first_byte` search-ingest Gate parity).
 | **H4** | HlaX64 → VAA bridge for `find_last_byte` | HlaX64+VAA | **done** (`3641428` / `e105ea0`) |
 | **Y0–Y2** | Pin tips + `memcmp` search `--ingest` Gate parity | VAA | **done** (`1c43236`) |
 
-### Next waves (X5 + H5 + Z)
+### Next waves (X5 + H5 + Z) — closed
 
 | Wave | Focus | Owner | Status |
 |---|---|---|---|
@@ -58,6 +61,60 @@ A64/RV MemCmp harness remains fail-closed (X4); X5 does not implement it.
 
 Tranche X5 + H5 + Z closed: SemASM tip `0305846`; HlaX64 `eeac3ba`;
 VAA Gate handoff `9c2203e` (pin SemASM `0305846`, HlaX64 `eeac3ba`).
+
+### Maturity inflection (D0–D2) — design only
+
+| Wave | Focus | Owner | Status |
+|---|---|---|---|
+| **D0** | Freeze leaf treadmill + inventory honesty | SemASM+VAA | **done** (this doc) |
+| **D1** | ADR write-shape buffer leaves | SemASM | **done** (`adr/0003-write-shape-buffer-leaves.md`) |
+| **D2** | Pipeline maturity + Gate-2 isolation criteria | SemASM+VAA | **done** (notes below + VAA) |
+
+**Honesty:** Incomplete ≠ Verified. SoftHSM / Fulcio / practice seals ≠ Verified.
+HlaX64 `-Wverify` ≠ SemASM Verified. Search ≠ CryptOpt. D* does **not** bump
+`assemble`/`link`/`execute`/`pipeline_verify` off `experimental`.
+
+#### Leaf / Gate / bridge inventory (D0)
+
+| Leaf | SemASM agent/e2e | VAA Gate-1/2 | search `--ingest` | HlaX64 bridge |
+|---|---|---|---|---|
+| `count_byte` | yes | yes | yes | **paused** (no fourth bridge yet) |
+| `find_first_byte` | yes | yes | yes (Z) | **paused** |
+| `find_last_byte` | yes | yes | yes | yes (H4) |
+| `memcmp` | yes (x86; A64/RV fail-closed) | yes | yes (Y) | yes (H5) |
+| `sum_i64` | yes | yes | — | yes (H1) |
+| `min_usize` / `max_usize` | yes | yes | — | — |
+
+**Intentionally not continued** until write-shape ADR Accept + separate W* plan:
+more HlaX64 bridges (`count_byte`, `find_first_byte`, pure-int), A64/RV MemCmp
+harness, CryptOpt embed, formal `ensures` / full alias.
+
+#### Pipeline maturity bump checklist (D2 companion)
+
+Do **not** change x86-64 Linux/Windows `assemble` / `link` / `execute` /
+`pipeline_verify` from `experimental` → `verified_in_ci` until **all** hold:
+
+1. **Owner CI job** named and green on `main` that runs golden-leaf
+   assemble→link→run end-to-end (not only `agent verify`).
+2. Job covers both SysV and Win64 paths claimed in `capabilities.toml`.
+3. Failures are fail-closed (non-zero exit), not skip/warn-as-pass.
+4. Caps comment block (Tranche O) updated in the same change as the bump.
+5. `agent_verify = verified_in_ci` alone is **never** sufficient for a pipeline bump.
+
+#### After D1 Accept — W* outline only (not this tranche)
+
+Separate implementation plan (W0–Wn), not mixed with CryptOpt / maturity bump /
+Gate-2 sandbox wiring:
+
+| Wave | Focus (outline) |
+|---|---|
+| **W0** | Contract + oracle id + vectors for chosen write shape |
+| **W1** | Harness / `HarnessShape` + memory-gate honesty for declared writes |
+| **W2** | Asm packs + e2e (x86-only first, mirror MemCmp) |
+| **W3** | VAA Gate fixtures |
+| **W4** | Optional HlaX64 bridge |
+
+See `adr/0003-write-shape-buffer-leaves.md`.
 
 | Step | Focus | Status |
 |---|---|---|
@@ -82,11 +139,15 @@ VAA Gate handoff `9c2203e` (pin SemASM `0305846`, HlaX64 `eeac3ba`).
 
 ### Deferred (explicitly out of current waves)
 
+- Write-shape **implementation** (W*) until ADR 0003 Accept + separate plan
+- x86 pipeline maturity bump until D2 checklist owner job is green
+- Gate-2 process isolation / `ExecutionSandbox` on Gate path (VAA criteria)
 - Formal `ensures result == count(...)` / general theorem proving
 - Full memory alias / symbolic proof beyond the read-only leaf gate
 - C compiler `-O2` / `-Os` binary-size bake-off in CI
-- New ISAs or broad mnemonic expansion
-- VAA / HlaX64 product work (sibling repos; see `CONTROLLER_PROTOCOL.md`)
+- New ISAs or broad mnemonic expansion; A64/RV MemCmp harness
+- Thin leaf / HlaX64 bridge treadmill (paused; see maturity inflection)
+- CryptOpt embed, live-model Gate CI, remote transparency, hardware HSM
 
 ### Shared vertical slice (SemASM + VAA) — done
 
