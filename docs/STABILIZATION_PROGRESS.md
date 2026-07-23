@@ -108,7 +108,7 @@ VAA post-alpha trust depth (**P7** / **P8**) is Done on the consumer side
 | **M1** | `capabilities.toml` evidence fixtures include `sum_i64` corpus | SemASM | **done** |
 | **M2** | `min_usize` Gate-ready pack (goldens / twins / honesty parity) | SemASM | **done** |
 | **M3** | One x86 adversarial twin wave around golden path | SemASM | **done** |
-| **M4** | VAA pin tip + `min_usize` Gate-1/2 fixtures/smoke | VAA | pending |
+| **M4** | VAA pin tip + `min_usize` Gate-1/2 fixtures/smoke | VAA | **done** |
 
 **Honesty:** Gate-1 Incomplete ≠ Verified. SoftHSM / Fulcio / practice seals ≠
 SemASM Verified. Pipeline assemble/link/execute on x86 remains `experimental`.
