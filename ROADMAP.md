@@ -41,12 +41,12 @@ conformance evidence are proven.
   read-only buffer memory leaf; contract/harness mismatch fail-closed;
   A64/RV `control`/`memory` reported as `skipped` until ported.
 - Still deferred: full memory alias / symbolic proof; formal `ensures`;
-  optional offline C size comparison (not a CI gate); `v0.1.0` release tag.
+  optional offline C size comparison (not a CI gate).
+- **Done:** GitHub Release tag `v0.1.0` (checklist-gated; CLI archives only).
 
 Consumer pin / framed smoke / capability claim bind: see VAA `docs/progress.md`
-(waves N0–N4, P0–P2, R0–R2, and VAA P7/P8 Done). Next shared work is **Tranche M**
-(`min_usize` Gate handoff + x86 evidence/adversarial depth) — see
-`docs/STABILIZATION_PROGRESS.md`.
+(waves N0–N4, P0–P2, R0–R2, VAA P7/P8, and Tranche M Done). Next shared work is
+**Tranche N** (`max_usize` Gate handoff) — see `docs/STABILIZATION_PROGRESS.md`.
 
 See `semasm-complete-project-plan.md` for the original ordered vertical slices
 and `docs/status/BASELINE-2026-07.md` for the stabilization baseline.

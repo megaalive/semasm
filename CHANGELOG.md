@@ -6,8 +6,25 @@ follow [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+## [0.1.0] - 2026-07-23
+
 ### Added
 
+- Portable semantic-contract parsing, validation, stable diagnostics, and JSON
+  reports.
+- Target identities, capability manifest, generated status output, and
+  toolchain discovery for Linux x86-64, Windows x86-64, AArch64, and RISC-V.
+- Hardened subprocess execution with controlled stdin/environment, bounded
+  capture, timeouts, and process-tree termination.
+- Reproducible assembly/link pipelines, structured object verification, and
+  explicit execution evidence.
+- Versioned artifact reports with canonical deterministic evidence hashes and
+  separated volatile metadata.
+- Physical decoding, CFG extraction, partial lowering, and ABI analysis for the
+  support levels recorded in `capabilities.toml`.
+- Provider-neutral agent task packets and incomplete-analysis propagation.
+- Linux, Windows, AArch64, and RV64 end-to-end CI evidence.
+- Adversarial parser/object corpus and isolated bounded fuzz entry points.
 - Gas buffer-scan behavioral harnesses for AArch64 (`svc` write/exit) and
   RV64 (`ecall` write/exit); `semasm agent verify --allow-execution` works
   under qemu in cross-target CI.
@@ -30,6 +47,10 @@ follow [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   binutils, and qemu-user for that path.
 - [ADR 0002](adr/0002-crate-boundaries.md): crate-boundary audit keeps the
   thirteen-crate workspace without merges (PR-16).
+- Shared vertical slices for `count_byte`, `sum_i64`, and `min_usize` (SysV +
+  Win64 e2e, consumer goldens, adversarial write/callee-saved twins).
+- Oracle v2 splits weak contract `ensures` from `proof_basis: oracle_and_vectors`;
+  evidence card, candidate compare, and controller handshake for VAA adapters.
 
 ### Changed
 
@@ -51,39 +72,6 @@ follow [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   only when a `memory_read` effect names `{ptr}[0..{len}]`. It no longer uses
   `bounded_stack_bytes` as a buffer-length bound.
 
-### Compatibility
-
-- `semasm agent verify --format json` now serializes `VerificationReport`
-  (not bare `HarnessReport`). Nested `behavior` remains a `HarnessReport` when
-  execution was allowed; otherwise `behavior` is `null`.
-- Status strings are snake_case: `verified`, `semantic_failed`,
-  `executable_failed`, `behavior_failed`, `execution_denied`.
-- Experimental `VerificationReport` JSON Schema `0.1` is published at
-  `crates/semasm-agent/schemas/verification-report.json` with policy in
-  `docs/AGENT_SCHEMA_POLICY.md` (includes root `schema_version`).
-- Harness API: `generate_harness(symbol, vectors, abi) -> Result<String, String>`
-  (SysV, Win64, AAPCS64, and RISC-V buffer-scan generators).
-
-## [0.1.0] - 2026-07-18
-
-### Added
-
-- Portable semantic-contract parsing, validation, stable diagnostics, and JSON
-  reports.
-- Target identities, capability manifest, generated status output, and
-  toolchain discovery for Linux x86-64, Windows x86-64, AArch64, and RISC-V.
-- Hardened subprocess execution with controlled stdin/environment, bounded
-  capture, timeouts, and process-tree termination.
-- Reproducible assembly/link pipelines, structured object verification, and
-  explicit execution evidence.
-- Versioned artifact reports with canonical deterministic evidence hashes and
-  separated volatile metadata.
-- Physical decoding, CFG extraction, partial lowering, and ABI analysis for the
-  support levels recorded in `capabilities.toml`.
-- Provider-neutral agent task packets and incomplete-analysis propagation.
-- Linux, Windows, AArch64, and RV64 end-to-end CI evidence.
-- Adversarial parser/object corpus and isolated bounded fuzz entry points.
-
 ### Security
 
 - Commands are executed without shell concatenation and secret-like environment
@@ -98,6 +86,19 @@ follow [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - Contract TOML uses schema `0.1` and rejects unknown fields.
 - CLI exit codes and other JSON compatibility commitments are documented in
   `docs/CLI_COMPATIBILITY.md`.
+- `semasm agent verify --format json` now serializes `VerificationReport`
+  (not bare `HarnessReport`). Nested `behavior` remains a `HarnessReport` when
+  execution was allowed; otherwise `behavior` is `null`.
+- Status strings are snake_case: `verified`, `semantic_failed`,
+  `executable_failed`, `behavior_failed`, `execution_denied`.
+- Experimental `VerificationReport` JSON Schema `0.1` is published at
+  `crates/semasm-agent/schemas/verification-report.json` with policy in
+  `docs/AGENT_SCHEMA_POLICY.md` (includes root `schema_version`).
+- Harness API: `generate_harness(symbol, vectors, abi) -> Result<String, String>`
+  (SysV, Win64, AAPCS64, and RISC-V buffer-scan generators).
+- Partial architecture coverage: x86-64 agent/pipeline maturity is
+  experimental on assemble/link/execute; AArch64/RV64 pipeline evidence is
+  stronger than x86 decode/lower completeness. See `semasm status`.
 
 [Unreleased]: https://github.com/megaalive/semasm/compare/v0.1.0...HEAD
 [0.1.0]: https://github.com/megaalive/semasm/releases/tag/v0.1.0

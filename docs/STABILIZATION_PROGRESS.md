@@ -27,9 +27,10 @@ before work advances past a failed item.
 ## Current focus
 
 Stabilization PR-01…18, Bulletproof P0–P5, X86 Golden Path Depth, Evidence
-W1–W5, controller handshake, shared `count_byte` / `sum_i64` slices (VAA Gate-1/2),
-hardening T0–T6, and runner JSON R0–R2 are complete on `main`. **Next = Tranche M**
-(`min_usize` Gate-ready pack + capabilities evidence + adversarial depth + VAA handoff).
+W1–W5, controller handshake, shared `count_byte` / `sum_i64` / `min_usize` slices
+(VAA Gate-1/2), hardening T0–T6, runner JSON R0–R2, and Tranche M are complete on
+`main`. GitHub Release **`v0.1.0`** is the release tip. **Next = Tranche N**
+(`max_usize` Gate-ready pack + VAA handoff).
 
 | Step | Focus | Status |
 |---|---|---|
@@ -58,7 +59,6 @@ hardening T0–T6, and runner JSON R0–R2 are complete on `main`. **Next = Tran
 - Full memory alias / symbolic proof beyond the read-only leaf gate
 - C compiler `-O2` / `-Os` binary-size bake-off in CI
 - New ISAs or broad mnemonic expansion
-- GitHub Release `v0.1.0` (checklist-gated separately)
 - VAA / HlaX64 product work (sibling repos; see `CONTROLLER_PROTOCOL.md`)
 
 ### Shared vertical slice (SemASM + VAA) — done
@@ -100,7 +100,7 @@ Tranche SemASM hardening is closed on `main`. VAA pin / framed smoke waves
 VAA post-alpha trust depth (**P7** / **P8**) is Done on the consumer side
 (practice seals, SoftHSM smoke, Fulcio opt-in ≠ SemASM Verified).
 
-### Next waves (M0–M4 — Tranche M, post-R2 / post-VAA-P8)
+### Tranche M (M0–M4) — closed
 
 | Wave | Focus | Owner | Status |
 |---|---|---|---|
@@ -110,13 +110,24 @@ VAA post-alpha trust depth (**P7** / **P8**) is Done on the consumer side
 | **M3** | One x86 adversarial twin wave around golden path | SemASM | **done** |
 | **M4** | VAA pin tip + `min_usize` Gate-1/2 fixtures/smoke | VAA | **done** |
 
+### Release tip `v0.1.0` — done
+
+Annotated tag + GitHub Release archives (`SHA256SUMS`) after
+`docs/RELEASE_CHECKLIST.md` gates. No crates.io publish in this ceremony.
+
+### Next waves (N0–N2 — Tranche N, post-`v0.1.0`)
+
+| Wave | Focus | Owner | Status |
+|---|---|---|---|
+| **N0** | `max_usize` oracle/claim distinction + contract (min regression) | SemASM | queued |
+| **N1** | `max_usize` asm/e2e/goldens/adversarial + capabilities evidence | SemASM | queued |
+| **N2** | VAA pin tip + `max_usize` Gate-1/2 fixtures/smoke | VAA | queued |
+
 **Honesty:** Gate-1 Incomplete ≠ Verified. SoftHSM / Fulcio / practice seals ≠
 SemASM Verified. Pipeline assemble/link/execute on x86 remains `experimental`.
 
 Demo: `scripts/golden-demo.sh` (Linux SysV) or `scripts/golden-demo.ps1`
 (Windows PE by default; `-SysV` for Linux tools).
 
-The 0.1 release workflow remains prepared and must only be triggered from a
-reviewed `v0.1.0` tag after checklist gates stay green (out of Tranche M). See
-`docs/CLI_COMPATIBILITY.md`, `docs/CONTROLLER_PROTOCOL.md`,
+See `docs/CLI_COMPATIBILITY.md`, `docs/CONTROLLER_PROTOCOL.md`,
 `docs/AGENT_SCHEMA_POLICY.md`, and `ARCHITECTURE.md`.

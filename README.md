@@ -197,9 +197,9 @@ the golden demo, not adding new ISAs.
 
 Release compatibility and gates are documented in
 [docs/CLI_COMPATIBILITY.md](docs/CLI_COMPATIBILITY.md) and
-[docs/RELEASE_CHECKLIST.md](docs/RELEASE_CHECKLIST.md). Changelog `0.1.0` is the
-crate/line version; a GitHub Release tag is published only from a reviewed
-`v0.1.0` after checklist gates stay green.
+[docs/RELEASE_CHECKLIST.md](docs/RELEASE_CHECKLIST.md). The `v0.1.0` GitHub
+Release distributes CLI archives + `SHA256SUMS` (no crates.io publish yet).
+Pre-1.0 APIs may still evolve.
 
 ## License
 
