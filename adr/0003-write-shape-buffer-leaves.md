@@ -2,8 +2,7 @@
 
 ## Status
 
-Proposed — design lock for maturity inflection D1. **Do not start W\*
-implementation until this ADR is Accepted.**
+Accepted
 
 ## Context
 

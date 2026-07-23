@@ -33,11 +33,9 @@ W1–W5, controller handshake, shared `count_byte` / `sum_i64` / `min_usize` sli
 Tranche R (search→ingest Gate loop) are complete. **X2 + S + T** through
 **X5 + H5 + Z** are closed (leaf/Gate/bridge treadmill saturated).
 
-**Leaf treadmill paused.** Maturity inflection D0–D2 closed. Maturity follow-up
-**M0–M1 closed:** x86 Linux/Windows `assemble` / `link` / `execute` /
-`pipeline_verify` are `verified_in_ci` (owner e2e jobs). ADR 0003 remains
-**Proposed** (no W*). Gate-2 `ExecutionSandbox` wire (I2) deferred. decode/lower
-stay `partial`. Exception: bugfix / pin tip only.
+**Leaf treadmill paused** for thin HlaX64 bridges; **write-shape W0–W3** opens
+`replace_byte` (ADR 0003 Accepted). Gate-2 `ExecutionSandbox` wire (I2) deferred.
+decode/lower stay `partial`. Exception: bugfix / pin tip only.
 
 ### Next waves (X4 + H4 + Y) — closed
 
@@ -83,10 +81,14 @@ e2e jobs bound in `capabilities.toml`.
 | `memcmp` | yes (x86; A64/RV fail-closed) | yes | yes (Y) | yes (H5) |
 | `sum_i64` | yes | yes | — | yes (H1) |
 | `min_usize` / `max_usize` | yes | yes | — | — |
+| `replace_byte` | yes (x86; A64/RV fail-closed) | W3 | — | — |
 
-**Intentionally not continued** until write-shape ADR Accept + separate W* plan:
-more HlaX64 bridges (`count_byte`, `find_first_byte`, pure-int), A64/RV MemCmp
-harness, CryptOpt embed, formal `ensures` / full alias.
+**Not all buffer leaves are read-only:** `replace_byte` declares `memory_write`.
+Region-precise store proof remains deferred (ADR 0003).
+
+**Intentionally not continued** in the same wave as write-shape:
+more HlaX64 bridges (`count_byte`, `find_first_byte`, pure-int), A64/RV MemCmp /
+replace harness, CryptOpt embed, formal `ensures` / full alias.
 
 #### Pipeline maturity bump checklist (D2 companion)
 
@@ -123,24 +125,18 @@ Honesty locked for the bump (M1):
 | **M0** | Deepen ownership map + Gate-2 I0–I2 criteria (docs) | **done** |
 | **M1** | Bind `ci_jobs` + bump x86 pipeline → `verified_in_ci` | **done** |
 
-x86 Linux/Windows pipeline levels are `verified_in_ci` owned by
-`e2e (x86-64 Linux)` and `e2e (x86-64 Windows)`. Agent ≠ pipeline. ADR 0003
-remains **Proposed** (no W*). Gate-2 `ExecutionSandbox` wire (I2) deferred.
+### Write-shape v1 (W0–W3) — `replace_byte`
 
-#### After D1 Accept — W* outline only (not this tranche)
+| Wave | Focus | Status |
+|---|---|---|
+| **W0** | Accept ADR 0003 + contract/oracle | **done** |
+| **W1** | `HarnessShape::ReplaceByte` + post-buffer check + memory honesty | **done** |
+| **W2** | x86 asm/e2e/caps | **done** |
+| **W3** | VAA Gate + pin | pending |
 
-Separate implementation plan (W0–Wn), not mixed with CryptOpt / maturity bump /
-Gate-2 sandbox wiring:
-
-| Wave | Focus (outline) |
-|---|---|
-| **W0** | Contract + oracle id + vectors for chosen write shape |
-| **W1** | Harness / `HarnessShape` + memory-gate honesty for declared writes |
-| **W2** | Asm packs + e2e (x86-only first, mirror MemCmp) |
-| **W3** | VAA Gate fixtures |
-| **W4** | Optional HlaX64 bridge |
-
-See `adr/0003-write-shape-buffer-leaves.md`.
+Oracle: `builtin.buffer.replace_byte`. Harness verifies return count **and**
+mutated buffer bytes. AArch64/RISC-V harness fail-closed. W4 HlaX64 bridge
+deferred. See `adr/0003-write-shape-buffer-leaves.md`.
 
 | Step | Focus | Status |
 |---|---|---|
@@ -165,13 +161,13 @@ See `adr/0003-write-shape-buffer-leaves.md`.
 
 ### Deferred (explicitly out of current waves)
 
-- Write-shape **implementation** (W*) until ADR 0003 Accept + separate plan
+- `memcpy` / `memset` write-shapes; HlaX64 `replace_byte` bridge (W4)
 - Gate-2 process isolation / `ExecutionSandbox` on Gate path (I2; VAA)
 - Formal `ensures result == count(...)` / general theorem proving
-- Full memory alias / symbolic proof beyond the read-only leaf gate
+- Full memory alias / symbolic / region-precise store proof
 - C compiler `-O2` / `-Os` binary-size bake-off in CI
-- New ISAs or broad mnemonic expansion; A64/RV MemCmp harness; decode/lower bump
-- Thin leaf / HlaX64 bridge treadmill (paused; see maturity inflection)
+- New ISAs or broad mnemonic expansion; A64/RV MemCmp / replace harness; decode/lower bump
+- Thin leaf / HlaX64 bridge treadmill (paused except write-shape W*)
 - CryptOpt embed, live-model Gate CI, remote transparency, hardware HSM
 
 ### Shared vertical slice (SemASM + VAA) — done

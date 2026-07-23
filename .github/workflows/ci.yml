@@ -149,6 +149,7 @@ jobs:
           cargo test -p semasm-cli --all-features --test agent_verify_find_first_byte_win64 -- --ignored --nocapture
           cargo test -p semasm-cli --all-features --test agent_verify_find_last_byte_win64 -- --ignored --nocapture
           cargo test -p semasm-cli --all-features --test agent_verify_memcmp_win64 -- --ignored --nocapture
+          cargo test -p semasm-cli --all-features --test agent_verify_replace_byte_win64 -- --ignored --nocapture
           cargo test -p semasm-cli --all-features --test agent_verify_sum_i64_win64 -- --ignored --nocapture
           cargo test -p semasm-cli --all-features --test agent_verify_adversarial _win64_ -- --ignored --nocapture
 
@@ -259,6 +260,8 @@ jobs:
           cargo test -p semasm-cli --all-features --test agent_verify_find_last_byte \
             -- --ignored --nocapture
           cargo test -p semasm-cli --all-features --test agent_verify_memcmp \
+            -- --ignored --nocapture
+          cargo test -p semasm-cli --all-features --test agent_verify_replace_byte \
             -- --ignored --nocapture
           cargo test -p semasm-cli --all-features --test agent_verify_sum_i64 \
             -- --ignored --nocapture

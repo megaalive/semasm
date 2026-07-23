@@ -19,6 +19,9 @@
 //! - **Buffer scan** `(ptr<const u8> buffer, usize length, u8 needle) -> usize`
 //!   — `count_byte` (count), `find_first_byte` (first index, or length if absent),
 //!   or `find_last_byte` (last index, or length if absent).
+//! - **Replace byte** `(ptr<u8> buffer, usize length, u8 needle, u8 replacement) -> usize`
+//!   — `replace_byte`: count of replacements; harness also checks post-buffer
+//!   bytes. **x86-only** (SysV + Win64); AArch64/RISC-V fail closed.
 //! - **MemCmp** `(ptr<const u8> a, ptr<const u8> b, usize length) -> isize`
 //!   - unsigned lexicographic comparison returning only `-1`, `0`, or `1`.
 //!   - Harness generation is **x86-only** (SysV + Win64); AArch64/RISC-V
@@ -28,8 +31,8 @@
 //! - **Pure integer** `(usize, usize) -> usize` — canonical examples
 //!   `min_usize` / `max_usize` (same calling shape; op from name + ensures).
 //!
-//! Synthesis tries buffer-scan, MemCmp, i64-sum, then pure-integer.  When the
-//! contract matches none of those shapes the synthesizer returns an empty
+//! Synthesis tries buffer-scan, replace-byte, MemCmp, i64-sum, then pure-integer.
+//! When the contract matches none of those shapes the synthesizer returns an empty
 //! vector set and the caller may fall back to a hand-written set.
 //!
 //! Synthesis rules for the buffer-scan shape (contract schema 0.1):
@@ -79,6 +82,9 @@ pub fn synthesize_vectors(contract: &CheckedContract) -> Vec<TestVector> {
             BufferScanOp::FindLast => synthesize_find_last_vectors(shape),
         };
     }
+    if let Some(shape) = replace_byte_shape(contract) {
+        return synthesize_replace_byte_vectors(shape);
+    }
     if let Some(shape) = memcmp_shape(contract) {
         return synthesize_memcmp_vectors(shape);
     }
@@ -111,6 +117,10 @@ pub const ORACLE_BUFFER_MEMCMP_I8_VERSION: u32 = 1;
 pub const ORACLE_BUFFER_WRAPPING_SUM_I64: &str = "builtin.buffer.wrapping_sum_i64";
 /// Profile version for [`ORACLE_BUFFER_WRAPPING_SUM_I64`] (v2: ensures vs claim split).
 pub const ORACLE_BUFFER_WRAPPING_SUM_I64_VERSION: u32 = 2;
+/// Builtin oracle id for in-place byte replacement (`replace_byte`).
+pub const ORACLE_BUFFER_REPLACE_BYTE: &str = "builtin.buffer.replace_byte";
+/// Profile version for [`ORACLE_BUFFER_REPLACE_BYTE`].
+pub const ORACLE_BUFFER_REPLACE_BYTE_VERSION: u32 = 1;
 /// Builtin oracle id for pure two-`usize` integer shapes (`min_usize` / `max_usize`).
 pub const ORACLE_PURE_INT_BINARY_USIZE: &str = "builtin.pure_int.binary_usize";
 /// Profile version for [`ORACLE_PURE_INT_BINARY_USIZE`].
@@ -173,6 +183,13 @@ pub fn recognize_behavior_oracle(contract: &CheckedContract) -> Option<Recognize
                 version: ORACLE_BUFFER_FIND_LAST_U8_VERSION,
                 claim: "result equals the last index of needle in buffer[0..length], or length when absent",
             },
+        });
+    }
+    if replace_byte_shape(contract).is_some() {
+        return Some(RecognizedOracle {
+            id: ORACLE_BUFFER_REPLACE_BYTE,
+            version: ORACLE_BUFFER_REPLACE_BYTE_VERSION,
+            claim: "result equals how many buffer[0..length] bytes equal to needle were replaced with replacement; buffer bytes must match",
         });
     }
     if memcmp_shape(contract).is_some() {
@@ -331,6 +348,7 @@ pub fn validate_vectors_match_oracle(
         ORACLE_BUFFER_COUNT_EQUAL_U8 | ORACLE_BUFFER_FIND_FIRST_U8 | ORACLE_BUFFER_FIND_LAST_U8 => {
             HarnessShape::BufferScan
         }
+        ORACLE_BUFFER_REPLACE_BYTE => HarnessShape::ReplaceByte,
         ORACLE_BUFFER_MEMCMP_I8 => HarnessShape::MemCmp,
         ORACLE_BUFFER_WRAPPING_SUM_I64 => HarnessShape::I64Sum,
         ORACLE_PURE_INT_BINARY_USIZE => HarnessShape::PureInt,
@@ -351,6 +369,7 @@ pub fn validate_vectors_match_oracle(
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 enum HarnessShape {
     BufferScan,
+    ReplaceByte,
     MemCmp,
     I64Sum,
     PureInt,
@@ -362,6 +381,13 @@ fn detect_harness_shape(vectors: &[TestVector]) -> Result<HarnessShape, String> 
         return Err("no test vectors".into());
     };
     match first.inputs.len() {
+        4 if matches!(
+            first.inputs.first(),
+            Some(serde_json::Value::Null | serde_json::Value::Array(_))
+        ) && first.inputs[1..].iter().all(serde_json::Value::is_number) =>
+        {
+            Ok(HarnessShape::ReplaceByte)
+        }
         3 if matches!(
             first.inputs.first(),
             Some(serde_json::Value::Null | serde_json::Value::Array(_))
@@ -395,7 +421,8 @@ fn detect_harness_shape(vectors: &[TestVector]) -> Result<HarnessShape, String> 
         2 if first.inputs.iter().all(serde_json::Value::is_number) => Ok(HarnessShape::PureInt),
         n => Err(format!(
             "unsupported test vector shape ({n} inputs); \
-             expected buffer-scan (3: array/null + two numbers), memcmp \
+             expected buffer-scan (3: array/null + two numbers), replace-byte \
+             (4: array/null + three numbers), memcmp \
              (3: two arrays/null + length), i64-sum (2: array/null + length), \
              or pure-int (2 numeric)"
         )),
@@ -1111,6 +1138,181 @@ struct I64SumShape {
     allows_null_when_empty: bool,
 }
 
+/// Resolved calling shape for in-place byte replacement.
+#[derive(Clone, Copy)]
+struct ReplaceByteShape {
+    needle: u8,
+    replacement: u8,
+    max_length: Option<usize>,
+}
+
+/// Detect `(ptr<u8>, usize, u8 needle, u8 replacement) -> usize` write-shape.
+fn replace_byte_shape(contract: &CheckedContract) -> Option<ReplaceByteShape> {
+    if !contract.name.to_ascii_lowercase().contains("replace") {
+        return None;
+    }
+    let has_write = contract
+        .effects
+        .iter()
+        .any(|effect| effect.kind == "memory_write");
+    if !has_write {
+        return None;
+    }
+
+    let mut ptr_param = None;
+    let mut len_param = None;
+    let mut u8_params = Vec::new();
+
+    for p in &contract.parameters {
+        match &p.ty {
+            SemType::Ptr { is_const, .. } if !*is_const && ptr_param.is_none() => {
+                ptr_param = Some(p);
+            }
+            SemType::Usize if len_param.is_none() => {
+                len_param = Some(p);
+            }
+            SemType::UInt { bits: 8 } => u8_params.push(p),
+            _ => {}
+        }
+    }
+
+    let returns_usize = contract
+        .returns
+        .iter()
+        .any(|r| matches!(r.ty, SemType::Usize));
+
+    let (ptr_param, len_param) = match (ptr_param, len_param) {
+        (Some(p), Some(l)) if returns_usize && u8_params.len() >= 2 => (p, l),
+        _ => return None,
+    };
+    let _ = ptr_param;
+
+    let needle_param = u8_params[0];
+    let replacement_param = u8_params[1];
+
+    Some(ReplaceByteShape {
+        needle: needle_from_requires(contract, &needle_param.name)
+            .unwrap_or(DEFAULT_BUFFER_SCAN_NEEDLE),
+        replacement: needle_from_requires(contract, &replacement_param.name).unwrap_or(0),
+        max_length: length_bound_from_requires(contract, &len_param.name),
+    })
+}
+
+/// Synthesise replace-byte vectors (count expected; harness also checks buffer).
+fn synthesize_replace_byte_vectors(shape: ReplaceByteShape) -> Vec<TestVector> {
+    let max_len = shape
+        .max_length
+        .unwrap_or(MAX_FIXTURE_CAP)
+        .clamp(1, MAX_FIXTURE_CAP);
+    let needle = u64::from(shape.needle);
+    let replacement = u64::from(shape.replacement);
+
+    let mut vectors = Vec::new();
+
+    vectors.push(TestVector {
+        name: "empty input".into(),
+        inputs: vec![
+            serde_json::Value::Null,
+            serde_json::json!(0u64),
+            serde_json::json!(needle),
+            serde_json::json!(replacement),
+        ],
+        expected: serde_json::json!(0u64),
+    });
+
+    vectors.push(TestVector {
+        name: "one byte (match)".into(),
+        inputs: vec![
+            serde_json::json!([needle]),
+            serde_json::json!(1u64),
+            serde_json::json!(needle),
+            serde_json::json!(replacement),
+        ],
+        expected: serde_json::json!(1u64),
+    });
+
+    vectors.push(TestVector {
+        name: "one byte (miss)".into(),
+        inputs: vec![
+            serde_json::json!([needle.wrapping_add(1) & 0xff]),
+            serde_json::json!(1u64),
+            serde_json::json!(needle),
+            serde_json::json!(replacement),
+        ],
+        expected: serde_json::json!(0u64),
+    });
+
+    vectors.push(TestVector {
+        name: "mixed hits".into(),
+        inputs: vec![
+            serde_json::json!([needle, 1u64, needle, 2u64, needle]),
+            serde_json::json!(5u64),
+            serde_json::json!(needle),
+            serde_json::json!(replacement),
+        ],
+        expected: serde_json::json!(3u64),
+    });
+
+    if needle != replacement {
+        vectors.push(TestVector {
+            name: "needle equals replacement".into(),
+            inputs: vec![
+                serde_json::json!([needle, needle, 7u64]),
+                serde_json::json!(3u64),
+                serde_json::json!(needle),
+                serde_json::json!(needle),
+            ],
+            expected: serde_json::json!(2u64),
+        });
+    }
+
+    let mut max_buf = vec![needle; max_len];
+    if max_len > 1 {
+        max_buf[0] = needle.wrapping_add(1) & 0xff;
+    }
+    let max_count = max_buf.iter().filter(|&&b| b == needle).count() as u64;
+    vectors.push(TestVector {
+        name: "maximum configured fixture length".into(),
+        inputs: vec![
+            serde_json::json!(max_buf),
+            serde_json::json!(max_len as u64),
+            serde_json::json!(needle),
+            serde_json::json!(replacement),
+        ],
+        expected: serde_json::json!(max_count),
+    });
+
+    vectors
+}
+
+/// Expected post-mutation buffer for a replace-byte vector.
+fn expected_replace_byte_buffer(v: &TestVector) -> Vec<u8> {
+    let needle = vector_needle(v) as u8;
+    let replacement = vector_replacement(v) as u8;
+    match v.inputs.first() {
+        Some(serde_json::Value::Array(items)) => items
+            .iter()
+            .map(|x| {
+                let b = x.as_u64().unwrap_or(0).min(255) as u8;
+                if b == needle {
+                    replacement
+                } else {
+                    b
+                }
+            })
+            .collect(),
+        _ => Vec::new(),
+    }
+}
+
+fn vector_replacement(v: &TestVector) -> u64 {
+    v.inputs
+        .get(3)
+        .and_then(serde_json::Value::as_u64)
+        .unwrap_or(0)
+        & 0xff
+}
+
 /// Detect the `(ptr<const u8>, usize, u8) -> usize` shape.
 fn scan_shape(contract: &CheckedContract) -> Option<ScanShape> {
     let mut ptr_param = None;
@@ -1293,6 +1495,9 @@ pub fn generate_harness(
         (Abi::SysVAmd64, HarnessShape::BufferScan) => {
             Ok(generate_sysv_buffer_harness(routine_symbol, vectors))
         }
+        (Abi::SysVAmd64, HarnessShape::ReplaceByte) => {
+            Ok(generate_sysv_replace_byte_harness(routine_symbol, vectors))
+        }
         (Abi::SysVAmd64, HarnessShape::MemCmp) => {
             Ok(generate_sysv_memcmp_harness(routine_symbol, vectors))
         }
@@ -1304,6 +1509,9 @@ pub fn generate_harness(
         }
         (Abi::WindowsX64, HarnessShape::BufferScan) => {
             Ok(generate_win64_buffer_harness(routine_symbol, vectors))
+        }
+        (Abi::WindowsX64, HarnessShape::ReplaceByte) => {
+            Ok(generate_win64_replace_byte_harness(routine_symbol, vectors))
         }
         (Abi::WindowsX64, HarnessShape::MemCmp) => {
             Ok(generate_win64_memcmp_harness(routine_symbol, vectors))
@@ -1319,6 +1527,9 @@ pub fn generate_harness(
         }
         (Abi::Aapcs64 | Abi::Riscv, HarnessShape::MemCmp) => {
             Err("memcmp harness not yet supported on this ABI".into())
+        }
+        (Abi::Aapcs64 | Abi::Riscv, HarnessShape::ReplaceByte) => {
+            Err("replace_byte harness not yet supported on this ABI".into())
         }
         (Abi::Aapcs64, HarnessShape::I64Sum) => {
             Ok(generate_aapcs64_i64_sum_harness(routine_symbol, vectors))
@@ -1342,14 +1553,162 @@ fn emit_vector_data(out: &mut String, vectors: &[TestVector]) {
     out.push_str("section .data\n");
     for (i, v) in vectors.iter().enumerate() {
         let bytes = vector_buffer_bytes(v);
-        let _ = writeln!(out, "vec{i}_len: dq {}", vector_length(v));
-        let _ = writeln!(out, "vec{i}_needle: db {}", vector_needle(v));
-        let _ = write!(out, "vec{i}_buf: db {}", bytes.join(", "));
+        let _ = writeln!(out, "align 8\nvec{i}_len:\n    dq {}", vector_length(v));
+        let _ = writeln!(out, "vec{i}_needle:\n    db {}", vector_needle(v));
         if bytes.is_empty() {
-            out.push_str(" 0"); // NASM rejects an empty db list.
+            let _ = writeln!(out, "vec{i}_buf:\n    db 0");
+        } else {
+            let _ = writeln!(out, "vec{i}_buf:\n    db {}", bytes.join(", "));
         }
-        out.push('\n');
     }
+}
+
+fn emit_replace_byte_vector_data(out: &mut String, vectors: &[TestVector]) {
+    out.push_str("section .data\n");
+    for (i, v) in vectors.iter().enumerate() {
+        let bytes = vector_buffer_bytes(v);
+        let _ = writeln!(out, "align 8\nvec{i}_len:\n    dq {}", vector_length(v));
+        let _ = writeln!(out, "vec{i}_needle:\n    db {}", vector_needle(v));
+        let _ = writeln!(
+            out,
+            "vec{i}_replacement:\n    db {}",
+            vector_replacement(v)
+        );
+        if bytes.is_empty() {
+            // Keep a writable byte so lea is always valid when length is 0.
+            let _ = writeln!(out, "vec{i}_buf:\n    db 0");
+        } else {
+            let _ = writeln!(out, "vec{i}_buf:\n    db {}", bytes.join(", "));
+        }
+    }
+}
+
+/// Generate SysV replace-byte harness: write counts then mutated buffers.
+fn generate_sysv_replace_byte_harness(routine_symbol: &str, vectors: &[TestVector]) -> String {
+    let mut out = String::new();
+    out.push_str("BITS 64\n");
+    out.push_str("DEFAULT REL\n\n");
+    emit_replace_byte_vector_data(&mut out, vectors);
+
+    out.push_str("\nsection .bss\n");
+    let _ = writeln!(out, "results: resb {}", vectors.len() * 8);
+
+    out.push_str("\nsection .text\n");
+    let _ = writeln!(out, "extern {routine_symbol}");
+    out.push_str("global _start\n");
+    out.push_str("_start:\n");
+
+    for (i, v) in vectors.iter().enumerate() {
+        let _ = writeln!(out, "    ; vector {i}: {}", v.name);
+        if v.inputs.first().is_some_and(serde_json::Value::is_null) {
+            out.push_str("    xor edi, edi\n");
+        } else {
+            let _ = writeln!(out, "    lea rdi, [vec{i}_buf]");
+        }
+        let _ = writeln!(out, "    mov rsi, [vec{i}_len]");
+        let _ = writeln!(out, "    movzx edx, byte [vec{i}_needle]");
+        let _ = writeln!(out, "    movzx ecx, byte [vec{i}_replacement]");
+        let _ = writeln!(out, "    call {routine_symbol}");
+        let _ = writeln!(out, "    mov [results + {i}*8], rax");
+    }
+
+    out.push_str("    ; write(results, N*8)\n");
+    out.push_str("    mov eax, 1\n");
+    out.push_str("    mov edi, 1\n");
+    out.push_str("    lea rsi, [results]\n");
+    let _ = writeln!(out, "    mov edx, {}", vectors.len() * 8);
+    out.push_str("    syscall\n");
+
+    for (i, v) in vectors.iter().enumerate() {
+        let len = vector_length(v) as usize;
+        if len == 0 {
+            continue;
+        }
+        let _ = writeln!(out, "    ; write mutated buffer {i} ({len} bytes)");
+        out.push_str("    mov eax, 1\n");
+        out.push_str("    mov edi, 1\n");
+        let _ = writeln!(out, "    lea rsi, [vec{i}_buf]");
+        let _ = writeln!(out, "    mov edx, {len}");
+        out.push_str("    syscall\n");
+    }
+
+    out.push_str("    mov eax, 60\n");
+    out.push_str("    xor edi, edi\n");
+    out.push_str("    syscall\n");
+    out
+}
+
+/// Generate Win64 replace-byte harness: WriteFile counts then mutated buffers.
+fn generate_win64_replace_byte_harness(routine_symbol: &str, vectors: &[TestVector]) -> String {
+    let mut out = String::new();
+    out.push_str("BITS 64\n");
+    out.push_str("DEFAULT REL\n\n");
+    out.push_str("EXTERN GetStdHandle\n");
+    out.push_str("EXTERN WriteFile\n");
+    out.push_str("EXTERN ExitProcess\n\n");
+    emit_replace_byte_vector_data(&mut out, vectors);
+
+    out.push_str("\nsection .bss\n");
+    let _ = writeln!(out, "results: resb {}", vectors.len() * 8);
+    out.push_str("written: resq 1\n");
+    out.push_str("stdout_handle: resq 1\n");
+
+    out.push_str("\nsection .text\n");
+    let _ = writeln!(out, "extern {routine_symbol}");
+    out.push_str("global main\n");
+    out.push_str("main:\n");
+
+    for (i, v) in vectors.iter().enumerate() {
+        let _ = writeln!(out, "    ; vector {i}: {}", v.name);
+        out.push_str("    sub rsp, 40\n");
+        if v.inputs.first().is_some_and(serde_json::Value::is_null) {
+            out.push_str("    xor ecx, ecx\n");
+        } else {
+            let _ = writeln!(out, "    lea rcx, [vec{i}_buf]");
+        }
+        let _ = writeln!(out, "    mov rdx, [vec{i}_len]");
+        let _ = writeln!(out, "    movzx r8d, byte [vec{i}_needle]");
+        let _ = writeln!(out, "    movzx r9d, byte [vec{i}_replacement]");
+        let _ = writeln!(out, "    call {routine_symbol}");
+        out.push_str("    add rsp, 40\n");
+        let _ = writeln!(out, "    mov [results + {i}*8], rax");
+    }
+
+    out.push_str("    sub rsp, 40\n");
+    out.push_str("    mov ecx, -11\n");
+    out.push_str("    call GetStdHandle\n");
+    out.push_str("    mov [stdout_handle], rax\n");
+    out.push_str("    add rsp, 40\n");
+
+    out.push_str("    sub rsp, 40\n");
+    out.push_str("    mov rcx, [stdout_handle]\n");
+    out.push_str("    lea rdx, [results]\n");
+    let _ = writeln!(out, "    mov r8d, {}", vectors.len() * 8);
+    out.push_str("    lea r9, [written]\n");
+    out.push_str("    mov qword [rsp + 32], 0\n");
+    out.push_str("    call WriteFile\n");
+    out.push_str("    add rsp, 40\n");
+
+    for (i, v) in vectors.iter().enumerate() {
+        let len = vector_length(v) as usize;
+        if len == 0 {
+            continue;
+        }
+        let _ = writeln!(out, "    ; write mutated buffer {i}");
+        out.push_str("    sub rsp, 40\n");
+        out.push_str("    mov rcx, [stdout_handle]\n");
+        let _ = writeln!(out, "    lea rdx, [vec{i}_buf]");
+        let _ = writeln!(out, "    mov r8d, {len}");
+        out.push_str("    lea r9, [written]\n");
+        out.push_str("    mov qword [rsp + 32], 0\n");
+        out.push_str("    call WriteFile\n");
+        out.push_str("    add rsp, 40\n");
+    }
+
+    out.push_str("    sub rsp, 40\n");
+    out.push_str("    xor ecx, ecx\n");
+    out.push_str("    call ExitProcess\n");
+    out
 }
 
 fn emit_gas_vector_data(out: &mut String, vectors: &[TestVector]) {
@@ -2212,8 +2571,15 @@ pub struct HarnessReport {
 
 /// Parse raw harness stdout (8-byte little-endian `u64` per vector) and
 /// compare against expected values.
+///
+/// For [`HarnessShape::ReplaceByte`], stdout is counts (`N*8` bytes) followed by
+/// each mutated buffer in order (length bytes each; empty buffers omit a chunk).
 #[must_use]
 pub fn evaluate(stdout: &[u8], vectors: &[TestVector]) -> HarnessReport {
+    if detect_harness_shape(vectors).ok() == Some(HarnessShape::ReplaceByte) {
+        return evaluate_replace_byte(stdout, vectors);
+    }
+
     let mut observed: Vec<Option<u64>> = Vec::with_capacity(vectors.len());
     for i in 0..vectors.len() {
         let base = i * 8;
@@ -2247,6 +2613,66 @@ pub fn evaluate(stdout: &[u8], vectors: &[TestVector]) -> HarnessReport {
 
     let all_passed = cases.iter().all(|c| c.passed);
 
+    HarnessReport { cases, all_passed }
+}
+
+fn evaluate_replace_byte(stdout: &[u8], vectors: &[TestVector]) -> HarnessReport {
+    let mut offset = 0usize;
+    let mut cases = Vec::with_capacity(vectors.len());
+
+    let mut counts: Vec<Option<u64>> = Vec::with_capacity(vectors.len());
+    for _ in 0..vectors.len() {
+        if stdout.len() >= offset + 8 {
+            let mut b = [0u8; 8];
+            b.copy_from_slice(&stdout[offset..offset + 8]);
+            counts.push(Some(u64::from_le_bytes(b)));
+            offset += 8;
+        } else {
+            counts.push(None);
+        }
+    }
+
+    for (v, count) in vectors.iter().zip(counts) {
+        let expected_count = expected_bits(&v.expected);
+        let expected_buf = expected_replace_byte_buffer(v);
+        let len = expected_buf.len();
+
+        let (count_ok, observed_count) = match count {
+            Some(bits) => (bits == expected_count, bits.to_string()),
+            None => (false, "<no output>".into()),
+        };
+
+        let (buf_ok, observed_buf) = if len == 0 {
+            (true, "[]".into())
+        } else if stdout.len() >= offset + len {
+            let got = &stdout[offset..offset + len];
+            offset += len;
+            let ok = got == expected_buf.as_slice();
+            (ok, format!("{got:?}"))
+        } else {
+            (false, "<no buffer output>".into())
+        };
+
+        let passed = count_ok && buf_ok;
+        let observed = if passed {
+            observed_count
+        } else {
+            format!("count={observed_count}; buf={observed_buf}")
+        };
+
+        cases.push(VectorResult {
+            name: v.name.clone(),
+            passed,
+            expected: format!(
+                "count={}; buf={:?}",
+                format_expected(&v.expected),
+                expected_buf
+            ),
+            observed,
+        });
+    }
+
+    let all_passed = cases.iter().all(|c| c.passed);
     HarnessReport { cases, all_passed }
 }
 
@@ -2424,6 +2850,79 @@ expression = "count <= length"
             rv.contains("memcmp harness not yet supported on this ABI"),
             "unexpected RISC-V error: {rv}"
         );
+    }
+
+    fn replace_byte_contract() -> CheckedContract {
+        check_contract(include_str!("../../../fixtures/contracts/replace_byte.sem.toml"))
+    }
+
+    #[test]
+    fn recognizes_replace_byte_oracle_and_is_not_read_only() {
+        let c = replace_byte_contract();
+        let oracle = recognize_behavior_oracle(&c).expect("replace_byte oracle");
+        assert_eq!(oracle.id, ORACLE_BUFFER_REPLACE_BYTE);
+        assert_eq!(oracle.version, ORACLE_BUFFER_REPLACE_BYTE_VERSION);
+        assert!(!is_read_only_buffer_scan(&c));
+        let vectors = synthesize_vectors(&c);
+        assert!(vectors.len() >= 5);
+        assert_eq!(
+            detect_harness_shape(&vectors).expect("shape"),
+            HarnessShape::ReplaceByte
+        );
+        validate_vectors_match_oracle(&c, &vectors).expect("vectors match");
+    }
+
+    #[test]
+    fn replace_byte_harness_x86_and_fail_closed_elsewhere() {
+        let vectors = synthesize_vectors(&replace_byte_contract());
+        let sysv =
+            generate_harness("replace_byte", &vectors, Abi::SysVAmd64).expect("sysv harness");
+        assert!(sysv.contains("movzx ecx, byte [vec0_replacement]"));
+        assert!(sysv.contains("lea rdi, [vec0_buf]") || sysv.contains("xor edi, edi"));
+        let win =
+            generate_harness("replace_byte", &vectors, Abi::WindowsX64).expect("win64 harness");
+        assert!(win.contains("movzx r9d, byte [vec0_replacement]"));
+        let a64 = generate_harness("replace_byte", &vectors, Abi::Aapcs64)
+            .expect_err("AArch64 replace_byte must fail closed");
+        assert!(a64.contains("replace_byte harness not yet supported on this ABI"));
+        let rv = generate_harness("replace_byte", &vectors, Abi::Riscv)
+            .expect_err("RISC-V replace_byte must fail closed");
+        assert!(rv.contains("replace_byte harness not yet supported on this ABI"));
+    }
+
+    #[test]
+    fn evaluate_replace_byte_checks_count_and_buffer() {
+        let vectors = synthesize_vectors(&replace_byte_contract());
+        let mixed = vectors
+            .iter()
+            .find(|v| v.name == "mixed hits")
+            .expect("mixed hits");
+        let expected_buf = expected_replace_byte_buffer(mixed);
+        let mut stdout = Vec::new();
+        for v in &vectors {
+            stdout.extend_from_slice(&expected_bits(&v.expected).to_le_bytes());
+        }
+        for v in &vectors {
+            stdout.extend_from_slice(&expected_replace_byte_buffer(v));
+        }
+        let report = evaluate(&stdout, &vectors);
+        assert!(report.all_passed, "{:?}", report.cases);
+
+        // Wrong buffer for mixed hits: keep counts, corrupt one buffer byte.
+        let mut bad = stdout.clone();
+        let counts_end = vectors.len() * 8;
+        let mut buf_off = counts_end;
+        for v in &vectors {
+            let len = expected_replace_byte_buffer(v).len();
+            if v.name == "mixed hits" && len > 0 {
+                bad[buf_off] = bad[buf_off].wrapping_add(1);
+                break;
+            }
+            buf_off += len;
+        }
+        let failed = evaluate(&bad, &vectors);
+        assert!(!failed.all_passed);
+        assert!(!expected_buf.is_empty());
     }
 
     #[test]

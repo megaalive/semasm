@@ -101,6 +101,8 @@ fixtures = [
     "fixtures/asm/sum_i64_wrong.asm",
     "fixtures/asm/sum_i64_write.asm",
     "fixtures/asm/sum_i64_callee_saved.asm",
+    "fixtures/asm/replace_byte.asm",
+    "fixtures/asm/replace_byte_wrong.asm",
 ]
 ci_jobs = ["e2e (x86-64 Linux)", "decode (capstone)"]
 
@@ -163,6 +165,8 @@ fixtures = [
     "fixtures/asm/sum_i64_wrong_win64.asm",
     "fixtures/asm/sum_i64_write_win64.asm",
     "fixtures/asm/sum_i64_callee_saved_win64.asm",
+    "fixtures/asm/replace_byte_win64.asm",
+    "fixtures/asm/replace_byte_wrong_win64.asm",
 ]
 ci_jobs = ["e2e (x86-64 Windows)"]
 
