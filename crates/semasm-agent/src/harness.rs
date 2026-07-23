@@ -20,7 +20,8 @@
 //!   — canonical example `count_byte`.
 //! - **I64 wrapping sum** `(ptr<const i64> values, usize length) -> i64`
 //!   — canonical example `sum_i64`.
-//! - **Pure integer** `(usize, usize) -> usize` — canonical example `min_usize`.
+//! - **Pure integer** `(usize, usize) -> usize` — canonical examples
+//!   `min_usize` / `max_usize` (same calling shape; op from name + ensures).
 //!
 //! Synthesis tries buffer-scan, then i64-sum, then pure-integer.  When the
 //! contract matches none of those shapes the synthesizer returns an empty
@@ -72,8 +73,8 @@ pub fn synthesize_vectors(contract: &CheckedContract) -> Vec<TestVector> {
     if let Some(shape) = i64_sum_shape(contract) {
         return synthesize_i64_sum_vectors(shape);
     }
-    if pure_int_shape(contract).is_some() {
-        return synthesize_pure_int_vectors();
+    if let Some(op) = pure_int_shape(contract) {
+        return synthesize_pure_int_vectors(op);
     }
     Vec::new()
 }
@@ -86,10 +87,33 @@ pub const ORACLE_BUFFER_COUNT_EQUAL_U8_VERSION: u32 = 2;
 pub const ORACLE_BUFFER_WRAPPING_SUM_I64: &str = "builtin.buffer.wrapping_sum_i64";
 /// Profile version for [`ORACLE_BUFFER_WRAPPING_SUM_I64`] (v2: ensures vs claim split).
 pub const ORACLE_BUFFER_WRAPPING_SUM_I64_VERSION: u32 = 2;
-/// Builtin oracle id for pure two-`usize` integer shapes (`min_usize`).
+/// Builtin oracle id for pure two-`usize` integer shapes (`min_usize` / `max_usize`).
 pub const ORACLE_PURE_INT_BINARY_USIZE: &str = "builtin.pure_int.binary_usize";
 /// Profile version for [`ORACLE_PURE_INT_BINARY_USIZE`].
 pub const ORACLE_PURE_INT_BINARY_USIZE_VERSION: u32 = 2;
+
+/// Recognized binary pure-integer operation for `(usize, usize) -> usize`.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum PureIntOp {
+    Min,
+    Max,
+}
+
+impl PureIntOp {
+    fn claim(self) -> &'static str {
+        match self {
+            Self::Min => "result equals min(a, b) for the recognized two-usize pure-integer shape",
+            Self::Max => "result equals max(a, b) for the recognized two-usize pure-integer shape",
+        }
+    }
+
+    fn reduce(self, a: u64, b: u64) -> u64 {
+        match self {
+            Self::Min => a.min(b),
+            Self::Max => a.max(b),
+        }
+    }
+}
 
 /// Recognized builtin behavioral oracle for a contract shape, if any.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -122,11 +146,11 @@ pub fn recognize_behavior_oracle(contract: &CheckedContract) -> Option<Recognize
             claim: "result equals the wrapping sum of i64 elements in values[0..length]",
         });
     }
-    if pure_int_shape(contract).is_some() {
+    if let Some(op) = pure_int_shape(contract) {
         return Some(RecognizedOracle {
             id: ORACLE_PURE_INT_BINARY_USIZE,
             version: ORACLE_PURE_INT_BINARY_USIZE_VERSION,
-            claim: "result equals min(a, b) for the recognized two-usize pure-integer shape",
+            claim: op.claim(),
         });
     }
     None
@@ -415,7 +439,7 @@ fn synthesize_buffer_scan_vectors(shape: ScanShape) -> Vec<TestVector> {
 
 /// Synthesise canonical pure-integer test vectors for `(usize, usize) -> usize`.
 #[allow(clippy::vec_init_then_push)]
-fn synthesize_pure_int_vectors() -> Vec<TestVector> {
+fn synthesize_pure_int_vectors(op: PureIntOp) -> Vec<TestVector> {
     let cases: [(&str, u64, u64); 6] = [
         ("both zero", 0, 0),
         ("a smaller", 1, 2),
@@ -430,7 +454,7 @@ fn synthesize_pure_int_vectors() -> Vec<TestVector> {
         .map(|(name, a, b)| TestVector {
             name: name.into(),
             inputs: vec![serde_json::json!(a), serde_json::json!(b)],
-            expected: serde_json::json!(a.min(b)),
+            expected: serde_json::json!(op.reduce(a, b)),
         })
         .collect()
 }
@@ -496,15 +520,36 @@ fn synthesize_i64_sum_vectors(shape: I64SumShape) -> Vec<TestVector> {
     vectors
 }
 
-/// Detect the `(usize, usize) -> usize` pure-integer shape.
-fn pure_int_shape(contract: &CheckedContract) -> Option<()> {
+/// Detect the `(usize, usize) -> usize` pure-integer shape and which binary op.
+///
+/// Discriminator (fail-closed when ambiguous or conflicting):
+/// - function name containing `min` xor `max` (case-insensitive), and/or
+/// - weak ensures `result <= a` + `result <= b` (min) vs `result >= a` +
+///   `result >= b` (max).
+fn pure_int_shape(contract: &CheckedContract) -> Option<PureIntOp> {
+    if !pure_int_types(contract) {
+        return None;
+    }
+
+    let by_name = pure_int_op_from_name(&contract.name);
+    let by_ensures = pure_int_op_from_ensures(contract);
+
+    match (by_name, by_ensures) {
+        (Some(a), Some(b)) if a == b => Some(a),
+        (Some(a), None) => Some(a),
+        (None, Some(b)) => Some(b),
+        (Some(_), Some(_)) | (None, None) => None,
+    }
+}
+
+fn pure_int_types(contract: &CheckedContract) -> bool {
     let usize_count = contract
         .parameters
         .iter()
         .filter(|p| matches!(p.ty, SemType::Usize))
         .count();
     if usize_count != 2 {
-        return None;
+        return false;
     }
 
     let has_ptr = contract
@@ -516,17 +561,48 @@ fn pure_int_shape(contract: &CheckedContract) -> Option<()> {
         .iter()
         .any(|p| matches!(p.ty, SemType::UInt { bits: 8 }));
     if has_ptr || has_u8 {
-        return None;
+        return false;
     }
 
-    let returns_usize = contract
+    contract
         .returns
         .iter()
-        .any(|r| matches!(r.ty, SemType::Usize));
-    if returns_usize {
-        Some(())
-    } else {
-        None
+        .any(|r| matches!(r.ty, SemType::Usize))
+}
+
+fn pure_int_op_from_name(name: &str) -> Option<PureIntOp> {
+    let lower = name.to_ascii_lowercase();
+    let has_min = lower.contains("min");
+    let has_max = lower.contains("max");
+    match (has_min, has_max) {
+        (true, false) => Some(PureIntOp::Min),
+        (false, true) => Some(PureIntOp::Max),
+        _ => None,
+    }
+}
+
+fn pure_int_op_from_ensures(contract: &CheckedContract) -> Option<PureIntOp> {
+    let sources: Vec<String> = contract
+        .ensures
+        .iter()
+        .map(|c| {
+            c.source
+                .chars()
+                .filter(|ch| !ch.is_whitespace())
+                .collect::<String>()
+                .to_ascii_lowercase()
+        })
+        .collect();
+
+    let le_pair =
+        sources.iter().any(|s| s == "result<=a") && sources.iter().any(|s| s == "result<=b");
+    let ge_pair =
+        sources.iter().any(|s| s == "result>=a") && sources.iter().any(|s| s == "result>=b");
+
+    match (le_pair, ge_pair) {
+        (true, false) => Some(PureIntOp::Min),
+        (false, true) => Some(PureIntOp::Max),
+        _ => None,
     }
 }
 
@@ -1643,6 +1719,11 @@ expression = "count <= length"
         check_contract(toml)
     }
 
+    fn max_usize_contract() -> CheckedContract {
+        let toml = include_str!("../../../fixtures/contracts/max_usize.sem.toml");
+        check_contract(toml)
+    }
+
     fn sum_i64_contract() -> CheckedContract {
         let toml = include_str!("../../../fixtures/contracts/sum_i64.sem.toml");
         check_contract(toml)
@@ -1700,8 +1781,34 @@ expression = "count <= length"
         let oracle = recognize_behavior_oracle(&c).expect("pure-int shape");
         assert_eq!(oracle.id, ORACLE_PURE_INT_BINARY_USIZE);
         assert!(
-            oracle.claim.contains("min"),
+            oracle.claim.contains("min(a, b)"),
             "claim must name the operation, got {:?}",
+            oracle.claim
+        );
+        assert!(
+            !oracle.claim.contains("max(a, b)"),
+            "min claim must not name max, got {:?}",
+            oracle.claim
+        );
+        assert!(
+            is_read_only_buffer_scan(&c),
+            "pure-int without memory_write must reject stores"
+        );
+    }
+
+    #[test]
+    fn pure_int_oracle_claim_names_max() {
+        let c = max_usize_contract();
+        let oracle = recognize_behavior_oracle(&c).expect("pure-int max shape");
+        assert_eq!(oracle.id, ORACLE_PURE_INT_BINARY_USIZE);
+        assert!(
+            oracle.claim.contains("max(a, b)"),
+            "claim must name the operation, got {:?}",
+            oracle.claim
+        );
+        assert!(
+            !oracle.claim.contains("min(a, b)"),
+            "max claim must not name min, got {:?}",
             oracle.claim
         );
         assert!(
@@ -1728,6 +1835,68 @@ expression = "count <= length"
         assert!(names.contains(&"equal"));
         assert!(names.contains(&"zero and large"));
         assert!(names.contains(&"wide spread"));
+    }
+
+    #[test]
+    fn synthesizes_six_pure_int_max_vectors() {
+        let c = max_usize_contract();
+        let v = synthesize_vectors(&c);
+        assert_eq!(v.len(), 6, "expected 6 pure-int max cases, got {}", v.len());
+        assert!(v.iter().all(|case| {
+            let a = case.inputs[0].as_u64().unwrap();
+            let b = case.inputs[1].as_u64().unwrap();
+            case.expected.as_u64() == Some(a.max(b))
+        }));
+        assert_ne!(
+            v.iter()
+                .find(|case| case.name == "a smaller")
+                .unwrap()
+                .expected,
+            synthesize_vectors(&min_usize_contract())
+                .iter()
+                .find(|case| case.name == "a smaller")
+                .unwrap()
+                .expected
+        );
+    }
+
+    #[test]
+    fn pure_int_ambiguous_name_is_fail_closed() {
+        let toml = r#"
+contract_version = "0.1"
+
+[function]
+name = "binary_usize"
+summary = "Ambiguous pure-int without min/max discriminator"
+
+[[function.parameters]]
+name = "a"
+type = "usize"
+role = "input"
+
+[[function.parameters]]
+name = "b"
+type = "usize"
+role = "input"
+
+[[function.returns]]
+name = "result"
+type = "usize"
+
+[[function.ensures]]
+expression = "true"
+
+[function.constraints]
+no_heap = true
+no_recursion = true
+bounded_stack_bytes = 64
+"#;
+        let c = check_contract(toml);
+        assert!(
+            recognize_behavior_oracle(&c).is_none(),
+            "ambiguous pure-int must not claim a min/max oracle"
+        );
+        assert!(synthesize_vectors(&c).is_empty());
     }
 
     #[test]
