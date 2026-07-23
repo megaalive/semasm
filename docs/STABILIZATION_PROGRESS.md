@@ -110,8 +110,35 @@ MemCmp / replace harness, CryptOpt embed, formal `ensures` / full alias.
 SemASM analyzer or Gate change.) Thin Th1–Th7 closed on VAA (HlaX64 bridges
 for `count_byte`/`find_first`/`memset`/`memcpy`, plus
 `replace_byte`/`memset`/`memcpy` search-ingest); **Th8** closes the residual
-pure-int bridges — **residual Thin is now closed on VAA; only Horizon
-remains.**
+pure-int bridges — **residual Thin is now closed on VAA.**
+
+### Horizon Closeout Program (H0–H6) — in progress
+
+Horizon is closed as a **queue** in two layers: **landable** cliffs that change
+capability without false Verified claims, and **Horizon-locked deferred** cliffs
+that need hardware, remote ops, or formal research.
+
+Honesty locked for the whole program: SoftHSM ≠ hardware HSM; search mutators ≠
+CryptOpt embed; Incomplete ≠ Verified; HlaX64 emit/`-Wverify` ≠ SemASM Verified;
+local transparency export/CI artifact ≠ operated remote append-only log;
+guard-byte / oracle vectors ≠ formal `ensures` / symbolic alias proof.
+
+| Cliff | Layer | Owner | Status |
+|---|---|---|---|
+| H0 Horizon map (this section) | docs | SemASM+VAA | **landed** |
+| H1 ADR 0005 multi-ISA MemCmp/write-shape | ADR | SemASM | **landed** (Accepted) |
+| H2 Guard-byte write-shape harness (ADR 0004 sample-based) | landable | SemASM | pending |
+| H3 A64/RV `memcmp` harness | landable | SemASM | pending |
+| H4 Dx adversarial deepen (no maturity bump) | landable | SemASM | pending |
+| H5 Remote-transparency honesty | ADR/docs | VAA | pending |
+| H6 Hygiene + locked-deferred table | docs | SemASM+VAA | pending |
+| Formal `ensures` / theorem prover | **locked deferred** | SemASM | locked |
+| Full symbolic alias / store-region proof | **locked deferred** | SemASM | locked |
+| CryptOpt embed | **locked deferred** | VAA | locked |
+| Live-model Gate CI | **locked deferred** | VAA | locked |
+| Hardware HSM | **locked deferred** | VAA | locked |
+| `decode`/`lower` → `verified_in_ci` | **locked deferred** | SemASM | locked (Dx checklist exists; needs owner sign-off) |
+| A64/RV write-shape harness | **locked deferred** | SemASM | locked (after H1/H3 MemCmp) |
 
 #### Pipeline maturity bump checklist (D2 companion)
 
