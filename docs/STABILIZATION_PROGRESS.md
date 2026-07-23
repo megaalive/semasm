@@ -30,8 +30,8 @@ Stabilization PR-01…18, Bulletproof P0–P5, X86 Golden Path Depth, Evidence
 W1–W5, controller handshake, shared `count_byte` / `sum_i64` / `min_usize` slices
 (VAA Gate-1/2), hardening T0–T6, runner JSON R0–R2, and Tranche M are complete on
 `main`. GitHub Release **`v0.1.0`**, Tranche N (`max_usize`), Tranche O (x86 depth),
-and Tranche P (`find_first_byte`) are complete. Next: **Tranche Q** (VAA repair/search
-loop) and **further x86 depth** (Win64 W+X object-policy parity).
+Tranche P (`find_first_byte`), Tranche Q (VAA repair/search loop), and X0 (Win64
+W+X object-policy) are complete. Next shared leaf TBD.
 
 | Step | Focus | Status |
 |---|---|---|
@@ -157,12 +157,15 @@ Tranche P is closed on tip `511bb45` (SemASM) with VAA handoff `5961c1b`.
 |---|---|---|---|
 | **Q0** | Caps/docs honesty: next = VAA repair/search loop + x86 depth | SemASM+VAA | **done** |
 | **Q1** | `find_first_byte` multi-candidate `vaa run` wrong→repair Gate smoke | VAA | **done** |
-| **Q2** | `vaa search` nop-slide staging Gate smoke (offline; ≠ CryptOpt/Verified) | VAA | pending |
-| **X0** | Win64 W+X object-policy twin (parity SysV `count_byte_wx`) | SemASM | **in progress** |
+| **Q2** | `vaa search` nop-slide staging Gate smoke (offline; ≠ CryptOpt/Verified) | VAA | **done** |
+| **X0** | Win64 W+X object-policy (patched COFF; NASM cannot emit W+X code) | SemASM | **done** |
+
+Tranche Q + X0 closed on tip `7fa6e18` (SemASM) with VAA handoff pending pin.
 
 **Honesty:** Gate-1 Incomplete ≠ Verified. SoftHSM / Fulcio / practice seals ≠
 SemASM Verified. Pipeline assemble/link/execute on x86 remains `experimental`.
-LLM / search mutator output ≠ Verified.
+LLM / search mutator output ≠ Verified. NASM win64 does not emit WRITE on code
+sections; X0 uses `fixtures/obj/count_byte_wx_win64.obj` (WRITE|EXECUTE patched).
 
 Demo: `scripts/golden-demo.sh` (Linux SysV) or `scripts/golden-demo.ps1`
 (Windows PE by default; `-SysV` for Linux tools).
