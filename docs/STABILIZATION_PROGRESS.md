@@ -27,8 +27,9 @@ before work advances past a failed item.
 ## Current focus
 
 Stabilization PR-01…18, Bulletproof P0–P5, X86 Golden Path Depth, Evidence
-W1–W5, controller handshake, and the shared `count_byte` / `sum_i64` slices
-(with VAA Gate-1/2) are complete on `main`.
+W1–W5, controller handshake, shared `count_byte` / `sum_i64` slices (VAA Gate-1/2),
+hardening T0–T6, and runner JSON R0–R2 are complete on `main`. **Next = Tranche M**
+(`min_usize` Gate-ready pack + capabilities evidence + adversarial depth + VAA handoff).
 
 | Step | Focus | Status |
 |---|---|---|
@@ -88,7 +89,7 @@ vertical slice. Gate-2 requires opt-in execution.
 Tranche SemASM hardening is closed on `main`. VAA pin / framed smoke waves
 **N0–N4** and stack integrity **P0–P2** are done (see VAA `docs/progress.md`).
 
-### Next waves (R0–R2 — runner + SemASM JSON)
+### Runner + SemASM JSON (R0–R2) — closed
 
 | Wave | Focus | Owner | Status |
 |---|---|---|---|
@@ -96,10 +97,26 @@ Tranche SemASM hardening is closed on `main`. VAA pin / framed smoke waves
 | R1 | VAA ProcessRunner streaming cap + Win stdin EOF | VAA | done |
 | R2 | SemASM `version`/`status --format json` | SemASM | done |
 
+VAA post-alpha trust depth (**P7** / **P8**) is Done on the consumer side
+(practice seals, SoftHSM smoke, Fulcio opt-in ≠ SemASM Verified).
+
+### Next waves (M0–M4 — Tranche M, post-R2 / post-VAA-P8)
+
+| Wave | Focus | Owner | Status |
+|---|---|---|---|
+| **M0** | Tip honesty: ROADMAP + this file point to Tranche M | SemASM | in progress |
+| **M1** | `capabilities.toml` evidence fixtures include `sum_i64` corpus | SemASM | pending |
+| **M2** | `min_usize` Gate-ready pack (goldens / twins / honesty parity) | SemASM | pending |
+| **M3** | One x86 adversarial twin wave around golden path | SemASM | pending |
+| **M4** | VAA pin tip + `min_usize` Gate-1/2 fixtures/smoke | VAA | pending |
+
+**Honesty:** Gate-1 Incomplete ≠ Verified. SoftHSM / Fulcio / practice seals ≠
+SemASM Verified. Pipeline assemble/link/execute on x86 remains `experimental`.
+
 Demo: `scripts/golden-demo.sh` (Linux SysV) or `scripts/golden-demo.ps1`
 (Windows PE by default; `-SysV` for Linux tools).
 
 The 0.1 release workflow remains prepared and must only be triggered from a
-reviewed `v0.1.0` tag after checklist gates stay green. See
+reviewed `v0.1.0` tag after checklist gates stay green (out of Tranche M). See
 `docs/CLI_COMPATIBILITY.md`, `docs/CONTROLLER_PROTOCOL.md`,
 `docs/AGENT_SCHEMA_POLICY.md`, and `ARCHITECTURE.md`.

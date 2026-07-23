@@ -44,7 +44,9 @@ conformance evidence are proven.
   optional offline C size comparison (not a CI gate); `v0.1.0` release tag.
 
 Consumer pin / framed smoke / capability claim bind: see VAA `docs/progress.md`
-(waves N0–N4 and P0–P2 done; next **R0–R2**).
+(waves N0–N4, P0–P2, R0–R2, and VAA P7/P8 Done). Next shared work is **Tranche M**
+(`min_usize` Gate handoff + x86 evidence/adversarial depth) — see
+`docs/STABILIZATION_PROGRESS.md`.
 
 See `semasm-complete-project-plan.md` for the original ordered vertical slices
 and `docs/status/BASELINE-2026-07.md` for the stabilization baseline.
