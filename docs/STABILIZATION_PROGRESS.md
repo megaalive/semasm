@@ -167,8 +167,8 @@ Tranche Q + X0 closed on tip `7fa6e18` (SemASM) with VAA handoff `80f848b`.
 
 | Wave | Focus | Owner | Status |
 |---|---|---|---|
-| **R0** | Caps/docs honesty: next = search→ingest + Win64 import/noexport | SemASM+VAA | **in progress** |
-| **X1** | Win64 import + noexport object-policy twins (parity SysV) | SemASM | pending |
+| **R0** | Caps/docs honesty: next = search→ingest + Win64 import/noexport | SemASM+VAA | **done** |
+| **X1** | Win64 import + noexport object-policy twins (parity SysV) | SemASM | **in progress** |
 | **R1** | `vaa search` staging → `vaa ingest` Gate smoke + verify-chain | VAA | pending |
 
 **Honesty:** Gate-1 Incomplete ≠ Verified. SoftHSM / Fulcio / practice seals ≠

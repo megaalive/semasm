@@ -117,6 +117,38 @@ fn agent_verify_noexport_sysv_is_semantic_failed() {
 
 #[test]
 #[ignore = "requires nasm, lld-link, and native Windows host"]
+fn agent_verify_import_win64_is_semantic_failed() {
+    let source = workspace_root().join("fixtures/asm/count_byte_import_win64.asm");
+    let contract = workspace_root().join("fixtures/contracts/count_byte.sem.toml");
+    let output = run_agent_verify(&source, &contract, Some("x86_64-pc-windows-msvc"), false);
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    if skip_if_incomplete(&stderr) {
+        return;
+    }
+    assert_status(&output, "semantic_failed");
+    let value: serde_json::Value =
+        serde_json::from_str(&String::from_utf8_lossy(&output.stdout)).expect("json");
+    assert_eq!(value["semantic"]["object_policy"], "failed");
+}
+
+#[test]
+#[ignore = "requires nasm, lld-link, and native Windows host"]
+fn agent_verify_noexport_win64_is_semantic_failed() {
+    let source = workspace_root().join("fixtures/asm/count_byte_noexport_win64.asm");
+    let contract = workspace_root().join("fixtures/contracts/count_byte.sem.toml");
+    let output = run_agent_verify(&source, &contract, Some("x86_64-pc-windows-msvc"), false);
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    if skip_if_incomplete(&stderr) {
+        return;
+    }
+    assert_status(&output, "semantic_failed");
+    let value: serde_json::Value =
+        serde_json::from_str(&String::from_utf8_lossy(&output.stdout)).expect("json");
+    assert_eq!(value["semantic"]["object_policy"], "failed");
+}
+
+#[test]
+#[ignore = "requires nasm, lld-link, and native Windows host"]
 fn agent_verify_wrong_win64_is_behavior_failed() {
     let source = workspace_root().join("fixtures/asm/count_byte_wrong_win64.asm");
     let contract = workspace_root().join("fixtures/contracts/count_byte.sem.toml");

@@ -117,6 +117,8 @@ fixtures = [
     "fixtures/asm/count_byte_trailing_bytes_win64.asm",
     "fixtures/asm/count_byte_wx_win64.asm",
     "fixtures/obj/count_byte_wx_win64.obj",
+    "fixtures/asm/count_byte_import_win64.asm",
+    "fixtures/asm/count_byte_noexport_win64.asm",
     "fixtures/asm/find_first_byte_win64.asm",
     "fixtures/asm/find_first_byte_wrong_win64.asm",
     "fixtures/asm/find_first_byte_write_win64.asm",
