@@ -6,26 +6,50 @@ follow [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+`main` is **materially past** the `v0.1.0` tag. This section summarizes the
+architectural leap for the **next** release notes — not a shipped tag.
+Incomplete ≠ Verified; oracle vectors ≠ formal `ensures`; SoftHSM/search/
+HlaX64 non-claims live on the VAA side of the stack.
+
+### Stack role
+
+SemASM is the semantic verifier: object policy, decode/lower, ABI/CFG,
+capabilities, behavioral oracles, and `VerificationReport` evidence. It is
+**not** an agent controller (that is VAA).
+
 ### Added
 
-- Pure-int oracle distinguishes `min_usize` vs `max_usize` (claim + vectors);
-  ambiguous contracts stay fail-closed. Contract fixture `max_usize.sem.toml`.
-- `max_usize` Gate-ready pack: SysV/Win64 asm (correct/wrong/write/callee-saved),
-  e2e verify tests, consumer VerificationReport goldens, and capabilities
-  evidence fixtures.
-- Buffer find-first oracle `builtin.buffer.find_first_u8` (`find_first_byte`):
-  first index of needle, or `length` when absent; name-ambiguous buffer scans
-  stay fail-closed.
-- `find_first_byte` Gate-ready pack: SysV/Win64 asm (correct/wrong/write/
-  callee-saved), e2e verify tests, consumer goldens, capabilities evidence.
+- **Write-shape leaves** — `replace_byte` / `memset` / `memcpy` contracts,
+  oracles (`builtin.buffer.*`), x86 SysV+Win64 harnesses with sample-based
+  guard bytes (H2 / ADR 0004), and AArch64+RISC-V harnesses (post-Horizon
+  follow-on). Overlap for `memcpy` stays fail-closed (ADR 0003).
+- **MemCmp multi-ISA** — AArch64 + RISC-V dual-buffer harnesses + fixtures
+  (H3 / ADR 0005); x86 MemCmp already present.
+- **Pure-int / buffer leaves** — `min_usize` / `max_usize`, `find_first_byte`,
+  `find_last_byte`, `sum_i64` Gate-ready packs (SysV/Win64) with adversarial
+  twins.
+- **ADRs** — 0003 write-shape; 0004 region-precise memory honesty; 0005
+  multi-ISA MemCmp/write-shape honesty.
+- **Dx adversarial deepen** — unknown-insn classes (`vzeroupper` / `cpuid` /
+  `rdtsc`), trailing-bytes on multiple leaves, W+X (incl. patched Win64
+  COFF), indirect branch; `agent verify` can stage prebuilt `.obj`/`.o`.
+- **Horizon Closeout docs** — landable vs locked-deferred map; formal
+  ensures / symbolic alias / CryptOpt / HSM / live Gate remain locked.
 
 ### Changed
 
-- Capability manifest documents Tranche O honesty: x86 assemble/link/execute
-  remain `experimental` despite `agent_verify = verified_in_ci`; no pipeline
-  level bump without dedicated owner evidence.
-- Tranche O1 adversarial depth: `sum_i64` callee-saved twins (SysV+Win64) and
-  Win64 decode/lower-gap parity fixtures (`unknown_insn`, `trailing_bytes`).
+- **Dx owner sign-off** — x86-64 Linux/Windows `decode` / `lower` →
+  `verified_in_ci` (adversarial CI corpus; **≠** full-ISA formal proof).
+  AArch64/RV64 `decode`/`lower` stay `partial`.
+- x86 assemble/link/execute/`pipeline_verify` already `verified_in_ci` (M1);
+  `agent_verify` remains a separate claim from pipeline evidence.
+- Caps / README / STABILIZATION honesty synced with multi-ISA write-shape
+  and Dx bump.
+
+### Honesty / non-goals (unchanged)
+
+- No formal theorem prover / `ensures` proof; no full symbolic alias analysis;
+  no CryptOpt embed; sample-based guards ≠ store-region proof.
 
 ## [0.1.0] - 2026-07-23
 
@@ -117,9 +141,10 @@ follow [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   `docs/AGENT_SCHEMA_POLICY.md` (includes root `schema_version`).
 - Harness API: `generate_harness(symbol, vectors, abi) -> Result<String, String>`
   (SysV, Win64, AAPCS64, and RISC-V buffer-scan generators).
-- Partial architecture coverage: x86-64 agent/pipeline maturity is
-  experimental on assemble/link/execute; AArch64/RV64 pipeline evidence is
-  stronger than x86 decode/lower completeness. See `semasm status`.
+- Partial architecture coverage: x86-64 `decode`/`lower` are `verified_in_ci`
+  after Dx owner sign-off (adversarial corpus ≠ full-ISA formal proof);
+  AArch64/RV64 `decode`/`lower` remain `partial`. See `semasm status` and
+  `capabilities.toml`.
 
 [Unreleased]: https://github.com/megaalive/semasm/compare/v0.1.0...HEAD
 [0.1.0]: https://github.com/megaalive/semasm/releases/tag/v0.1.0
