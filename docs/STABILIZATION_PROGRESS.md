@@ -30,7 +30,9 @@ Stabilization PR-01…18, Bulletproof P0–P5, X86 Golden Path Depth, Evidence
 W1–W5, controller handshake, shared `count_byte` / `sum_i64` / `min_usize` slices
 (VAA Gate-1/2), hardening T0–T6, runner JSON R0–R2, and Tranche M are complete on
 `main`. GitHub Release **`v0.1.0`**, Tranche N–Q, X0/X1 object-policy depth, and
-Tranche R (search→ingest Gate loop) are complete. Next shared leaf TBD.
+Tranche R (search→ingest Gate loop) are complete. Next: **X2** (Win64 syscall/stack
+twins + nop-before-ret), **Tranche S** (`find_last_byte`), **Tranche T** (search
+ingest skip Violated).
 
 | Step | Focus | Status |
 |---|---|---|
@@ -170,6 +172,15 @@ Tranche Q + X0 closed on tip `7fa6e18` (SemASM) with VAA handoff `80f848b`.
 | **R1** | `vaa search` staging → `vaa ingest` Gate smoke + verify-chain | VAA | **done** |
 
 Tranche R + X1 closed on tip `c8f2047` (SemASM) with VAA handoff `171b553`.
+
+### Next waves (X2 + S + T)
+
+| Wave | Focus | Owner | Status |
+|---|---|---|---|
+| **X2a** | Win64 syscall + stack_imbalance object/capability twins | SemASM | **in progress** |
+| **X2b** | VAA mutator `nop-before-ret` | VAA | pending |
+| **S0–S2** | `find_last_byte` Gate pack + VAA handoff | SemASM+VAA | pending |
+| **T0–T2** | `vaa search --ingest` skip Violated → Incomplete | VAA | pending |
 
 **Honesty:** Gate-1 Incomplete ≠ Verified. SoftHSM / Fulcio / practice seals ≠
 SemASM Verified. Pipeline assemble/link/execute on x86 remains `experimental`.
