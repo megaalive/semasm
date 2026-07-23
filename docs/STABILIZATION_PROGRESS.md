@@ -88,8 +88,8 @@ e2e jobs bound in `capabilities.toml`.
 
 | Leaf | SemASM agent/e2e | VAA Gate-1/2 | search `--ingest` | HlaX64 bridge |
 |---|---|---|---|---|
-| `count_byte` | yes | yes | yes | **paused** (no fourth bridge yet) |
-| `find_first_byte` | yes | yes | yes (Z) | **paused** |
+| `count_byte` | yes | yes | yes | yes (VAA Thin Th1) |
+| `find_first_byte` | yes | yes | yes (Z) | yes (VAA Thin Th2) |
 | `find_last_byte` | yes | yes | yes | yes (H4) |
 | `memcmp` | yes (x86; A64/RV fail-closed) | yes | yes (Y) | yes (H5) |
 | `sum_i64` | yes | yes | — | yes (H1) |
@@ -103,9 +103,12 @@ declare `memory_write`. Region-precise store proof remains deferred (ADR
 0003; honesty locked in **ADR 0004** — heuristic/dynamic harness evidence
 only, not proof; see CI criteria checklist there before this line changes).
 
-**Intentionally not continued** in the same wave as write-shape:
-more HlaX64 bridges (`count_byte`, `find_first_byte`, pure-int), A64/RV MemCmp /
-replace harness, CryptOpt embed, formal `ensures` / full alias.
+**Intentionally not continued** in the same wave as write-shape: pure-int
+(`min_usize`/`max_usize`) HlaX64 bridges, A64/RV MemCmp / replace harness,
+CryptOpt embed, formal `ensures` / full alias. (`count_byte` and
+`find_first_byte` HlaX64 bridges landed on VAA's side as Thin Th1/Th2 —
+see VAA `docs/progress.md`; this row is HlaX64/VAA-owned, not a SemASM
+analyzer or Gate change.)
 
 #### Pipeline maturity bump checklist (D2 companion)
 
