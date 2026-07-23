@@ -120,7 +120,7 @@ Annotated tag + GitHub Release archives (`SHA256SUMS`) after
 | Wave | Focus | Owner | Status |
 |---|---|---|---|
 | **N0** | `max_usize` oracle/claim distinction + contract (min regression) | SemASM | **done** |
-| **N1** | `max_usize` asm/e2e/goldens/adversarial + capabilities evidence | SemASM | queued |
+| **N1** | `max_usize` asm/e2e/goldens/adversarial + capabilities evidence | SemASM | **done** |
 | **N2** | VAA pin tip + `max_usize` Gate-1/2 fixtures/smoke | VAA | queued |
 
 **Honesty:** Gate-1 Incomplete ≠ Verified. SoftHSM / Fulcio / practice seals ≠

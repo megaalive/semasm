@@ -859,4 +859,42 @@ mod tests {
         assert!(oracle.vectors_passed > 0);
         assert_eq!(oracle.vectors_failed, 0);
     }
+
+    #[test]
+    fn golden_max_usize_execution_denied_report_deserializes() {
+        let json = include_str!("../fixtures/verification-report-max_usize.execution_denied.json");
+        let report: VerificationReport =
+            serde_json::from_str(json).expect("max_usize golden must deserialize");
+        assert_eq!(report.schema_version, VERIFICATION_REPORT_SCHEMA_VERSION);
+        assert_eq!(report.status, VerificationStatus::ExecutionDenied);
+        assert_eq!(report.routine_symbol, "max_usize");
+        assert_eq!(report.isolation, ExecutionIsolation::StaticOnly);
+        assert!(report.behavior.is_none());
+        let oracle = report.behavior_oracle.expect("golden includes oracle");
+        assert_eq!(oracle.id, "builtin.pure_int.binary_usize");
+        assert_eq!(oracle.version, 2);
+        assert_eq!(oracle.proof_basis, ProofBasis::OracleAndVectors);
+        assert!(oracle.claim.contains("max(a, b)"));
+    }
+
+    #[test]
+    fn golden_max_usize_verified_report_deserializes() {
+        let json = include_str!("../fixtures/verification-report-max_usize.verified.json");
+        let report: VerificationReport =
+            serde_json::from_str(json).expect("max_usize verified golden must deserialize");
+        assert_eq!(report.schema_version, VERIFICATION_REPORT_SCHEMA_VERSION);
+        assert_eq!(report.status, VerificationStatus::Verified);
+        assert_eq!(report.routine_symbol, "max_usize");
+        assert_eq!(report.isolation, ExecutionIsolation::NativeHost);
+        let behavior = report.behavior.expect("verified golden includes behavior");
+        assert!(behavior.all_passed);
+        assert!(!behavior.cases.is_empty());
+        assert!(behavior.cases.iter().all(|c| c.passed));
+        let oracle = report.behavior_oracle.expect("oracle present");
+        assert_eq!(oracle.id, "builtin.pure_int.binary_usize");
+        assert_eq!(oracle.version, 2);
+        assert!(oracle.claim.contains("max(a, b)"));
+        assert!(oracle.vectors_passed > 0);
+        assert_eq!(oracle.vectors_failed, 0);
+    }
 }

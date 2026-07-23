@@ -1,0 +1,48 @@
+{
+  "schema_version": "0.4",
+  "status": "execution_denied",
+  "target": "x86_64-unknown-linux-gnu",
+  "routine_symbol": "max_usize",
+  "isolation": "static_only",
+  "tool_version": "semasm 0.1.0",
+  "contract_digest": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+  "source_digest": "sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+  "semantic": {
+    "object_policy": "passed",
+    "executable_bytes": 16,
+    "decode": {
+      "total": 6,
+      "modeled": 6,
+      "unknown": 0
+    },
+    "lowering": {
+      "total": 6,
+      "modeled": 6,
+      "unknown": 0
+    },
+    "abi": "passed",
+    "capability": "passed",
+    "control": "passed",
+    "memory": "passed"
+  },
+  "executable": {
+    "status": "passed"
+  },
+  "behavior": null,
+  "behavior_oracle": {
+    "id": "builtin.pure_int.binary_usize",
+    "version": 2,
+    "contract": "max_usize.sem.toml",
+    "contract_hash": "aaaaaaaaaaaa",
+    "contract_ensures": [
+      "result >= a",
+      "result >= b"
+    ],
+    "proof_basis": "oracle_and_vectors",
+    "claim": "result equals max(a, b) for the recognized two-usize pure-integer shape",
+    "vectors_passed": 0,
+    "vectors_failed": 0,
+    "vectors_total": 6,
+    "evidence_hash": "0123456789abcdef0123456789abcdef"
+  }
+}

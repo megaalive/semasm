@@ -10,6 +10,9 @@ follow [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 - Pure-int oracle distinguishes `min_usize` vs `max_usize` (claim + vectors);
   ambiguous contracts stay fail-closed. Contract fixture `max_usize.sem.toml`.
+- `max_usize` Gate-ready pack: SysV/Win64 asm (correct/wrong/write/callee-saved),
+  e2e verify tests, consumer VerificationReport goldens, and capabilities
+  evidence fixtures.
 
 ## [0.1.0] - 2026-07-23
 
