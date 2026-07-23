@@ -33,8 +33,12 @@ W1–W5, controller handshake, shared `count_byte` / `sum_i64` / `min_usize` sli
 Tranche R (search→ingest Gate loop) are complete. **X2 + S + T** through
 **X5 + H5 + Z** are closed (leaf/Gate/bridge treadmill saturated).
 
-**Leaf treadmill paused** for thin HlaX64 bridges; **write-shape W0–W3** opens
-`replace_byte` (ADR 0003 Accepted). Gate-2 `ExecutionSandbox` wire (I2) deferred.
+**Leaf treadmill paused** for thin HlaX64 bridges; **write-shape W0–W3** opened
+`replace_byte` (ADR 0003 Accepted) and **Wm** lands `memset` as the first
+design-compatible write-shape follow-on (harness shape resolved from the
+contract oracle, not vector layout, so `memset` can safely reuse the
+`BufferScan` wire layout). Next up: **Wc** `memcpy`. Gate-2 `ExecutionSandbox`
+wire (I2) remains deferred **on the VAA side**; this wave does not touch VAA.
 decode/lower stay `partial`. Exception: bugfix / pin tip only.
 
 ### Next waves (X4 + H4 + Y) — closed
@@ -148,6 +152,23 @@ deferred. See `adr/0003-write-shape-buffer-leaves.md`.
 | W5b | `CONTROLLER_PROTOCOL.md` + status map for VAA | done |
 | W5c | Golden `VerificationReport` fixture for consumers | done |
 
+### Write-shape v2 (Wm) — `memset`
+
+| Wave | Focus | Status |
+|---|---|---|
+| **Wm** | `builtin.buffer.memset` contract/oracle + `HarnessShape::Memset` + x86 asm/e2e/caps | **done** |
+
+Oracle: `builtin.buffer.memset`. Harness verifies the void-as-`0` return
+**and** that every `buffer[0..length]` byte equals `value` after the call.
+`memset` vectors are deliberately layout-identical to `BufferScan`
+(array/null buffer + two numbers); `resolve_harness_shape` disambiguates from
+the recognized contract oracle instead of vector layout alone, so
+`generate_harness` / `evaluate` never collide with the read-only scan shapes.
+AArch64/RISC-V harness stays fail-closed, matching `replace_byte`/MemCmp.
+Next: **Wc** `memcpy` (dual-buffer write-shape; design-compatible follow-on
+per ADR 0003). VAA Gate/pin for `memset` is **not** part of this wave — SemASM
+only.
+
 ### Completed recently (not deferred)
 
 - CFG / indirect-branch leaf policy wired into `agent verify` (`control` gate)
@@ -161,8 +182,10 @@ deferred. See `adr/0003-write-shape-buffer-leaves.md`.
 
 ### Deferred (explicitly out of current waves)
 
-- `memcpy` / `memset` write-shapes; HlaX64 `replace_byte` bridge (W4)
-- Gate-2 process isolation / `ExecutionSandbox` on Gate path (I2; VAA)
+- `memcpy` write-shape (Wc; `memset` landed in Wm); HlaX64 `replace_byte` /
+  `memset` bridges (W4)
+- Gate-2 process isolation / `ExecutionSandbox` on Gate path (I2; VAA) — no
+  change in Wm; SemASM-only wave, VAA untouched
 - Formal `ensures result == count(...)` / general theorem proving
 - Full memory alias / symbolic / region-precise store proof
 - C compiler `-O2` / `-Os` binary-size bake-off in CI

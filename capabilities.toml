@@ -23,6 +23,11 @@
 # - MemCmp agent harness is x86-only (SysV + Win64 evidence below). AArch64 /
 #   RISC-V memcmp harness generation fails closed; do not read that as partial
 #   multi-ISA support.
+# - `memset` (write-shape Wm) agent harness is x86-only (SysV + Win64 evidence
+#   below), same fail-closed posture as `replace_byte`/MemCmp on AArch64/RISC-V.
+#   Harness shape is resolved from the recognized contract oracle, not vector
+#   layout alone, because `memset` intentionally reuses the read-only
+#   BufferScan wire layout (see `HarnessShape::resolve_harness_shape`).
 # - Ownership map: docs/STABILIZATION_PROGRESS.md (maturity follow-up M0/M1).
 
 schema_version = "0.1"
@@ -103,6 +108,8 @@ fixtures = [
     "fixtures/asm/sum_i64_callee_saved.asm",
     "fixtures/asm/replace_byte.asm",
     "fixtures/asm/replace_byte_wrong.asm",
+    "fixtures/asm/memset.asm",
+    "fixtures/asm/memset_wrong.asm",
 ]
 ci_jobs = ["e2e (x86-64 Linux)", "decode (capstone)"]
 
@@ -167,6 +174,8 @@ fixtures = [
     "fixtures/asm/sum_i64_callee_saved_win64.asm",
     "fixtures/asm/replace_byte_win64.asm",
     "fixtures/asm/replace_byte_wrong_win64.asm",
+    "fixtures/asm/memset_win64.asm",
+    "fixtures/asm/memset_wrong_win64.asm",
 ]
 ci_jobs = ["e2e (x86-64 Windows)"]
 

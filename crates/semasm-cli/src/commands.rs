@@ -429,10 +429,13 @@ fn run_agent_verify_core(
         );
         return VerifyCore::Early(ExitCode::from(1));
     }
-    if let Err(message) = harness::validate_vectors_match_oracle(&checked, &vectors) {
-        eprintln!("error: contract/harness mismatch: {message}");
-        return VerifyCore::Early(ExitCode::from(1));
-    }
+    let harness_shape = match harness::resolve_harness_shape(&checked, &vectors) {
+        Ok(shape) => shape,
+        Err(message) => {
+            eprintln!("error: contract/harness mismatch: {message}");
+            return VerifyCore::Early(ExitCode::from(1));
+        }
+    };
     let recognized_oracle = harness::recognize_behavior_oracle(&checked);
     let contract_label = contract_path
         .file_name()
@@ -523,29 +526,30 @@ fn run_agent_verify_core(
             }
         };
 
-    let harness_source = match harness::generate_harness(&routine_symbol, &vectors, identity.abi) {
-        Ok(source) => source,
-        Err(reason) => {
-            eprintln!("behavioral harness unavailable: {reason}");
-            let report = finalize_report(
-                VerificationReport::from_parts(
-                    identity.name.clone(),
-                    routine_symbol,
-                    semantic,
-                    ExecutableGate::skipped(),
+    let harness_source =
+        match harness::generate_harness(&routine_symbol, &vectors, identity.abi, harness_shape) {
+            Ok(source) => source,
+            Err(reason) => {
+                eprintln!("behavioral harness unavailable: {reason}");
+                let report = finalize_report(
+                    VerificationReport::from_parts(
+                        identity.name.clone(),
+                        routine_symbol,
+                        semantic,
+                        ExecutableGate::skipped(),
+                        None,
+                        ExecutionIsolation::StaticOnly,
+                    ),
                     None,
-                    ExecutionIsolation::StaticOnly,
-                ),
-                None,
-            );
-            return VerifyCore::Done {
-                report: Box::new(report),
-                object_bytes,
-                contract_bytes,
-                exit: ExitCode::from(1),
-            };
-        }
-    };
+                );
+                return VerifyCore::Done {
+                    report: Box::new(report),
+                    object_bytes,
+                    contract_bytes,
+                    exit: ExitCode::from(1),
+                };
+            }
+        };
 
     let harness_ext = match identity.dialect {
         semasm_target::Dialect::GasUnified | semasm_target::Dialect::GasAtt => "S",
@@ -649,7 +653,7 @@ fn run_agent_verify_core(
             return VerifyCore::Early(ExitCode::from(1));
         }
     };
-    let behavior = harness::evaluate(&run.stdout, &vectors);
+    let behavior = harness::evaluate(&run.stdout, &vectors, harness_shape);
     let _ = std::fs::remove_dir_all(&directory);
     let oracle = recognized_oracle.map(|recognized| {
         harness::build_behavior_oracle(

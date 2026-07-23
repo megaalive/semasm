@@ -85,6 +85,9 @@ pub fn synthesize_vectors(contract: &CheckedContract) -> Vec<TestVector> {
     if let Some(shape) = replace_byte_shape(contract) {
         return synthesize_replace_byte_vectors(shape);
     }
+    if let Some(shape) = memset_shape(contract) {
+        return synthesize_memset_vectors(shape);
+    }
     if let Some(shape) = memcmp_shape(contract) {
         return synthesize_memcmp_vectors(shape);
     }
@@ -121,6 +124,10 @@ pub const ORACLE_BUFFER_WRAPPING_SUM_I64_VERSION: u32 = 2;
 pub const ORACLE_BUFFER_REPLACE_BYTE: &str = "builtin.buffer.replace_byte";
 /// Profile version for [`ORACLE_BUFFER_REPLACE_BYTE`].
 pub const ORACLE_BUFFER_REPLACE_BYTE_VERSION: u32 = 1;
+/// Builtin oracle id for whole-buffer fill (`memset`).
+pub const ORACLE_BUFFER_MEMSET: &str = "builtin.buffer.memset";
+/// Profile version for [`ORACLE_BUFFER_MEMSET`].
+pub const ORACLE_BUFFER_MEMSET_VERSION: u32 = 1;
 /// Builtin oracle id for pure two-`usize` integer shapes (`min_usize` / `max_usize`).
 pub const ORACLE_PURE_INT_BINARY_USIZE: &str = "builtin.pure_int.binary_usize";
 /// Profile version for [`ORACLE_PURE_INT_BINARY_USIZE`].
@@ -190,6 +197,13 @@ pub fn recognize_behavior_oracle(contract: &CheckedContract) -> Option<Recognize
             id: ORACLE_BUFFER_REPLACE_BYTE,
             version: ORACLE_BUFFER_REPLACE_BYTE_VERSION,
             claim: "result equals how many buffer[0..length] bytes equal to needle were replaced with replacement; buffer bytes must match",
+        });
+    }
+    if memset_shape(contract).is_some() {
+        return Some(RecognizedOracle {
+            id: ORACLE_BUFFER_MEMSET,
+            version: ORACLE_BUFFER_MEMSET_VERSION,
+            claim: "every buffer[0..length] byte equals value after the call; result is always 0",
         });
     }
     if memcmp_shape(contract).is_some() {
@@ -340,38 +354,81 @@ pub fn validate_vectors_match_oracle(
     contract: &CheckedContract,
     vectors: &[TestVector],
 ) -> Result<(), String> {
+    resolve_harness_shape(contract, vectors).map(|_shape| ())
+}
+
+/// Resolve the harness shape to use for `contract` given candidate `vectors`.
+///
+/// This is the single place that maps `(recognized oracle, detected vector
+/// layout)` to the [`HarnessShape`] used by [`generate_harness`] and
+/// [`evaluate`]. Detection from vectors alone (see [`detect_harness_shape`])
+/// is layout-based and therefore ambiguous for write-shape oracles that
+/// intentionally reuse an existing read-only wire layout — for example
+/// `Memset` reuses the 3-field `BufferScan` layout (array/null buffer plus
+/// two numbers: length, value). The oracle recognized from the *contract*
+/// disambiguates those cases; everything else must match exactly.
+///
+/// Fail-closed when the oracle's expected shape and the detected vector
+/// layout are neither identical nor an explicitly allowed compatible pair.
+pub fn resolve_harness_shape(
+    contract: &CheckedContract,
+    vectors: &[TestVector],
+) -> Result<HarnessShape, String> {
     let Some(oracle) = recognize_behavior_oracle(contract) else {
         return Err("no recognized behavior oracle for contract shape".into());
     };
-    let shape = detect_harness_shape(vectors)?;
-    let expected = match oracle.id {
-        ORACLE_BUFFER_COUNT_EQUAL_U8 | ORACLE_BUFFER_FIND_FIRST_U8 | ORACLE_BUFFER_FIND_LAST_U8 => {
-            HarnessShape::BufferScan
-        }
-        ORACLE_BUFFER_REPLACE_BYTE => HarnessShape::ReplaceByte,
-        ORACLE_BUFFER_MEMCMP_I8 => HarnessShape::MemCmp,
-        ORACLE_BUFFER_WRAPPING_SUM_I64 => HarnessShape::I64Sum,
-        ORACLE_PURE_INT_BINARY_USIZE => HarnessShape::PureInt,
-        other => {
-            return Err(format!("unrecognized oracle id `{other}`"));
-        }
-    };
-    if shape != expected {
+    let expected = oracle_expected_shape(oracle.id)?;
+    let detected = detect_harness_shape(vectors)?;
+    // Compatibility: write-shape oracles that reuse a read-only wire layout.
+    // `Memset` (buffer, length, value) reuses the 3-field `BufferScan` layout.
+    // A future `Memcpy` (dst, src, length) would similarly reuse `MemCmp`'s
+    // 3-field dual-buffer layout; add that pair here if/when it ships.
+    let compatible = detected == expected
+        || (expected == HarnessShape::Memset && detected == HarnessShape::BufferScan);
+    if !compatible {
         return Err(format!(
             "oracle `{}` expects {:?} vectors but harness detected {:?}",
-            oracle.id, expected, shape
+            oracle.id, expected, detected
         ));
     }
-    Ok(())
+    Ok(expected)
+}
+
+/// Map a recognized oracle id to the [`HarnessShape`] it expects.
+fn oracle_expected_shape(oracle_id: &str) -> Result<HarnessShape, String> {
+    match oracle_id {
+        ORACLE_BUFFER_COUNT_EQUAL_U8 | ORACLE_BUFFER_FIND_FIRST_U8 | ORACLE_BUFFER_FIND_LAST_U8 => {
+            Ok(HarnessShape::BufferScan)
+        }
+        ORACLE_BUFFER_REPLACE_BYTE => Ok(HarnessShape::ReplaceByte),
+        ORACLE_BUFFER_MEMSET => Ok(HarnessShape::Memset),
+        ORACLE_BUFFER_MEMCMP_I8 => Ok(HarnessShape::MemCmp),
+        ORACLE_BUFFER_WRAPPING_SUM_I64 => Ok(HarnessShape::I64Sum),
+        ORACLE_PURE_INT_BINARY_USIZE => Ok(HarnessShape::PureInt),
+        other => Err(format!("unrecognized oracle id `{other}`")),
+    }
 }
 
 /// Resolved calling shape for the harness generator.
+///
+/// Note that [`detect_harness_shape`] infers this from raw vector layout and
+/// cannot distinguish shapes that share a wire layout (e.g. `Memset` vs.
+/// `BufferScan`); use [`resolve_harness_shape`] when a `CheckedContract` is
+/// available so the oracle can disambiguate.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-enum HarnessShape {
+pub enum HarnessShape {
+    /// `(ptr<const u8>, usize, u8) -> usize` — count / find-first / find-last.
     BufferScan,
+    /// `(ptr<u8>, usize, u8 needle, u8 replacement) -> usize` — `replace_byte`.
     ReplaceByte,
+    /// `(ptr<u8>, usize, u8 value) -> usize` — `memset`; shares its wire
+    /// layout with [`HarnessShape::BufferScan`] (see [`resolve_harness_shape`]).
+    Memset,
+    /// `(ptr<const u8>, ptr<const u8>, usize) -> isize` — `memcmp`.
     MemCmp,
+    /// `(ptr<const i64>, usize) -> i64` — wrapping sum.
     I64Sum,
+    /// `(usize, usize) -> usize` — `min_usize` / `max_usize`.
     PureInt,
 }
 
@@ -1315,6 +1372,149 @@ fn vector_replacement(v: &TestVector) -> u64 {
         & 0xff
 }
 
+/// Resolved calling shape for whole-buffer fill.
+#[derive(Clone, Copy)]
+struct MemsetShape {
+    /// Fill byte used for synthesised inputs.
+    value: u8,
+    /// Upper bound on buffer length, if derivable from requires.
+    max_length: Option<usize>,
+}
+
+/// Detect `(ptr<u8>, usize, u8 value) -> usize` whole-buffer-fill shape.
+///
+/// Deliberately layout-identical to [`ScanShape`] on the wire (array/null
+/// buffer plus two numbers): a non-const pointer, a `usize` length, and
+/// exactly one `u8` parameter (the fill value), returning `usize`. Callers
+/// must disambiguate via [`resolve_harness_shape`], not vector layout alone.
+fn memset_shape(contract: &CheckedContract) -> Option<MemsetShape> {
+    if !contract.name.to_ascii_lowercase().contains("memset") {
+        return None;
+    }
+    let has_write = contract
+        .effects
+        .iter()
+        .any(|effect| effect.kind == "memory_write");
+    if !has_write {
+        return None;
+    }
+
+    let mut ptr_param = None;
+    let mut len_param = None;
+    let mut u8_params = Vec::new();
+
+    for p in &contract.parameters {
+        match &p.ty {
+            SemType::Ptr { is_const, .. } if !*is_const && ptr_param.is_none() => {
+                ptr_param = Some(p);
+            }
+            SemType::Usize if len_param.is_none() => {
+                len_param = Some(p);
+            }
+            SemType::UInt { bits: 8 } => u8_params.push(p),
+            _ => {}
+        }
+    }
+
+    let returns_usize = contract
+        .returns
+        .iter()
+        .any(|r| matches!(r.ty, SemType::Usize));
+
+    let (ptr_param, len_param) = match (ptr_param, len_param) {
+        (Some(p), Some(l)) if returns_usize && u8_params.len() == 1 => (p, l),
+        _ => return None,
+    };
+    let _ = ptr_param;
+
+    let value_param = u8_params[0];
+
+    Some(MemsetShape {
+        value: needle_from_requires(contract, &value_param.name)
+            .unwrap_or(DEFAULT_BUFFER_SCAN_NEEDLE),
+        max_length: length_bound_from_requires(contract, &len_param.name),
+    })
+}
+
+/// Synthesise memset vectors (result always 0; harness also checks buffer).
+#[allow(clippy::vec_init_then_push)]
+fn synthesize_memset_vectors(shape: MemsetShape) -> Vec<TestVector> {
+    let max_len = shape
+        .max_length
+        .unwrap_or(MAX_FIXTURE_CAP)
+        .clamp(1, MAX_FIXTURE_CAP);
+    let value = u64::from(shape.value);
+    // Distinct initial byte so a passing check proves the routine wrote
+    // `value`, rather than the buffer coincidentally starting that way.
+    let filler = value.wrapping_add(1) & 0xff;
+
+    let mut vectors = Vec::new();
+
+    vectors.push(TestVector {
+        name: "empty input".into(),
+        inputs: vec![
+            serde_json::Value::Null,
+            serde_json::json!(0u64),
+            serde_json::json!(value),
+        ],
+        expected: serde_json::json!(0u64),
+    });
+
+    vectors.push(TestVector {
+        name: "one byte".into(),
+        inputs: vec![
+            serde_json::json!([filler]),
+            serde_json::json!(1u64),
+            serde_json::json!(value),
+        ],
+        expected: serde_json::json!(0u64),
+    });
+
+    vectors.push(TestVector {
+        name: "short pattern".into(),
+        inputs: vec![
+            serde_json::json!([filler, filler, filler, filler, filler]),
+            serde_json::json!(5u64),
+            serde_json::json!(value),
+        ],
+        expected: serde_json::json!(0u64),
+    });
+
+    vectors.push(TestVector {
+        name: "already filled with value".into(),
+        inputs: vec![
+            serde_json::json!([value, value, value]),
+            serde_json::json!(3u64),
+            serde_json::json!(value),
+        ],
+        expected: serde_json::json!(0u64),
+    });
+
+    let max_buf = vec![filler; max_len];
+    vectors.push(TestVector {
+        name: "maximum configured fixture length".into(),
+        inputs: vec![
+            serde_json::json!(max_buf),
+            serde_json::json!(max_len as u64),
+            serde_json::json!(value),
+        ],
+        expected: serde_json::json!(0u64),
+    });
+
+    vectors
+}
+
+/// Expected post-fill buffer for a memset vector: every byte equals `value`.
+#[allow(clippy::cast_possible_truncation)] // value is masked to 0xff
+fn expected_memset_buffer(v: &TestVector) -> Vec<u8> {
+    let value = (vector_needle(v) & 0xff) as u8;
+    let len = usize::try_from(vector_length(v)).unwrap_or(0);
+    if len == 0 {
+        return Vec::new();
+    }
+    vec![value; len]
+}
+
 /// Detect the `(ptr<const u8>, usize, u8) -> usize` shape.
 fn scan_shape(contract: &CheckedContract) -> Option<ScanShape> {
     let mut ptr_param = None;
@@ -1480,7 +1680,10 @@ fn int_value(expr: &Expr) -> Option<i64> {
 /// Generate assembler source for a harness that exercises `vectors`
 /// against the routine named `routine_symbol`.
 ///
-/// The calling shape is inferred from `vectors` (buffer-scan vs pure-int).
+/// `shape` selects the calling convention and result layout; resolve it from
+/// the contract with [`resolve_harness_shape`] (do not re-detect it from
+/// `vectors` alone — some write-shape oracles intentionally reuse a
+/// read-only wire layout, see [`HarnessShape`]).
 ///
 /// Supported ABIs:
 /// - [`Abi::SysVAmd64`]: NASM `_start`, args in `rdi`/`rsi`/`rdx`, Linux syscalls
@@ -1491,14 +1694,17 @@ pub fn generate_harness(
     routine_symbol: &str,
     vectors: &[TestVector],
     abi: Abi,
+    shape: HarnessShape,
 ) -> Result<String, String> {
-    let shape = detect_harness_shape(vectors)?;
     match (abi, shape) {
         (Abi::SysVAmd64, HarnessShape::BufferScan) => {
             Ok(generate_sysv_buffer_harness(routine_symbol, vectors))
         }
         (Abi::SysVAmd64, HarnessShape::ReplaceByte) => {
             Ok(generate_sysv_replace_byte_harness(routine_symbol, vectors))
+        }
+        (Abi::SysVAmd64, HarnessShape::Memset) => {
+            Ok(generate_sysv_memset_harness(routine_symbol, vectors))
         }
         (Abi::SysVAmd64, HarnessShape::MemCmp) => {
             Ok(generate_sysv_memcmp_harness(routine_symbol, vectors))
@@ -1514,6 +1720,9 @@ pub fn generate_harness(
         }
         (Abi::WindowsX64, HarnessShape::ReplaceByte) => {
             Ok(generate_win64_replace_byte_harness(routine_symbol, vectors))
+        }
+        (Abi::WindowsX64, HarnessShape::Memset) => {
+            Ok(generate_win64_memset_harness(routine_symbol, vectors))
         }
         (Abi::WindowsX64, HarnessShape::MemCmp) => {
             Ok(generate_win64_memcmp_harness(routine_symbol, vectors))
@@ -1532,6 +1741,9 @@ pub fn generate_harness(
         }
         (Abi::Aapcs64 | Abi::Riscv, HarnessShape::ReplaceByte) => {
             Err("replace_byte harness not yet supported on this ABI".into())
+        }
+        (Abi::Aapcs64 | Abi::Riscv, HarnessShape::Memset) => {
+            Err("memset harness not yet supported on this ABI".into())
         }
         (Abi::Aapcs64, HarnessShape::I64Sum) => {
             Ok(generate_aapcs64_i64_sum_harness(routine_symbol, vectors))
@@ -1693,6 +1905,138 @@ fn generate_win64_replace_byte_harness(routine_symbol: &str, vectors: &[TestVect
             continue;
         }
         let _ = writeln!(out, "    ; write mutated buffer {i}");
+        out.push_str("    sub rsp, 40\n");
+        out.push_str("    mov rcx, [stdout_handle]\n");
+        let _ = writeln!(out, "    lea rdx, [vec{i}_buf]");
+        let _ = writeln!(out, "    mov r8d, {len}");
+        out.push_str("    lea r9, [written]\n");
+        out.push_str("    mov qword [rsp + 32], 0\n");
+        out.push_str("    call WriteFile\n");
+        out.push_str("    add rsp, 40\n");
+    }
+
+    out.push_str("    sub rsp, 40\n");
+    out.push_str("    xor ecx, ecx\n");
+    out.push_str("    call ExitProcess\n");
+    out
+}
+
+/// Generate SysV memset harness: write counts (always 0) then filled buffers.
+///
+/// Wire layout matches [`generate_sysv_buffer_harness`] (`emit_vector_data`,
+/// args in `rdi`/`rsi`/`rdx`); only the post-call buffer echo differs.
+fn generate_sysv_memset_harness(routine_symbol: &str, vectors: &[TestVector]) -> String {
+    let mut out = String::new();
+    out.push_str("BITS 64\n");
+    out.push_str("DEFAULT REL\n\n");
+    emit_vector_data(&mut out, vectors);
+
+    out.push_str("\nsection .bss\n");
+    let _ = writeln!(out, "results: resb {}", vectors.len() * 8);
+
+    out.push_str("\nsection .text\n");
+    let _ = writeln!(out, "extern {routine_symbol}");
+    out.push_str("global _start\n");
+    out.push_str("_start:\n");
+
+    for (i, v) in vectors.iter().enumerate() {
+        let _ = writeln!(out, "    ; vector {i}: {}", v.name);
+        if v.inputs.first().is_some_and(serde_json::Value::is_null) {
+            out.push_str("    xor edi, edi\n");
+        } else {
+            let _ = writeln!(out, "    lea rdi, [vec{i}_buf]");
+        }
+        let _ = writeln!(out, "    mov rsi, [vec{i}_len]");
+        let _ = writeln!(out, "    movzx edx, byte [vec{i}_needle]");
+        let _ = writeln!(out, "    call {routine_symbol}");
+        let _ = writeln!(out, "    mov [results + {i}*8], rax");
+    }
+
+    out.push_str("    ; write(results, N*8)\n");
+    out.push_str("    mov eax, 1\n");
+    out.push_str("    mov edi, 1\n");
+    out.push_str("    lea rsi, [results]\n");
+    let _ = writeln!(out, "    mov edx, {}", vectors.len() * 8);
+    out.push_str("    syscall\n");
+
+    for (i, v) in vectors.iter().enumerate() {
+        let len = usize::try_from(vector_length(v)).unwrap_or(0);
+        if len == 0 {
+            continue;
+        }
+        let _ = writeln!(out, "    ; write filled buffer {i} ({len} bytes)");
+        out.push_str("    mov eax, 1\n");
+        out.push_str("    mov edi, 1\n");
+        let _ = writeln!(out, "    lea rsi, [vec{i}_buf]");
+        let _ = writeln!(out, "    mov edx, {len}");
+        out.push_str("    syscall\n");
+    }
+
+    out.push_str("    mov eax, 60\n");
+    out.push_str("    xor edi, edi\n");
+    out.push_str("    syscall\n");
+    out
+}
+
+/// Generate Win64 memset harness: `WriteFile` counts (always 0) then filled buffers.
+///
+/// Wire layout matches [`generate_win64_buffer_harness`] (`emit_vector_data`,
+/// args in `rcx`/`rdx`/`r8`); only the post-call buffer echo differs.
+fn generate_win64_memset_harness(routine_symbol: &str, vectors: &[TestVector]) -> String {
+    let mut out = String::new();
+    out.push_str("BITS 64\n");
+    out.push_str("DEFAULT REL\n\n");
+    out.push_str("EXTERN GetStdHandle\n");
+    out.push_str("EXTERN WriteFile\n");
+    out.push_str("EXTERN ExitProcess\n\n");
+    emit_vector_data(&mut out, vectors);
+
+    out.push_str("\nsection .bss\n");
+    let _ = writeln!(out, "results: resb {}", vectors.len() * 8);
+    out.push_str("written: resq 1\n");
+    out.push_str("stdout_handle: resq 1\n");
+
+    out.push_str("\nsection .text\n");
+    let _ = writeln!(out, "extern {routine_symbol}");
+    out.push_str("global main\n");
+    out.push_str("main:\n");
+
+    for (i, v) in vectors.iter().enumerate() {
+        let _ = writeln!(out, "    ; vector {i}: {}", v.name);
+        out.push_str("    sub rsp, 40\n");
+        if v.inputs.first().is_some_and(serde_json::Value::is_null) {
+            out.push_str("    xor ecx, ecx\n");
+        } else {
+            let _ = writeln!(out, "    lea rcx, [vec{i}_buf]");
+        }
+        let _ = writeln!(out, "    mov rdx, [vec{i}_len]");
+        let _ = writeln!(out, "    movzx r8d, byte [vec{i}_needle]");
+        let _ = writeln!(out, "    call {routine_symbol}");
+        out.push_str("    add rsp, 40\n");
+        let _ = writeln!(out, "    mov [results + {i}*8], rax");
+    }
+
+    out.push_str("    sub rsp, 40\n");
+    out.push_str("    mov ecx, -11\n");
+    out.push_str("    call GetStdHandle\n");
+    out.push_str("    mov [stdout_handle], rax\n");
+    out.push_str("    add rsp, 40\n");
+
+    out.push_str("    sub rsp, 40\n");
+    out.push_str("    mov rcx, [stdout_handle]\n");
+    out.push_str("    lea rdx, [results]\n");
+    let _ = writeln!(out, "    mov r8d, {}", vectors.len() * 8);
+    out.push_str("    lea r9, [written]\n");
+    out.push_str("    mov qword [rsp + 32], 0\n");
+    out.push_str("    call WriteFile\n");
+    out.push_str("    add rsp, 40\n");
+
+    for (i, v) in vectors.iter().enumerate() {
+        let len = usize::try_from(vector_length(v)).unwrap_or(0);
+        if len == 0 {
+            continue;
+        }
+        let _ = writeln!(out, "    ; write filled buffer {i}");
         out.push_str("    sub rsp, 40\n");
         out.push_str("    mov rcx, [stdout_handle]\n");
         let _ = writeln!(out, "    lea rdx, [vec{i}_buf]");
@@ -2567,17 +2911,33 @@ pub struct HarnessReport {
     pub all_passed: bool,
 }
 
-/// Parse raw harness stdout (8-byte little-endian `u64` per vector) and
-/// compare against expected values.
+/// Parse raw harness stdout and compare against expected values.
 ///
-/// For [`HarnessShape::ReplaceByte`], stdout is counts (`N*8` bytes) followed by
-/// each mutated buffer in order (length bytes each; empty buffers omit a chunk).
+/// `shape` selects the decode strategy and must be resolved from the
+/// contract via [`resolve_harness_shape`] — do not re-detect it from
+/// `vectors` alone (see [`HarnessShape`]).
+///
+/// For [`HarnessShape::ReplaceByte`] and [`HarnessShape::Memset`], stdout is
+/// counts (`N*8` bytes, always `0` for `Memset`) followed by each
+/// mutated/filled buffer in order (length bytes each; empty buffers omit a
+/// chunk). All other shapes are a flat `N*8`-byte array of little-endian
+/// `u64` result words.
 #[must_use]
-pub fn evaluate(stdout: &[u8], vectors: &[TestVector]) -> HarnessReport {
-    if detect_harness_shape(vectors).ok() == Some(HarnessShape::ReplaceByte) {
-        return evaluate_replace_byte(stdout, vectors);
+pub fn evaluate(stdout: &[u8], vectors: &[TestVector], shape: HarnessShape) -> HarnessReport {
+    match shape {
+        HarnessShape::ReplaceByte => {
+            evaluate_count_and_buffer(stdout, vectors, expected_replace_byte_buffer)
+        }
+        HarnessShape::Memset => evaluate_count_and_buffer(stdout, vectors, expected_memset_buffer),
+        HarnessShape::BufferScan
+        | HarnessShape::MemCmp
+        | HarnessShape::I64Sum
+        | HarnessShape::PureInt => evaluate_words_only(stdout, vectors),
     }
+}
 
+/// Decode a flat `N*8`-byte array of little-endian `u64` result words.
+fn evaluate_words_only(stdout: &[u8], vectors: &[TestVector]) -> HarnessReport {
     let mut observed: Vec<Option<u64>> = Vec::with_capacity(vectors.len());
     for i in 0..vectors.len() {
         let base = i * 8;
@@ -2614,7 +2974,15 @@ pub fn evaluate(stdout: &[u8], vectors: &[TestVector]) -> HarnessReport {
     HarnessReport { cases, all_passed }
 }
 
-fn evaluate_replace_byte(stdout: &[u8], vectors: &[TestVector]) -> HarnessReport {
+/// Shared count+buffer decode for write-shape harnesses: counts (`N*8`
+/// bytes) followed by each vector's expected post-call buffer in order
+/// (per `expected_buffer`, e.g. [`expected_replace_byte_buffer`] or
+/// [`expected_memset_buffer`]).
+fn evaluate_count_and_buffer(
+    stdout: &[u8],
+    vectors: &[TestVector],
+    expected_buffer: fn(&TestVector) -> Vec<u8>,
+) -> HarnessReport {
     let mut offset = 0usize;
     let mut cases = Vec::with_capacity(vectors.len());
 
@@ -2632,7 +3000,7 @@ fn evaluate_replace_byte(stdout: &[u8], vectors: &[TestVector]) -> HarnessReport
 
     for (v, count) in vectors.iter().zip(counts) {
         let expected_count = expected_bits(&v.expected);
-        let expected_buf = expected_replace_byte_buffer(v);
+        let expected_buf = expected_buffer(v);
         let len = expected_buf.len();
 
         let (count_ok, observed_count) = match count {
@@ -2825,7 +3193,8 @@ expression = "count <= length"
     #[test]
     fn memcmp_sysv_harness_loads_both_buffers() {
         let vectors = synthesize_vectors(&memcmp_contract());
-        let src = generate_harness("memcmp", &vectors, Abi::SysVAmd64).expect("sysv harness");
+        let src = generate_harness("memcmp", &vectors, Abi::SysVAmd64, HarnessShape::MemCmp)
+            .expect("sysv harness");
         assert!(src.contains("lea rdi, [vec0_a]"));
         assert!(src.contains("lea rsi, [vec0_b]"));
         assert!(src.contains("mov rdx, [vec0_len]"));
@@ -2836,13 +3205,13 @@ expression = "count <= length"
     #[test]
     fn memcmp_harness_fails_closed_on_aapcs64_and_riscv() {
         let vectors = synthesize_vectors(&memcmp_contract());
-        let a64 = generate_harness("memcmp", &vectors, Abi::Aapcs64)
+        let a64 = generate_harness("memcmp", &vectors, Abi::Aapcs64, HarnessShape::MemCmp)
             .expect_err("AArch64 memcmp harness must fail closed");
         assert!(
             a64.contains("memcmp harness not yet supported on this ABI"),
             "unexpected AArch64 error: {a64}"
         );
-        let rv = generate_harness("memcmp", &vectors, Abi::Riscv)
+        let rv = generate_harness("memcmp", &vectors, Abi::Riscv, HarnessShape::MemCmp)
             .expect_err("RISC-V memcmp harness must fail closed");
         assert!(
             rv.contains("memcmp harness not yet supported on this ABI"),
@@ -2875,18 +3244,38 @@ expression = "count <= length"
     #[test]
     fn replace_byte_harness_x86_and_fail_closed_elsewhere() {
         let vectors = synthesize_vectors(&replace_byte_contract());
-        let sysv =
-            generate_harness("replace_byte", &vectors, Abi::SysVAmd64).expect("sysv harness");
+        let sysv = generate_harness(
+            "replace_byte",
+            &vectors,
+            Abi::SysVAmd64,
+            HarnessShape::ReplaceByte,
+        )
+        .expect("sysv harness");
         assert!(sysv.contains("movzx ecx, byte [vec0_replacement]"));
         assert!(sysv.contains("lea rdi, [vec0_buf]") || sysv.contains("xor edi, edi"));
-        let win =
-            generate_harness("replace_byte", &vectors, Abi::WindowsX64).expect("win64 harness");
+        let win = generate_harness(
+            "replace_byte",
+            &vectors,
+            Abi::WindowsX64,
+            HarnessShape::ReplaceByte,
+        )
+        .expect("win64 harness");
         assert!(win.contains("movzx r9d, byte [vec0_replacement]"));
-        let a64 = generate_harness("replace_byte", &vectors, Abi::Aapcs64)
-            .expect_err("AArch64 replace_byte must fail closed");
+        let a64 = generate_harness(
+            "replace_byte",
+            &vectors,
+            Abi::Aapcs64,
+            HarnessShape::ReplaceByte,
+        )
+        .expect_err("AArch64 replace_byte must fail closed");
         assert!(a64.contains("replace_byte harness not yet supported on this ABI"));
-        let rv = generate_harness("replace_byte", &vectors, Abi::Riscv)
-            .expect_err("RISC-V replace_byte must fail closed");
+        let rv = generate_harness(
+            "replace_byte",
+            &vectors,
+            Abi::Riscv,
+            HarnessShape::ReplaceByte,
+        )
+        .expect_err("RISC-V replace_byte must fail closed");
         assert!(rv.contains("replace_byte harness not yet supported on this ABI"));
     }
 
@@ -2905,7 +3294,7 @@ expression = "count <= length"
         for v in &vectors {
             stdout.extend_from_slice(&expected_replace_byte_buffer(v));
         }
-        let report = evaluate(&stdout, &vectors);
+        let report = evaluate(&stdout, &vectors, HarnessShape::ReplaceByte);
         assert!(report.all_passed, "{:?}", report.cases);
 
         // Wrong buffer for mixed hits: keep counts, corrupt one buffer byte.
@@ -2920,9 +3309,108 @@ expression = "count <= length"
             }
             buf_off += len;
         }
-        let failed = evaluate(&bad, &vectors);
+        let failed = evaluate(&bad, &vectors, HarnessShape::ReplaceByte);
         assert!(!failed.all_passed);
         assert!(!expected_buf.is_empty());
+    }
+
+    fn memset_contract() -> CheckedContract {
+        check_contract(include_str!("../../../fixtures/contracts/memset.sem.toml"))
+    }
+
+    #[test]
+    fn recognizes_memset_oracle_and_is_not_read_only() {
+        let c = memset_contract();
+        let oracle = recognize_behavior_oracle(&c).expect("memset oracle");
+        assert_eq!(oracle.id, ORACLE_BUFFER_MEMSET);
+        assert_eq!(oracle.version, ORACLE_BUFFER_MEMSET_VERSION);
+        assert!(!is_read_only_buffer_scan(&c));
+    }
+
+    #[test]
+    fn memset_vectors_share_buffer_scan_wire_layout_but_resolve_distinct_shape() {
+        let c = memset_contract();
+        let vectors = synthesize_vectors(&c);
+        assert!(vectors.len() >= 4);
+        // Wire layout is indistinguishable from BufferScan by design (ADR
+        // 0003 follow-on): array/null buffer plus two numbers.
+        assert_eq!(
+            detect_harness_shape(&vectors).expect("shape"),
+            HarnessShape::BufferScan
+        );
+        // The oracle disambiguates: resolved shape must be Memset, not
+        // BufferScan, and validation must accept the BufferScan-layout
+        // vectors as compatible.
+        assert_eq!(
+            resolve_harness_shape(&c, &vectors).expect("memset shape"),
+            HarnessShape::Memset
+        );
+        validate_vectors_match_oracle(&c, &vectors).expect("memset vectors match oracle");
+    }
+
+    #[test]
+    fn memset_harness_x86_and_fail_closed_elsewhere() {
+        let vectors = synthesize_vectors(&memset_contract());
+        let sysv = generate_harness("memset", &vectors, Abi::SysVAmd64, HarnessShape::Memset)
+            .expect("sysv harness");
+        assert!(sysv.contains("movzx edx, byte [vec0_needle]"));
+        assert!(sysv.contains("lea rdi, [vec0_buf]") || sysv.contains("xor edi, edi"));
+        assert!(!sysv.contains("replacement"));
+        let win = generate_harness("memset", &vectors, Abi::WindowsX64, HarnessShape::Memset)
+            .expect("win64 harness");
+        assert!(win.contains("movzx r8d, byte [vec0_needle]"));
+        let a64 = generate_harness("memset", &vectors, Abi::Aapcs64, HarnessShape::Memset)
+            .expect_err("AArch64 memset must fail closed");
+        assert!(a64.contains("memset harness not yet supported on this ABI"));
+        let rv = generate_harness("memset", &vectors, Abi::Riscv, HarnessShape::Memset)
+            .expect_err("RISC-V memset must fail closed");
+        assert!(rv.contains("memset harness not yet supported on this ABI"));
+    }
+
+    #[test]
+    fn evaluate_memset_checks_status_and_filled_buffer() {
+        let vectors = synthesize_vectors(&memset_contract());
+        let short = vectors
+            .iter()
+            .find(|v| v.name == "short pattern")
+            .expect("short pattern");
+        let expected_buf = expected_memset_buffer(short);
+        assert!(expected_buf.iter().all(|&b| b == expected_buf[0]));
+
+        let mut stdout = Vec::new();
+        for v in &vectors {
+            stdout.extend_from_slice(&expected_bits(&v.expected).to_le_bytes());
+        }
+        for v in &vectors {
+            stdout.extend_from_slice(&expected_memset_buffer(v));
+        }
+        let report = evaluate(&stdout, &vectors, HarnessShape::Memset);
+        assert!(report.all_passed, "{:?}", report.cases);
+
+        // Wrong buffer for "short pattern": keep counts, corrupt one byte.
+        let mut bad = stdout.clone();
+        let counts_end = vectors.len() * 8;
+        let mut buf_off = counts_end;
+        for v in &vectors {
+            let len = expected_memset_buffer(v).len();
+            if v.name == "short pattern" && len > 0 {
+                bad[buf_off] = bad[buf_off].wrapping_add(1);
+                break;
+            }
+            buf_off += len;
+        }
+        let failed = evaluate(&bad, &vectors, HarnessShape::Memset);
+        assert!(!failed.all_passed);
+    }
+
+    #[test]
+    fn memset_name_discriminator_is_fail_closed() {
+        let source = include_str!("../../../fixtures/contracts/memset.sem.toml");
+        let unnamed =
+            check_contract(&source.replace("name = \"memset\"", "name = \"fill_buffer\""));
+        assert!(memset_shape(&unnamed).is_none());
+        assert!(recognize_behavior_oracle(&unnamed).is_none());
+        assert!(synthesize_vectors(&unnamed).is_empty());
     }
 
     #[test]
@@ -2949,7 +3437,8 @@ expression = "count <= length"
             built.proof_basis,
             crate::verify::ProofBasis::OracleAndVectors
         );
-        let src = generate_harness("sum_i64", &v, Abi::SysVAmd64).expect("sysv harness");
+        let src = generate_harness("sum_i64", &v, Abi::SysVAmd64, HarnessShape::I64Sum)
+            .expect("sysv harness");
         assert!(src.contains("lea rdi, [vec0_buf]"));
         assert!(src.contains("mov rsi, [vec0_len]"));
         assert!(!src.contains("needle"));
@@ -3099,7 +3588,7 @@ bounded_stack_bytes = 64
     fn pure_int_sysv_harness_loads_abi_registers() {
         let c = min_usize_contract();
         let v = synthesize_vectors(&c);
-        let src = generate_harness("min_usize", &v, Abi::SysVAmd64).unwrap();
+        let src = generate_harness("min_usize", &v, Abi::SysVAmd64, HarnessShape::PureInt).unwrap();
         assert!(src.contains("extern min_usize"));
         assert!(src.contains("global _start"));
         assert!(src.contains("call min_usize"));
@@ -3114,7 +3603,8 @@ bounded_stack_bytes = 64
     fn pure_int_win64_harness_loads_abi_registers() {
         let c = min_usize_contract();
         let v = synthesize_vectors(&c);
-        let src = generate_harness("min_usize", &v, Abi::WindowsX64).unwrap();
+        let src =
+            generate_harness("min_usize", &v, Abi::WindowsX64, HarnessShape::PureInt).unwrap();
         assert!(src.contains("global main"));
         assert!(src.contains("mov rcx, [vec0_a]"));
         assert!(src.contains("mov rdx, [vec0_b]"));
@@ -3126,7 +3616,7 @@ bounded_stack_bytes = 64
     fn pure_int_aarch64_harness_loads_abi_registers() {
         let c = min_usize_contract();
         let v = synthesize_vectors(&c);
-        let src = generate_harness("min_usize", &v, Abi::Aapcs64).unwrap();
+        let src = generate_harness("min_usize", &v, Abi::Aapcs64, HarnessShape::PureInt).unwrap();
         assert!(src.contains("bl min_usize"));
         assert!(src.contains("vec0_a"));
         assert!(src.contains("vec0_b"));
@@ -3137,7 +3627,7 @@ bounded_stack_bytes = 64
     fn pure_int_riscv_harness_loads_abi_registers() {
         let c = min_usize_contract();
         let v = synthesize_vectors(&c);
-        let src = generate_harness("min_usize", &v, Abi::Riscv).unwrap();
+        let src = generate_harness("min_usize", &v, Abi::Riscv, HarnessShape::PureInt).unwrap();
         assert!(src.contains("jal min_usize"));
         assert!(src.contains("vec0_a"));
         assert!(src.contains("vec0_b"));
@@ -3145,7 +3635,7 @@ bounded_stack_bytes = 64
     }
 
     #[test]
-    fn generate_harness_rejects_unsupported_vector_shape() {
+    fn detect_harness_shape_rejects_unsupported_vector_shape() {
         let mixed = vec![
             TestVector {
                 name: "bad".into(),
@@ -3158,7 +3648,7 @@ bounded_stack_bytes = 64
                 expected: serde_json::json!(2u64),
             },
         ];
-        let err = generate_harness("min_usize", &mixed, Abi::SysVAmd64).unwrap_err();
+        let err = detect_harness_shape(&mixed).unwrap_err();
         assert!(err.contains("unsupported test vector shape"));
     }
 
@@ -3441,7 +3931,8 @@ no_heap = true
     fn harness_source_references_routine_and_all_vectors() {
         let c = count_byte_shape();
         let v = synthesize_vectors(&c);
-        let src = generate_harness("count_byte", &v, Abi::SysVAmd64).unwrap();
+        let src =
+            generate_harness("count_byte", &v, Abi::SysVAmd64, HarnessShape::BufferScan).unwrap();
         assert!(src.contains("extern count_byte"));
         assert!(src.contains("global _start"));
         assert!(src.contains("call count_byte"));
@@ -3456,7 +3947,8 @@ no_heap = true
     fn win64_harness_uses_microsoft_registers_and_win32_io() {
         let c = count_byte_shape();
         let v = synthesize_vectors(&c);
-        let src = generate_harness("count_byte", &v, Abi::WindowsX64).unwrap();
+        let src =
+            generate_harness("count_byte", &v, Abi::WindowsX64, HarnessShape::BufferScan).unwrap();
         assert!(src.contains("global main"));
         assert!(src.contains("lea rcx,"));
         assert!(src.contains("mov rdx,"));
@@ -3470,7 +3962,8 @@ no_heap = true
     fn aarch64_harness_uses_aapcs64_registers_and_linux_syscalls() {
         let c = count_byte_shape();
         let v = synthesize_vectors(&c);
-        let src = generate_harness("count_byte", &v, Abi::Aapcs64).unwrap();
+        let src =
+            generate_harness("count_byte", &v, Abi::Aapcs64, HarnessShape::BufferScan).unwrap();
         assert!(src.contains(".global _start"));
         assert!(src.contains("bl count_byte"));
         assert!(src.contains("ldr x0, =vec0_buf"));
@@ -3484,7 +3977,7 @@ no_heap = true
     fn riscv_harness_uses_lp64_registers_and_linux_syscalls() {
         let c = count_byte_shape();
         let v = synthesize_vectors(&c);
-        let src = generate_harness("count_byte", &v, Abi::Riscv).unwrap();
+        let src = generate_harness("count_byte", &v, Abi::Riscv, HarnessShape::BufferScan).unwrap();
         assert!(src.contains(".global _start"));
         assert!(src.contains("jal count_byte"));
         assert!(src.contains("la a0, vec0_buf"));
@@ -3504,7 +3997,7 @@ no_heap = true
             let val = vec.expected.as_u64().unwrap_or(0);
             out.extend_from_slice(&val.to_le_bytes());
         }
-        let report = evaluate(&out, &v);
+        let report = evaluate(&out, &v, HarnessShape::BufferScan);
         assert!(
             report.all_passed,
             "all cases should pass with correct output"
@@ -3518,7 +4011,7 @@ no_heap = true
         let v = synthesize_vectors(&c);
         // Encode wrong values (all zeros) → every non-zero expected fails.
         let out = vec![0u8; v.len() * 8];
-        let report = evaluate(&out, &v);
+        let report = evaluate(&out, &v, HarnessShape::BufferScan);
         assert!(!report.all_passed);
         let failed = report.cases.iter().find(|x| !x.passed).unwrap();
         assert!(!failed.observed.is_empty());
@@ -3530,7 +4023,7 @@ no_heap = true
         let c = count_byte_shape();
         let v = synthesize_vectors(&c);
         let out = vec![0u8; 4]; // too short for even one word.
-        let report = evaluate(&out, &v);
+        let report = evaluate(&out, &v, HarnessShape::BufferScan);
         assert!(!report.all_passed);
         assert!(report.cases[0].observed.contains("no output"));
     }

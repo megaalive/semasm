@@ -1,0 +1,44 @@
+contract_version = "0.1"
+
+[function]
+name = "memset"
+summary = "Fill buffer[0..length] with value; returns 0"
+
+[[function.parameters]]
+name = "buffer"
+type = "ptr<u8>"
+role = "input"
+
+[[function.parameters]]
+name = "length"
+type = "usize"
+role = "input"
+
+[[function.parameters]]
+name = "value"
+type = "u8"
+role = "input"
+
+[[function.returns]]
+name = "status"
+type = "usize"
+
+[[function.requires]]
+expression = "length <= 4096"
+reason = "Arbitrary safety limit for this fixture."
+
+[[function.ensures]]
+expression = "status == 0"
+
+[[function.effects]]
+kind = "memory_read"
+region = "buffer[0..length]"
+
+[[function.effects]]
+kind = "memory_write"
+region = "buffer[0..length]"
+
+[function.constraints]
+no_heap = true
+no_recursion = true
+bounded_stack_bytes = 128
