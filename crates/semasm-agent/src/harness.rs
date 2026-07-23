@@ -17,7 +17,7 @@
 //! Supported calling shapes:
 //!
 //! - **Buffer scan** `(ptr<const u8> buffer, usize length, u8 needle) -> usize`
-//!   — canonical example `count_byte`.
+//!   — `count_byte` (count) or `find_first_byte` (first index, or length if absent).
 //! - **I64 wrapping sum** `(ptr<const i64> values, usize length) -> i64`
 //!   — canonical example `sum_i64`.
 //! - **Pure integer** `(usize, usize) -> usize` — canonical examples
@@ -68,7 +68,10 @@ const DEFAULT_BUFFER_SCAN_NEEDLE: u8 = 0x41;
 #[must_use]
 pub fn synthesize_vectors(contract: &CheckedContract) -> Vec<TestVector> {
     if let Some(shape) = scan_shape(contract) {
-        return synthesize_buffer_scan_vectors(shape);
+        return match shape.op {
+            BufferScanOp::Count => synthesize_buffer_scan_vectors(shape),
+            BufferScanOp::FindFirst => synthesize_find_first_vectors(shape),
+        };
     }
     if let Some(shape) = i64_sum_shape(contract) {
         return synthesize_i64_sum_vectors(shape);
@@ -83,6 +86,10 @@ pub fn synthesize_vectors(contract: &CheckedContract) -> Vec<TestVector> {
 pub const ORACLE_BUFFER_COUNT_EQUAL_U8: &str = "builtin.buffer.count_equal_u8";
 /// Profile version for [`ORACLE_BUFFER_COUNT_EQUAL_U8`] (v2: ensures vs claim split).
 pub const ORACLE_BUFFER_COUNT_EQUAL_U8_VERSION: u32 = 2;
+/// Builtin oracle id for buffer find-first-u8 (`find_first_byte` shape).
+pub const ORACLE_BUFFER_FIND_FIRST_U8: &str = "builtin.buffer.find_first_u8";
+/// Profile version for [`ORACLE_BUFFER_FIND_FIRST_U8`].
+pub const ORACLE_BUFFER_FIND_FIRST_U8_VERSION: u32 = 1;
 /// Builtin oracle id for i64 wrapping-sum shapes (`sum_i64`).
 pub const ORACLE_BUFFER_WRAPPING_SUM_I64: &str = "builtin.buffer.wrapping_sum_i64";
 /// Profile version for [`ORACLE_BUFFER_WRAPPING_SUM_I64`] (v2: ensures vs claim split).
@@ -132,11 +139,18 @@ pub struct RecognizedOracle {
 /// for golden shapes is proven by the returned oracle plus synthesized vectors.
 #[must_use]
 pub fn recognize_behavior_oracle(contract: &CheckedContract) -> Option<RecognizedOracle> {
-    if scan_shape(contract).is_some() {
-        return Some(RecognizedOracle {
-            id: ORACLE_BUFFER_COUNT_EQUAL_U8,
-            version: ORACLE_BUFFER_COUNT_EQUAL_U8_VERSION,
-            claim: "result equals the number of bytes in buffer[0..length] equal to needle",
+    if let Some(shape) = scan_shape(contract) {
+        return Some(match shape.op {
+            BufferScanOp::Count => RecognizedOracle {
+                id: ORACLE_BUFFER_COUNT_EQUAL_U8,
+                version: ORACLE_BUFFER_COUNT_EQUAL_U8_VERSION,
+                claim: "result equals the number of bytes in buffer[0..length] equal to needle",
+            },
+            BufferScanOp::FindFirst => RecognizedOracle {
+                id: ORACLE_BUFFER_FIND_FIRST_U8,
+                version: ORACLE_BUFFER_FIND_FIRST_U8_VERSION,
+                claim: "result equals the first index of needle in buffer[0..length], or length when absent",
+            },
         });
     }
     if i64_sum_shape(contract).is_some() {
@@ -282,7 +296,7 @@ pub fn validate_vectors_match_oracle(
     };
     let shape = detect_harness_shape(vectors)?;
     let expected = match oracle.id {
-        ORACLE_BUFFER_COUNT_EQUAL_U8 => HarnessShape::BufferScan,
+        ORACLE_BUFFER_COUNT_EQUAL_U8 | ORACLE_BUFFER_FIND_FIRST_U8 => HarnessShape::BufferScan,
         ORACLE_BUFFER_WRAPPING_SUM_I64 => HarnessShape::I64Sum,
         ORACLE_PURE_INT_BINARY_USIZE => HarnessShape::PureInt,
         other => {
@@ -429,6 +443,110 @@ fn synthesize_buffer_scan_vectors(shape: ScanShape) -> Vec<TestVector> {
                 serde_json::Value::Null,
                 serde_json::json!(0u64),
                 serde_json::json!(u64::from(shape.needle)),
+            ],
+            expected: serde_json::json!(0u64),
+        });
+    }
+
+    vectors
+}
+
+/// Synthesise canonical find-first test vectors for `(ptr<const u8>, usize, u8) -> usize`.
+///
+/// Absent needle yields `length` (not a sentinel outside the buffer).
+#[allow(clippy::vec_init_then_push)]
+fn synthesize_find_first_vectors(shape: ScanShape) -> Vec<TestVector> {
+    let max_len = shape
+        .max_length
+        .unwrap_or(MAX_FIXTURE_CAP)
+        .clamp(1, MAX_FIXTURE_CAP);
+    let needle = u64::from(shape.needle);
+    let no_match = non_needle_bytes(shape.needle);
+
+    let mut vectors = Vec::new();
+
+    vectors.push(TestVector {
+        name: "empty input".into(),
+        inputs: vec![
+            serde_json::Value::Null,
+            serde_json::json!(0u64),
+            serde_json::json!(needle),
+        ],
+        expected: serde_json::json!(0u64),
+    });
+
+    vectors.push(TestVector {
+        name: "one byte (match)".into(),
+        inputs: vec![
+            serde_json::json!([needle]),
+            serde_json::json!(1u64),
+            serde_json::json!(needle),
+        ],
+        expected: serde_json::json!(0u64),
+    });
+
+    vectors.push(TestVector {
+        name: "no match".into(),
+        inputs: vec![
+            serde_json::json!([
+                u64::from(no_match[0]),
+                u64::from(no_match[1]),
+                u64::from(no_match[2])
+            ]),
+            serde_json::json!(3u64),
+            serde_json::json!(needle),
+        ],
+        expected: serde_json::json!(3u64),
+    });
+
+    vectors.push(TestVector {
+        name: "all match".into(),
+        inputs: vec![
+            serde_json::json!([needle, needle]),
+            serde_json::json!(2u64),
+            serde_json::json!(needle),
+        ],
+        expected: serde_json::json!(0u64),
+    });
+
+    vectors.push(TestVector {
+        name: "match after zeros".into(),
+        inputs: vec![
+            serde_json::json!([0u64, needle, 0u64]),
+            serde_json::json!(3u64),
+            serde_json::json!(needle),
+        ],
+        expected: serde_json::json!(1u64),
+    });
+
+    vectors.push(TestVector {
+        name: "match at end".into(),
+        inputs: vec![
+            serde_json::json!([u64::from(no_match[0]), u64::from(no_match[1]), needle]),
+            serde_json::json!(3u64),
+            serde_json::json!(needle),
+        ],
+        expected: serde_json::json!(2u64),
+    });
+
+    let big: Vec<serde_json::Value> = (0..max_len).map(|_| serde_json::json!(needle)).collect();
+    vectors.push(TestVector {
+        name: "maximum configured fixture length".into(),
+        inputs: vec![
+            serde_json::Value::Array(big),
+            serde_json::json!(max_len as u64),
+            serde_json::json!(needle),
+        ],
+        expected: serde_json::json!(0u64),
+    });
+
+    if shape.allows_null_when_empty {
+        vectors.push(TestVector {
+            name: "null pointer with zero length".into(),
+            inputs: vec![
+                serde_json::Value::Null,
+                serde_json::json!(0u64),
+                serde_json::json!(needle),
             ],
             expected: serde_json::json!(0u64),
         });
@@ -621,9 +739,18 @@ fn non_needle_bytes(needle: u8) -> [u8; 3] {
     out
 }
 
+/// Which buffer-scan semantic the same calling shape implements.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum BufferScanOp {
+    Count,
+    FindFirst,
+}
+
 /// Resolved calling shape for the canonical buffer-scan function.
 #[derive(Clone, Copy)]
 struct ScanShape {
+    /// Count vs find-first discriminator (from function name).
+    op: BufferScanOp,
     /// Needle value used for synthesised inputs.
     needle: u8,
     /// Upper bound on buffer length, if derivable from requires.
@@ -711,12 +838,26 @@ fn scan_shape(contract: &CheckedContract) -> Option<ScanShape> {
         _ => return None,
     };
 
+    let op = buffer_scan_op_from_name(&contract.name)?;
+
     Some(ScanShape {
+        op,
         needle: needle_from_requires(contract, &needle_param.name)
             .unwrap_or(DEFAULT_BUFFER_SCAN_NEEDLE),
         max_length: length_bound_from_requires(contract, &len_param.name),
         allows_null_when_empty: allows_null_when_empty(contract, &ptr_param.name, &len_param.name),
     })
+}
+
+fn buffer_scan_op_from_name(name: &str) -> Option<BufferScanOp> {
+    let lower = name.to_ascii_lowercase();
+    let has_count = lower.contains("count");
+    let has_find = lower.contains("find") || lower.contains("index");
+    match (has_count, has_find) {
+        (true, false) => Some(BufferScanOp::Count),
+        (false, true) => Some(BufferScanOp::FindFirst),
+        _ => None,
+    }
 }
 
 fn length_bound_from_requires(contract: &CheckedContract, length_name: &str) -> Option<usize> {
@@ -2023,6 +2164,55 @@ bounded_stack_bytes = 64
             crate::verify::ProofBasis::OracleAndVectors
         );
         assert!(is_read_only_buffer_scan(&c));
+    }
+
+    fn find_first_byte_contract() -> CheckedContract {
+        let toml = include_str!("../../../fixtures/contracts/find_first_byte.sem.toml");
+        check_contract(toml)
+    }
+
+    #[test]
+    fn recognizes_named_find_first_oracle() {
+        let c = find_first_byte_contract();
+        let oracle = recognize_behavior_oracle(&c).expect("find_first shape");
+        assert_eq!(oracle.id, ORACLE_BUFFER_FIND_FIRST_U8);
+        assert_eq!(oracle.version, ORACLE_BUFFER_FIND_FIRST_U8_VERSION);
+        assert!(oracle.claim.contains("first index"));
+        assert!(oracle.claim.contains("length when absent"));
+        assert!(is_read_only_buffer_scan(&c));
+    }
+
+    #[test]
+    fn synthesizes_find_first_vectors_with_absent_as_length() {
+        let c = find_first_byte_contract();
+        let v = synthesize_vectors(&c);
+        assert!(v.len() >= 7);
+        let no_match = v.iter().find(|case| case.name == "no match").unwrap();
+        assert_eq!(no_match.expected.as_u64(), Some(3));
+        let one = v
+            .iter()
+            .find(|case| case.name == "one byte (match)")
+            .unwrap();
+        assert_eq!(one.expected.as_u64(), Some(0));
+        let at_end = v.iter().find(|case| case.name == "match at end").unwrap();
+        assert_eq!(at_end.expected.as_u64(), Some(2));
+        let after = v
+            .iter()
+            .find(|case| case.name == "match after zeros")
+            .unwrap();
+        assert_eq!(after.expected.as_u64(), Some(1));
+        validate_vectors_match_oracle(&c, &v).expect("find_first vectors match oracle");
+    }
+
+    #[test]
+    fn ambiguous_buffer_scan_name_is_fail_closed() {
+        let toml = buffer_scan_toml("", "", "").replace("count_byte", "scan_buffer");
+        let c = check_contract(&toml);
+        assert!(
+            recognize_behavior_oracle(&c).is_none(),
+            "ambiguous buffer-scan name must not claim count or find"
+        );
+        assert!(synthesize_vectors(&c).is_empty());
     }
 
     #[test]

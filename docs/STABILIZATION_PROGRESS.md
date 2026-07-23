@@ -140,6 +140,12 @@ Tranche N is closed on tip `623d22c` (SemASM) with VAA handoff `5a5c6d9`.
 
 ### After O — Tranche P (`find_first_byte` Gate)
 
+| Wave | Focus | Owner | Status |
+|---|---|---|---|
+| **P0** | Oracle/contract/vectors (absent → length) | SemASM | **done** |
+| **P1** | Asm/e2e/goldens/adversarial + capabilities | SemASM | queued |
+| **P2** | VAA pin tip + Gate-1/2 smoke | VAA | queued |
+
 Buffer index-of shape (not another pure-int leaf). Pattern N0→N2 / M2→M4.
 
 **Honesty:** Gate-1 Incomplete ≠ Verified. SoftHSM / Fulcio / practice seals ≠
