@@ -527,6 +527,68 @@ fn agent_verify_trailing_bytes_win64_is_semantic_failed() {
     assert_status(&output, "semantic_failed");
 }
 
+// Dx adversarial wave: a second unmodelled-mnemonic class (`cpuid`,
+// privileged/CPU-identification) alongside the existing AVX/SIMD-state class
+// (`vzeroupper`), so the lowering gap corpus does not rest on one mnemonic
+// family. Decode/lower maturity is NOT bumped by this wave; see the Dx
+// checklist in docs/STABILIZATION_PROGRESS.md.
+#[test]
+#[ignore = "requires nasm, ld, objdump, and qemu-user on PATH"]
+fn agent_verify_unknown_insn_cpuid_sysv_is_semantic_failed() {
+    let source = workspace_root().join("fixtures/asm/count_byte_unknown_insn_cpuid.asm");
+    let contract = workspace_root().join("fixtures/contracts/count_byte.sem.toml");
+    let output = run_agent_verify(&source, &contract, None, false);
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    if skip_if_incomplete(&stderr) {
+        return;
+    }
+    assert_status(&output, "semantic_failed");
+}
+
+#[test]
+#[ignore = "requires nasm, lld-link, and native Windows host"]
+fn agent_verify_unknown_insn_cpuid_win64_is_semantic_failed() {
+    let source = workspace_root().join("fixtures/asm/count_byte_unknown_insn_cpuid_win64.asm");
+    let contract = workspace_root().join("fixtures/contracts/count_byte.sem.toml");
+    let output = run_agent_verify(&source, &contract, Some("x86_64-pc-windows-msvc"), false);
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    if skip_if_incomplete(&stderr) {
+        return;
+    }
+    assert_status(&output, "semantic_failed");
+}
+
+// Dx adversarial wave: trailing-after-ret decode gap on a second leaf/contract
+// shape (`find_first_byte`, buffer-scan-with-early-exit) rather than only
+// `count_byte` (accumulate-and-loop), so the decode gap corpus is not only
+// exercised through one leaf family. Decode/lower maturity is NOT bumped by
+// this wave; see the Dx checklist in docs/STABILIZATION_PROGRESS.md.
+#[test]
+#[ignore = "requires nasm, ld, objdump, and qemu-user on PATH"]
+fn agent_verify_find_first_byte_trailing_bytes_sysv_is_semantic_failed() {
+    let source = workspace_root().join("fixtures/asm/find_first_byte_trailing_bytes.asm");
+    let contract = workspace_root().join("fixtures/contracts/find_first_byte.sem.toml");
+    let output = run_agent_verify(&source, &contract, None, false);
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    if skip_if_incomplete(&stderr) {
+        return;
+    }
+    assert_status(&output, "semantic_failed");
+}
+
+#[test]
+#[ignore = "requires nasm, lld-link, and native Windows host"]
+fn agent_verify_find_first_byte_trailing_bytes_win64_is_semantic_failed() {
+    let source = workspace_root().join("fixtures/asm/find_first_byte_trailing_bytes_win64.asm");
+    let contract = workspace_root().join("fixtures/contracts/find_first_byte.sem.toml");
+    let output = run_agent_verify(&source, &contract, Some("x86_64-pc-windows-msvc"), false);
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    if skip_if_incomplete(&stderr) {
+        return;
+    }
+    assert_status(&output, "semantic_failed");
+}
+
 #[test]
 #[ignore = "requires nasm, ld, objdump, and qemu-user on PATH"]
 fn agent_verify_wx_sysv_is_semantic_failed() {

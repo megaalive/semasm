@@ -44,7 +44,11 @@ harness checks the post-call `dst` buffer only, never `src`. **Rmem** (ADR
 analyzer. Next up: **W4** HlaX64 `replace_byte` bridge. Gate-2
 `ExecutionSandbox` (I2) landed on VAA (`execution_isolation` +
 `--execution-sandbox`); this SemASM wave does not retouch that path.
-decode/lower stay `partial`. Exception: bugfix / pin tip only.
+decode/lower stay `partial`. Exception: bugfix / pin tip only. **Dx** landed
+the decode/lower maturity-bump checklist plus one more adversarial
+unknown-mnemonic-class and trailing-bytes-twin family (see below); decode/lower
+remain `partial` — Dx documents when a future bump *could* happen, it is not
+that bump.
 
 ### Next waves (X4 + H4 + Y) — closed
 
@@ -137,6 +141,65 @@ Honesty locked for the bump (M1):
 |---|---|---|
 | **M0** | Deepen ownership map + Gate-2 I0–I2 criteria (docs) | **done** |
 | **M1** | Bind `ci_jobs` + bump x86 pipeline → `verified_in_ci` | **done** |
+
+### Decode/lower depth checklist + adversarial wave (Dx) — landed
+
+| Wave | Focus | Owner | Status |
+|---|---|---|---|
+| **Dx** | x86 decode/lower bump-criteria checklist (M0-style ownership map) + one more adversarial decode/lower twin family | SemASM | **done** (this doc) |
+
+**Honesty: Dx documents bump criteria and extends the adversarial corpus; it
+does not bump `decode`/`lower`.** Both stay `partial` on every x86-64 target
+after this wave (see `capabilities.toml`). Agent (this document, or a coding
+agent editing it) ≠ pipeline. Incomplete ≠ Verified — a green adversarial
+corpus is evidence the checklist owner reviews, not a self-certifying bump.
+
+#### Decode/lower maturity bump checklist (Dx)
+
+Do **not** change x86-64 Linux/Windows `decode` / `lower` from `partial` →
+`verified_in_ci` until **all** hold (mirrors the M0/D2 pipeline ownership map
+above — same discipline, applied to decode/lower instead of assemble/link):
+
+1. **Owner CI jobs** named and green on `main`, and running the *adversarial*
+   corpus (not only golden-path fixtures):
+   - `decode (capstone)` — runs `cargo test --test agent_verify_adversarial
+     _sysv_` (Linux/SysV adversarial twins, capstone feature enabled).
+   - `e2e (x86-64 Windows)` — runs `cargo test --test agent_verify_adversarial
+     _win64_` (Win64 adversarial twins).
+   - `e2e (AArch64 Linux)` / `e2e (RV64 Linux)` — run the `_aarch64_` /
+     `_riscv64_` adversarial filters via `cross-target-e2e`, for parity if
+     A64/RV64 decode/lower are ever proposed for the same bump.
+2. **Coverage criteria** the corpus above must keep proving, growing whenever
+   a new gap is found (not just holding the current set static):
+   - **Unknown/unmodelled mnemonic classes** — `count_byte_unknown_insn*`
+     (AVX/SIMD-state class via `vzeroupper`) **and** `count_byte_unknown_insn_cpuid*`
+     (privileged/CPU-identification class via `cpuid`, added in Dx). A single
+     mnemonic class passing is not sufficient evidence of decode/lower depth.
+   - **Decode-level trailing/undecodable bytes** after a valid leaf return —
+     `count_byte_trailing_bytes*` **and** `find_first_byte_trailing_bytes*`
+     (added in Dx: same decode gap, a second leaf/contract shape).
+   - **W+X object-policy gaps** (`count_byte_wx*`) and **indirect-branch/call
+     leaf rejection** (`count_byte_indirect*`) stay fail-closed.
+   - **Win64/SysV parity** — every SysV adversarial fixture in this family has
+     a Win64 twin (and vice versa) before either ABI counts as covered; Dx's
+     new twins ship both sides together.
+3. **Fail-closed, not skip/warn-as-pass.** Every fixture above must assert
+   `semantic_failed` (or a more specific gate) with a non-zero exit and a
+   `VerificationReport` JSON body — `#[ignore]`d for missing toolchain is
+   fine, silently passing is not.
+4. **Explicit: agent ≠ pipeline; Incomplete ≠ Verified.** This checklist
+   existing — or the adversarial corpus being fully green — is not itself the
+   bump. A named human/CI owner must review the corpus for completeness
+   (mnemonic coverage against the real ISA, not just the fixtures on disk)
+   and explicitly sign off in the PR that flips `decode`/`lower` to
+   `verified_in_ci`.
+5. **Caps comment block updated in the same change as the bump** (same rule
+   as the M0/D2 pipeline checklist above) — do not bump the TOML value
+   without updating the honesty comments that explain what the value means.
+
+**Current status:** `decode` / `lower` remain `partial` on every x86-64
+target (`x86_64-unknown-linux-gnu`, `x86_64-pc-windows-msvc`) after Dx. Do
+**not** bump until the Dx checklist owner signs off.
 
 ### Write-shape v1 (W0–W3) — `replace_byte`
 
@@ -233,7 +296,9 @@ not an Rmem analyzer.
 - Formal `ensures result == count(...)` / general theorem proving
 - Full memory alias / symbolic / region-precise store proof
 - C compiler `-O2` / `-Os` binary-size bake-off in CI
-- New ISAs or broad mnemonic expansion; A64/RV MemCmp / replace harness; decode/lower bump
+- New ISAs or broad mnemonic expansion; A64/RV MemCmp / replace harness;
+  decode/lower bump to `verified_in_ci` (Dx checklist landed — see criteria
+  above; decode/lower remain `partial` until checklist owner signs off)
 - Thin leaf / HlaX64 bridge treadmill (paused except write-shape W*)
 - CryptOpt embed, live-model Gate CI, remote transparency, hardware HSM
 
