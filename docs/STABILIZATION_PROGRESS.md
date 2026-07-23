@@ -33,13 +33,11 @@ W1–W5, controller handshake, shared `count_byte` / `sum_i64` / `min_usize` sli
 Tranche R (search→ingest Gate loop) are complete. **X2 + S + T** through
 **X5 + H5 + Z** are closed (leaf/Gate/bridge treadmill saturated).
 
-**Leaf treadmill paused.** Next investment is the **maturity inflection** design
-tranche (D0–D2): docs/ADR only — no new oracle leaf, no new HlaX64 bridge, no
-x86 pipeline maturity bump in D*. Exception: bugfix / pin tip only.
-
-First post-design implementation cliff (separate W* plan after ADR Accept):
-**write-shape** buffer leaves (`replace_byte` / `memcpy`). Pipeline maturity
-and Gate-2 isolation get criteria notes in D2, then queue behind write-shape.
+**Leaf treadmill paused.** Maturity inflection D0–D2 closed (write-shape ADR
+Proposed; pipeline + Gate-2 criteria). **Next:** maturity follow-up **M0**
+(deepen ownership / isolation phases) → **M1** (x86 pipeline bump). No new
+oracle leaf, no HlaX64 bridge, no ADR Accept / W*, no `ExecutionSandbox` Gate
+wire in M0–M1 except the M1 caps bump itself.
 
 ### Next waves (X4 + H4 + Y) — closed
 
@@ -100,6 +98,31 @@ Do **not** change x86-64 Linux/Windows `assemble` / `link` / `execute` /
 3. Failures are fail-closed (non-zero exit), not skip/warn-as-pass.
 4. Caps comment block (Tranche O) updated in the same change as the bump.
 5. `agent_verify = verified_in_ci` alone is **never** sufficient for a pipeline bump.
+
+#### Pipeline ownership map (maturity follow-up M0)
+
+| Capability keys | Owner CI job name | Corpus that proves the claim |
+|---|---|---|
+| assemble / link / execute / pipeline_verify (Linux) | `e2e (x86-64 Linux)` | `semasm-build` ignored pipeline tests + `fixtures/asm/exit.asm` deterministic build |
+| assemble / link / execute / pipeline_verify (Windows) | `e2e (x86-64 Windows)` | `pipeline::tests::build_windows_pe_and_run` (+ NASM/lld toolchain steps) |
+
+Honesty locked for the bump (M1):
+
+- **`agent_verify = verified_in_ci` ≠ pipeline bump.** Win64 `agent verify` steps in the
+  same Windows e2e job prove agent gates/harness, not assemble/link/execute.
+- Pipeline corpus = the **build/run** fixtures above — **not** the full leaf list under
+  `target.evidence.fixtures` (those are agent/object evidence lists).
+- Gap before M1: Linux `ci_jobs` still lists only `decode (capstone)`; M1 must bind
+  `e2e (x86-64 Linux)` / keep `e2e (x86-64 Windows)` when bumping.
+
+### Maturity follow-up (M0–M1)
+
+| Wave | Focus | Status |
+|---|---|---|
+| **M0** | Deepen ownership map + Gate-2 I0–I2 criteria (docs) | **in progress** |
+| **M1** | Bind `ci_jobs` + bump x86 pipeline → `verified_in_ci` | pending |
+
+ADR 0003 remains **Proposed** (no W*). Gate-2 `ExecutionSandbox` wire (I2) deferred.
 
 #### After D1 Accept — W* outline only (not this tranche)
 
