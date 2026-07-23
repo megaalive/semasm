@@ -23,6 +23,7 @@ memcmp:
 .lt:
     mov x0, xzr
     sub x0, x0, #1
+    ret
 .done:
     mov x0, xzr
     ret
