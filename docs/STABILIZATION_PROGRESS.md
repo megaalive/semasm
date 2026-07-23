@@ -106,7 +106,7 @@ VAA post-alpha trust depth (**P7** / **P8**) is Done on the consumer side
 |---|---|---|---|
 | **M0** | Tip honesty: ROADMAP + this file point to Tranche M | SemASM | **done** |
 | **M1** | `capabilities.toml` evidence fixtures include `sum_i64` corpus | SemASM | **done** |
-| **M2** | `min_usize` Gate-ready pack (goldens / twins / honesty parity) | SemASM | pending |
+| **M2** | `min_usize` Gate-ready pack (goldens / twins / honesty parity) | SemASM | **done** |
 | **M3** | One x86 adversarial twin wave around golden path | SemASM | pending |
 | **M4** | VAA pin tip + `min_usize` Gate-1/2 fixtures/smoke | VAA | pending |
 

@@ -132,10 +132,16 @@ pub fn recognize_behavior_oracle(contract: &CheckedContract) -> Option<Recognize
     None
 }
 
-/// True when the contract is a buffer-scan leaf that only declares `memory_read`
-/// (no `memory_write`) — candidates must not store to memory.
+/// True when the leaf must not store to memory: read-only buffer/sum shapes, or
+/// pure-integer shapes that do not declare `memory_write`.
 #[must_use]
 pub fn is_read_only_buffer_scan(contract: &CheckedContract) -> bool {
+    if pure_int_shape(contract).is_some() {
+        return !contract
+            .effects
+            .iter()
+            .any(|effect| effect.kind == "memory_write");
+    }
     if scan_shape(contract).is_none() && i64_sum_shape(contract).is_none() {
         return false;
     }
@@ -1697,6 +1703,10 @@ expression = "count <= length"
             oracle.claim.contains("min"),
             "claim must name the operation, got {:?}",
             oracle.claim
+        );
+        assert!(
+            is_read_only_buffer_scan(&c),
+            "pure-int without memory_write must reject stores"
         );
     }
 

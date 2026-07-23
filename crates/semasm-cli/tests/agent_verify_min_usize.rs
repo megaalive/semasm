@@ -65,6 +65,28 @@ fn agent_verify_min_usize_allow_execution_is_verified() {
 
 #[test]
 #[ignore = "requires nasm, ld, objdump, and qemu-user on PATH"]
+fn agent_verify_min_usize_execution_denied_keeps_oracle() {
+    let source = workspace_root().join("fixtures/asm/min_usize.asm");
+    let output = run_agent_verify(&source, false);
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    if skip_if_incomplete(&stderr) {
+        return;
+    }
+
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    let value: serde_json::Value = serde_json::from_str(&stdout).unwrap_or_else(|error| {
+        panic!("expected VerificationReport JSON ({error}): {stdout}\nstderr={stderr}")
+    });
+    assert_eq!(value["status"], "execution_denied");
+    assert_eq!(
+        value["behavior_oracle"]["id"],
+        "builtin.pure_int.binary_usize"
+    );
+    assert!(value["behavior"].is_null());
+}
+
+#[test]
+#[ignore = "requires nasm, ld, objdump, and qemu-user on PATH"]
 fn agent_verify_min_usize_wrong_emits_behavior_failed() {
     let source = workspace_root().join("fixtures/asm/min_usize_wrong.asm");
     let output = run_agent_verify(&source, true);
