@@ -129,7 +129,7 @@ guard-byte / oracle vectors ≠ formal `ensures` / symbolic alias proof.
 | H1 ADR 0005 multi-ISA MemCmp/write-shape | ADR | SemASM | **landed** (Accepted) |
 | H2 Guard-byte write-shape harness (ADR 0004 sample-based) | landable | SemASM | **landed** (sample-based; ≠ proof) |
 | H3 A64/RV `memcmp` harness | landable | SemASM | **landed** |
-| H4 Dx adversarial deepen (no maturity bump) | landable | SemASM | pending |
+| H4 Dx adversarial deepen (no maturity bump) | landable | SemASM | **landed** (`rdtsc` + `find_last` trailing; caps stay `partial`) |
 | H5 Remote-transparency honesty | ADR/docs | VAA | pending |
 | H6 Hygiene + locked-deferred table | docs | SemASM+VAA | pending |
 | Formal `ensures` / theorem prover | **locked deferred** | SemASM | locked |
@@ -205,12 +205,12 @@ above — same discipline, applied to decode/lower instead of assemble/link):
 2. **Coverage criteria** the corpus above must keep proving, growing whenever
    a new gap is found (not just holding the current set static):
    - **Unknown/unmodelled mnemonic classes** — `count_byte_unknown_insn*`
-     (AVX/SIMD-state class via `vzeroupper`) **and** `count_byte_unknown_insn_cpuid*`
-     (privileged/CPU-identification class via `cpuid`, added in Dx). A single
-     mnemonic class passing is not sufficient evidence of decode/lower depth.
+     (AVX/SIMD-state class via `vzeroupper`), `count_byte_unknown_insn_cpuid*`
+     (privileged/CPU-identification class via `cpuid`, Dx), **and**
+     `count_byte_unknown_insn_rdtsc*` (timestamp/counter class via `rdtsc`, H4).
    - **Decode-level trailing/undecodable bytes** after a valid leaf return —
-     `count_byte_trailing_bytes*` **and** `find_first_byte_trailing_bytes*`
-     (added in Dx: same decode gap, a second leaf/contract shape).
+     `count_byte_trailing_bytes*`, `find_first_byte_trailing_bytes*` (Dx),
+     **and** `find_last_byte_trailing_bytes*` (H4: third leaf/contract shape).
    - **W+X object-policy gaps** (`count_byte_wx*`) and **indirect-branch/call
      leaf rejection** (`count_byte_indirect*`) stay fail-closed.
    - **Win64/SysV parity** — every SysV adversarial fixture in this family has
