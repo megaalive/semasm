@@ -211,8 +211,8 @@ Next: **Rmem** (ADR 0004, region-precise memory proof — successor to the
 ### Deferred (explicitly out of current waves)
 
 - HlaX64 `replace_byte` / `memset` / `memcpy` bridges (W4)
-- Gate-2 process isolation / `ExecutionSandbox` on Gate path (I2; VAA) — no
-  change in Wc; SemASM-only wave, VAA untouched
+- Gate-2 process isolation / `ExecutionSandbox` on Gate path (I2) — landed on
+  VAA; not reopened here
 - Formal `ensures result == count(...)` / general theorem proving
 - Full memory alias / symbolic / region-precise store proof
 - C compiler `-O2` / `-Os` binary-size bake-off in CI
