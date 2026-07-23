@@ -186,6 +186,17 @@ Tranche R + X1 closed on tip `c8f2047` (SemASM) with VAA handoff `171b553`.
 Tranche X2 + S + T closed: SemASM tip `1d57e8d` / functional S1 `b6d3395`;
 VAA handoff `1ad5d0e` (S2+T content `dcbc536`).
 
+### Next waves (X3 + U + V)
+
+| Wave | Focus | Owner | Status |
+|---|---|---|---|
+| **X3** | Win64 `count_byte` callee_saved twin + caps write/indirect sync | SemASM | **in progress** |
+| **U0–U1** | `memcmp` dual-buffer Gate pack | SemASM | pending |
+| **V0–V3** | VAA pin + memcmp Gate + search allow-execution smoke | VAA | pending |
+
+SysV `count_byte_red_zone` pairs with Win64 `count_byte_win64_shadow` as the ABI dual
+(not a literal `*_red_zone_win64` name twin).
+
 **Honesty:** Gate-1 Incomplete ≠ Verified. SoftHSM / Fulcio / practice seals ≠
 SemASM Verified. Pipeline assemble/link/execute on x86 remains `experimental`.
 LLM / search mutator output ≠ Verified. NASM win64 does not emit WRITE on code

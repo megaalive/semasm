@@ -281,6 +281,19 @@ fn agent_verify_callee_saved_sysv_is_semantic_failed() {
 }
 
 #[test]
+#[ignore = "requires nasm, lld-link, and native Windows host"]
+fn agent_verify_callee_saved_win64_is_semantic_failed() {
+    let source = workspace_root().join("fixtures/asm/count_byte_callee_saved_win64.asm");
+    let contract = workspace_root().join("fixtures/contracts/count_byte.sem.toml");
+    let output = run_agent_verify(&source, &contract, Some("x86_64-pc-windows-msvc"), false);
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    if skip_if_incomplete(&stderr) {
+        return;
+    }
+    assert_status(&output, "semantic_failed");
+}
+
+#[test]
 #[ignore = "requires nasm, ld, objdump, and qemu-user on PATH"]
 fn agent_verify_min_usize_callee_saved_sysv_is_semantic_failed() {
     let source = workspace_root().join("fixtures/asm/min_usize_callee_saved.asm");
