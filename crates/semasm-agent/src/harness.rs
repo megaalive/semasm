@@ -2098,9 +2098,6 @@ fn expected_bits(value: &serde_json::Value) -> u64 {
 /// Format a harness result word for reports, preferring signed display when expected was signed.
 #[allow(clippy::cast_possible_wrap)] // reinterpret harness u64 bits as i64 when expected was signed
 fn format_observed(bits: u64, expected: &serde_json::Value) -> String {
-    if bits == u64::MAX {
-        return "<no output>".into();
-    }
     if expected.as_i64().is_some() && expected.as_u64().is_none() {
         return (bits as i64).to_string();
     }
@@ -2215,15 +2212,15 @@ pub struct HarnessReport {
 /// compare against expected values.
 #[must_use]
 pub fn evaluate(stdout: &[u8], vectors: &[TestVector]) -> HarnessReport {
-    let mut observed = Vec::with_capacity(vectors.len());
+    let mut observed: Vec<Option<u64>> = Vec::with_capacity(vectors.len());
     for i in 0..vectors.len() {
         let base = i * 8;
         let word = if stdout.len() >= base + 8 {
             let mut b = [0u8; 8];
             b.copy_from_slice(&stdout[base..base + 8]);
-            u64::from_le_bytes(b)
+            Some(u64::from_le_bytes(b))
         } else {
-            u64::MAX // sentinel for "missing output"
+            None
         };
         observed.push(word);
     }
@@ -2233,12 +2230,15 @@ pub fn evaluate(stdout: &[u8], vectors: &[TestVector]) -> HarnessReport {
         .zip(observed)
         .map(|(v, got)| {
             let expected = expected_bits(&v.expected);
-            let passed = got == expected;
+            let (passed, observed) = match got {
+                Some(bits) => (bits == expected, format_observed(bits, &v.expected)),
+                None => (false, "<no output>".into()),
+            };
             VectorResult {
                 name: v.name.clone(),
                 passed,
                 expected: format_expected(&v.expected),
-                observed: format_observed(got, &v.expected),
+                observed,
             }
         })
         .collect();

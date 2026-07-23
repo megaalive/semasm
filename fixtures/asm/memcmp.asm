@@ -14,17 +14,20 @@ memcmp:
     movzx ecx, byte [rdi]
     movzx r8d, byte [rsi]
     cmp ecx, r8d
-    jb .lt
-    ja .gt
+    jne .diff
     inc rdi
     inc rsi
     dec rdx
     jnz .loop
     ret
-.lt:
-    mov rax, -1
+.diff:
+    jb .lt
+    ; a > b
+    xor eax, eax
+    inc eax
     ret
-.gt:
-    mov rax, 1
+.lt:
+    xor eax, eax
+    dec rax
 .done:
     ret
