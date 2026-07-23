@@ -72,6 +72,13 @@ use crate::TestVector;
 /// `requires` allow a larger logical bound (for example `length <= 4096`).
 const MAX_FIXTURE_CAP: usize = 256;
 
+/// Canary bytes bracketing every sampled write-shape fixture region.
+///
+/// These provide dynamic, sample-based evidence only (ADR 0004): observing
+/// intact guards does not prove that all stores stay within declared regions.
+const WRITE_GUARD_PRE: u8 = 0xA5;
+const WRITE_GUARD_POST: u8 = 0x5A;
+
 /// Default needle when the contract does not constrain the u8 parameter.
 ///
 /// This is a synthesizer fixture value (`'A'`), not a claim that the contract
@@ -1985,12 +1992,33 @@ fn emit_replace_byte_vector_data(out: &mut String, vectors: &[TestVector]) {
         let _ = writeln!(out, "align 8\nvec{i}_len:\n    dq {}", vector_length(v));
         let _ = writeln!(out, "vec{i}_needle:\n    db {}", vector_needle(v));
         let _ = writeln!(out, "vec{i}_replacement:\n    db {}", vector_replacement(v));
-        if bytes.is_empty() {
-            // Keep a writable byte so lea is always valid when length is 0.
-            let _ = writeln!(out, "vec{i}_buf:\n    db 0");
-        } else {
-            let _ = writeln!(out, "vec{i}_buf:\n    db {}", bytes.join(", "));
+        let _ = writeln!(out, "vec{i}_guard_pre:\n    db {WRITE_GUARD_PRE}");
+        let _ = write!(out, "vec{i}_buf:");
+        if !bytes.is_empty() {
+            let _ = write!(out, "\n    db {}", bytes.join(", "));
         }
+        let _ = writeln!(
+            out,
+            "\nvec{i}_guard_post:\n    db {WRITE_GUARD_POST}"
+        );
+    }
+}
+
+fn emit_memset_vector_data(out: &mut String, vectors: &[TestVector]) {
+    out.push_str("section .data\n");
+    for (i, v) in vectors.iter().enumerate() {
+        let bytes = vector_buffer_bytes(v);
+        let _ = writeln!(out, "align 8\nvec{i}_len:\n    dq {}", vector_length(v));
+        let _ = writeln!(out, "vec{i}_needle:\n    db {}", vector_needle(v));
+        let _ = writeln!(out, "vec{i}_guard_pre:\n    db {WRITE_GUARD_PRE}");
+        let _ = write!(out, "vec{i}_buf:");
+        if !bytes.is_empty() {
+            let _ = write!(out, "\n    db {}", bytes.join(", "));
+        }
+        let _ = writeln!(
+            out,
+            "\nvec{i}_guard_post:\n    db {WRITE_GUARD_POST}"
+        );
     }
 }
 
@@ -2031,14 +2059,11 @@ fn generate_sysv_replace_byte_harness(routine_symbol: &str, vectors: &[TestVecto
     out.push_str("    syscall\n");
 
     for (i, v) in vectors.iter().enumerate() {
-        let len = usize::try_from(vector_length(v)).unwrap_or(0);
-        if len == 0 {
-            continue;
-        }
-        let _ = writeln!(out, "    ; write mutated buffer {i} ({len} bytes)");
+        let len = usize::try_from(vector_length(v)).unwrap_or(0) + 2;
+        let _ = writeln!(out, "    ; write guarded mutated buffer {i} ({len} bytes)");
         out.push_str("    mov eax, 1\n");
         out.push_str("    mov edi, 1\n");
-        let _ = writeln!(out, "    lea rsi, [vec{i}_buf]");
+        let _ = writeln!(out, "    lea rsi, [vec{i}_guard_pre]");
         let _ = writeln!(out, "    mov edx, {len}");
         out.push_str("    syscall\n");
     }
@@ -2101,14 +2126,11 @@ fn generate_win64_replace_byte_harness(routine_symbol: &str, vectors: &[TestVect
     out.push_str("    add rsp, 40\n");
 
     for (i, v) in vectors.iter().enumerate() {
-        let len = usize::try_from(vector_length(v)).unwrap_or(0);
-        if len == 0 {
-            continue;
-        }
-        let _ = writeln!(out, "    ; write mutated buffer {i}");
+        let len = usize::try_from(vector_length(v)).unwrap_or(0) + 2;
+        let _ = writeln!(out, "    ; write guarded mutated buffer {i}");
         out.push_str("    sub rsp, 40\n");
         out.push_str("    mov rcx, [stdout_handle]\n");
-        let _ = writeln!(out, "    lea rdx, [vec{i}_buf]");
+        let _ = writeln!(out, "    lea rdx, [vec{i}_guard_pre]");
         let _ = writeln!(out, "    mov r8d, {len}");
         out.push_str("    lea r9, [written]\n");
         out.push_str("    mov qword [rsp + 32], 0\n");
@@ -2130,7 +2152,7 @@ fn generate_sysv_memset_harness(routine_symbol: &str, vectors: &[TestVector]) ->
     let mut out = String::new();
     out.push_str("BITS 64\n");
     out.push_str("DEFAULT REL\n\n");
-    emit_vector_data(&mut out, vectors);
+    emit_memset_vector_data(&mut out, vectors);
 
     out.push_str("\nsection .bss\n");
     let _ = writeln!(out, "results: resb {}", vectors.len() * 8);
@@ -2161,14 +2183,11 @@ fn generate_sysv_memset_harness(routine_symbol: &str, vectors: &[TestVector]) ->
     out.push_str("    syscall\n");
 
     for (i, v) in vectors.iter().enumerate() {
-        let len = usize::try_from(vector_length(v)).unwrap_or(0);
-        if len == 0 {
-            continue;
-        }
-        let _ = writeln!(out, "    ; write filled buffer {i} ({len} bytes)");
+        let len = usize::try_from(vector_length(v)).unwrap_or(0) + 2;
+        let _ = writeln!(out, "    ; write guarded filled buffer {i} ({len} bytes)");
         out.push_str("    mov eax, 1\n");
         out.push_str("    mov edi, 1\n");
-        let _ = writeln!(out, "    lea rsi, [vec{i}_buf]");
+        let _ = writeln!(out, "    lea rsi, [vec{i}_guard_pre]");
         let _ = writeln!(out, "    mov edx, {len}");
         out.push_str("    syscall\n");
     }
@@ -2190,7 +2209,7 @@ fn generate_win64_memset_harness(routine_symbol: &str, vectors: &[TestVector]) -
     out.push_str("EXTERN GetStdHandle\n");
     out.push_str("EXTERN WriteFile\n");
     out.push_str("EXTERN ExitProcess\n\n");
-    emit_vector_data(&mut out, vectors);
+    emit_memset_vector_data(&mut out, vectors);
 
     out.push_str("\nsection .bss\n");
     let _ = writeln!(out, "results: resb {}", vectors.len() * 8);
@@ -2233,14 +2252,11 @@ fn generate_win64_memset_harness(routine_symbol: &str, vectors: &[TestVector]) -
     out.push_str("    add rsp, 40\n");
 
     for (i, v) in vectors.iter().enumerate() {
-        let len = usize::try_from(vector_length(v)).unwrap_or(0);
-        if len == 0 {
-            continue;
-        }
-        let _ = writeln!(out, "    ; write filled buffer {i}");
+        let len = usize::try_from(vector_length(v)).unwrap_or(0) + 2;
+        let _ = writeln!(out, "    ; write guarded filled buffer {i}");
         out.push_str("    sub rsp, 40\n");
         out.push_str("    mov rcx, [stdout_handle]\n");
-        let _ = writeln!(out, "    lea rdx, [vec{i}_buf]");
+        let _ = writeln!(out, "    lea rdx, [vec{i}_guard_pre]");
         let _ = writeln!(out, "    mov r8d, {len}");
         out.push_str("    lea r9, [written]\n");
         out.push_str("    mov qword [rsp + 32], 0\n");
@@ -2310,6 +2326,33 @@ fn emit_memcmp_vector_data(out: &mut String, vectors: &[TestVector]) {
             out.push_str(" 0");
         }
         out.push('\n');
+    }
+}
+
+fn emit_memcpy_vector_data(out: &mut String, vectors: &[TestVector]) {
+    out.push_str("section .data\n");
+    for (i, v) in vectors.iter().enumerate() {
+        let dst = vector_memcmp_a_bytes(v);
+        let src = vector_memcmp_b_bytes(v);
+        let _ = writeln!(out, "vec{i}_len: dq {}", vector_memcmp_length(v));
+        let _ = writeln!(out, "vec{i}_a_guard_pre: db {WRITE_GUARD_PRE}");
+        let _ = write!(out, "vec{i}_a:");
+        if !dst.is_empty() {
+            let _ = write!(out, "\n    db {}", dst.join(", "));
+        }
+        let _ = writeln!(
+            out,
+            "\nvec{i}_a_guard_post: db {WRITE_GUARD_POST}"
+        );
+        let _ = writeln!(out, "vec{i}_b_guard_pre: db {WRITE_GUARD_PRE}");
+        let _ = write!(out, "vec{i}_b:");
+        if !src.is_empty() {
+            let _ = write!(out, "\n    db {}", src.join(", "));
+        }
+        let _ = writeln!(
+            out,
+            "\nvec{i}_b_guard_post: db {WRITE_GUARD_POST}"
+        );
     }
 }
 
@@ -2609,16 +2652,14 @@ fn generate_win64_memcmp_harness(routine_symbol: &str, vectors: &[TestVector]) -
 
 /// Generate NASM source for a SysV dual-buffer memcpy `_start` harness.
 ///
-/// Wire layout matches [`generate_sysv_memcmp_harness`] (`emit_memcmp_vector_data`,
-/// `dst` in `vec{i}_a`, `src` in `vec{i}_b`, args in `rdi`/`rsi`/`rdx`); only
-/// the post-call echo differs: memcpy echoes the mutated **`dst`** buffer
-/// only (`vec{i}_a`), never `src` (unchanged input, not part of the oracle).
+/// Layout uses [`emit_memcpy_vector_data`] (guarded `dst`/`src`). Echoes
+/// guarded dst then guarded src after counts so evaluate can check canaries.
 fn generate_sysv_memcpy_harness(routine_symbol: &str, vectors: &[TestVector]) -> String {
     let mut out = String::new();
 
     out.push_str("BITS 64\n");
     out.push_str("DEFAULT REL\n\n");
-    emit_memcmp_vector_data(&mut out, vectors);
+    emit_memcpy_vector_data(&mut out, vectors);
 
     out.push_str("\nsection .bss\n");
     let _ = writeln!(out, "results: resb {}", vectors.len() * 8);
@@ -2652,14 +2693,18 @@ fn generate_sysv_memcpy_harness(routine_symbol: &str, vectors: &[TestVector]) ->
     out.push_str("    syscall\n");
 
     for (i, v) in vectors.iter().enumerate() {
-        let len = usize::try_from(vector_memcmp_length(v)).unwrap_or(0);
-        if len == 0 {
-            continue;
-        }
-        let _ = writeln!(out, "    ; write dst buffer {i} ({len} bytes)");
+        let payload_len = usize::try_from(vector_memcmp_length(v)).unwrap_or(0);
+        let len = payload_len + 2;
+        let _ = writeln!(out, "    ; write guarded dst buffer {i} ({len} bytes)");
         out.push_str("    mov eax, 1\n");
         out.push_str("    mov edi, 1\n");
-        let _ = writeln!(out, "    lea rsi, [vec{i}_a]");
+        let _ = writeln!(out, "    lea rsi, [vec{i}_a_guard_pre]");
+        let _ = writeln!(out, "    mov edx, {len}");
+        out.push_str("    syscall\n");
+        let _ = writeln!(out, "    ; write guarded src buffer {i} ({len} bytes)");
+        out.push_str("    mov eax, 1\n");
+        out.push_str("    mov edi, 1\n");
+        let _ = writeln!(out, "    lea rsi, [vec{i}_b_guard_pre]");
         let _ = writeln!(out, "    mov edx, {len}");
         out.push_str("    syscall\n");
     }
@@ -2684,7 +2729,7 @@ fn generate_win64_memcpy_harness(routine_symbol: &str, vectors: &[TestVector]) -
     out.push_str("EXTERN GetStdHandle\n");
     out.push_str("EXTERN WriteFile\n");
     out.push_str("EXTERN ExitProcess\n\n");
-    emit_memcmp_vector_data(&mut out, vectors);
+    emit_memcpy_vector_data(&mut out, vectors);
 
     out.push_str("\nsection .bss\n");
     let _ = writeln!(out, "results: resb {}", vectors.len() * 8);
@@ -2731,14 +2776,21 @@ fn generate_win64_memcpy_harness(routine_symbol: &str, vectors: &[TestVector]) -
     out.push_str("    add rsp, 40\n");
 
     for (i, v) in vectors.iter().enumerate() {
-        let len = usize::try_from(vector_memcmp_length(v)).unwrap_or(0);
-        if len == 0 {
-            continue;
-        }
-        let _ = writeln!(out, "    ; write dst buffer {i}");
+        let payload_len = usize::try_from(vector_memcmp_length(v)).unwrap_or(0);
+        let len = payload_len + 2;
+        let _ = writeln!(out, "    ; write guarded dst buffer {i}");
         out.push_str("    sub rsp, 40\n");
         out.push_str("    mov rcx, [stdout_handle]\n");
-        let _ = writeln!(out, "    lea rdx, [vec{i}_a]");
+        let _ = writeln!(out, "    lea rdx, [vec{i}_a_guard_pre]");
+        let _ = writeln!(out, "    mov r8d, {len}");
+        out.push_str("    lea r9, [written]\n");
+        out.push_str("    mov qword [rsp + 32], 0\n");
+        out.push_str("    call WriteFile\n");
+        out.push_str("    add rsp, 40\n");
+        let _ = writeln!(out, "    ; write guarded src buffer {i}");
+        out.push_str("    sub rsp, 40\n");
+        out.push_str("    mov rcx, [stdout_handle]\n");
+        let _ = writeln!(out, "    lea rdx, [vec{i}_b_guard_pre]");
         let _ = writeln!(out, "    mov r8d, {len}");
         out.push_str("    lea r9, [written]\n");
         out.push_str("    mov qword [rsp + 32], 0\n");
@@ -3265,18 +3317,19 @@ pub struct HarnessReport {
 ///
 /// For [`HarnessShape::ReplaceByte`], [`HarnessShape::Memset`], and
 /// [`HarnessShape::Memcpy`], stdout is counts (`N*8` bytes, always `0` for
-/// `Memset`/`Memcpy`) followed by each mutated/filled/copied-into buffer in
-/// order (length bytes each; empty buffers omit a chunk). For `Memcpy` that
-/// buffer is `dst` only — `src` is never echoed. All other shapes are a flat
+/// `Memset`/`Memcpy`) followed by guarded fixture regions in vector order.
+/// Single-buffer shapes echo `pre || payload || post`; `Memcpy` echoes both
+/// guarded `dst` and guarded `src`. This is sample-based canary evidence, not
+/// a formal store-region proof (ADR 0004). All other shapes are a flat
 /// `N*8`-byte array of little-endian `u64` result words.
 #[must_use]
 pub fn evaluate(stdout: &[u8], vectors: &[TestVector], shape: HarnessShape) -> HarnessReport {
     match shape {
         HarnessShape::ReplaceByte => {
-            evaluate_count_and_buffer(stdout, vectors, expected_replace_byte_buffer)
+            evaluate_count_and_buffer(stdout, vectors, expected_replace_byte_echo)
         }
-        HarnessShape::Memset => evaluate_count_and_buffer(stdout, vectors, expected_memset_buffer),
-        HarnessShape::Memcpy => evaluate_count_and_buffer(stdout, vectors, expected_memcpy_buffer),
+        HarnessShape::Memset => evaluate_count_and_buffer(stdout, vectors, expected_memset_echo),
+        HarnessShape::Memcpy => evaluate_count_and_buffer(stdout, vectors, expected_memcpy_echo),
         HarnessShape::BufferScan
         | HarnessShape::MemCmp
         | HarnessShape::I64Sum
@@ -3322,14 +3375,39 @@ fn evaluate_words_only(stdout: &[u8], vectors: &[TestVector]) -> HarnessReport {
     HarnessReport { cases, all_passed }
 }
 
-/// Shared count+buffer decode for write-shape harnesses: counts (`N*8`
-/// bytes) followed by each vector's expected post-call buffer in order
-/// (per `expected_buffer`, e.g. [`expected_replace_byte_buffer`] or
-/// [`expected_memset_buffer`]).
+fn guarded_region(payload: &[u8]) -> Vec<u8> {
+    let mut bytes = Vec::with_capacity(payload.len() + 2);
+    bytes.push(WRITE_GUARD_PRE);
+    bytes.extend_from_slice(payload);
+    bytes.push(WRITE_GUARD_POST);
+    bytes
+}
+
+fn expected_replace_byte_echo(v: &TestVector) -> Vec<u8> {
+    guarded_region(&expected_replace_byte_buffer(v))
+}
+
+fn expected_memset_echo(v: &TestVector) -> Vec<u8> {
+    guarded_region(&expected_memset_buffer(v))
+}
+
+fn expected_memcpy_echo(v: &TestVector) -> Vec<u8> {
+    let dst = expected_memcpy_buffer(v);
+    let src = vector_memcmp_b_bytes(v)
+        .into_iter()
+        .map(|byte| byte.parse::<u8>().unwrap_or(0))
+        .collect::<Vec<_>>();
+    let mut bytes = guarded_region(&dst);
+    bytes.extend_from_slice(&guarded_region(&src));
+    bytes
+}
+
+/// Shared count+echo decode for write-shape harnesses: counts (`N*8`
+/// bytes) followed by each vector's expected guarded fixture echo in order.
 fn evaluate_count_and_buffer(
     stdout: &[u8],
     vectors: &[TestVector],
-    expected_buffer: fn(&TestVector) -> Vec<u8>,
+    expected_echo: fn(&TestVector) -> Vec<u8>,
 ) -> HarnessReport {
     let mut offset = 0usize;
     let mut cases = Vec::with_capacity(vectors.len());
@@ -3348,7 +3426,7 @@ fn evaluate_count_and_buffer(
 
     for (v, count) in vectors.iter().zip(counts) {
         let expected_count = expected_bits(&v.expected);
-        let expected_buf = expected_buffer(v);
+        let expected_buf = expected_echo(v);
         let len = expected_buf.len();
 
         let (count_ok, observed_count) = match count {
@@ -3640,26 +3718,40 @@ expression = "count <= length"
             stdout.extend_from_slice(&expected_bits(&v.expected).to_le_bytes());
         }
         for v in &vectors {
-            stdout.extend_from_slice(&expected_replace_byte_buffer(v));
+            stdout.extend_from_slice(&expected_replace_byte_echo(v));
         }
         let report = evaluate(&stdout, &vectors, HarnessShape::ReplaceByte);
         assert!(report.all_passed, "{:?}", report.cases);
 
-        // Wrong buffer for mixed hits: keep counts, corrupt one buffer byte.
+        // Wrong buffer for mixed hits: keep counts, corrupt payload byte (not guard).
         let mut bad = stdout.clone();
         let counts_end = vectors.len() * 8;
         let mut buf_off = counts_end;
         for v in &vectors {
-            let len = expected_replace_byte_buffer(v).len();
-            if v.name == "mixed hits" && len > 0 {
-                bad[buf_off] = bad[buf_off].wrapping_add(1);
+            let echo = expected_replace_byte_echo(v);
+            if v.name == "mixed hits" && echo.len() > 2 {
+                bad[buf_off + 1] = bad[buf_off + 1].wrapping_add(1);
                 break;
             }
-            buf_off += len;
+            buf_off += echo.len();
         }
         let failed = evaluate(&bad, &vectors, HarnessShape::ReplaceByte);
         assert!(!failed.all_passed);
         assert!(!expected_buf.is_empty());
+
+        // Guard corruption fail-closed (H2 / ADR 0004 sample-based).
+        let mut guard_bad = stdout.clone();
+        let mut goff = counts_end;
+        for v in &vectors {
+            let echo = expected_replace_byte_echo(v);
+            if v.name == "mixed hits" && !echo.is_empty() {
+                guard_bad[goff] = guard_bad[goff].wrapping_add(1); // PRE guard
+                break;
+            }
+            goff += echo.len();
+        }
+        let guard_failed = evaluate(&guard_bad, &vectors, HarnessShape::ReplaceByte);
+        assert!(!guard_failed.all_passed);
     }
 
     fn memset_contract() -> CheckedContract {
@@ -3730,22 +3822,22 @@ expression = "count <= length"
             stdout.extend_from_slice(&expected_bits(&v.expected).to_le_bytes());
         }
         for v in &vectors {
-            stdout.extend_from_slice(&expected_memset_buffer(v));
+            stdout.extend_from_slice(&expected_memset_echo(v));
         }
         let report = evaluate(&stdout, &vectors, HarnessShape::Memset);
         assert!(report.all_passed, "{:?}", report.cases);
 
-        // Wrong buffer for "short pattern": keep counts, corrupt one byte.
+        // Wrong buffer for "short pattern": keep counts, corrupt one payload byte.
         let mut bad = stdout.clone();
         let counts_end = vectors.len() * 8;
         let mut buf_off = counts_end;
         for v in &vectors {
-            let len = expected_memset_buffer(v).len();
-            if v.name == "short pattern" && len > 0 {
-                bad[buf_off] = bad[buf_off].wrapping_add(1);
+            let echo = expected_memset_echo(v);
+            if v.name == "short pattern" && echo.len() > 2 {
+                bad[buf_off + 1] = bad[buf_off + 1].wrapping_add(1);
                 break;
             }
-            buf_off += len;
+            buf_off += echo.len();
         }
         let failed = evaluate(&bad, &vectors, HarnessShape::Memset);
         assert!(!failed.all_passed);
@@ -3831,23 +3923,22 @@ expression = "count <= length"
             stdout.extend_from_slice(&expected_bits(&v.expected).to_le_bytes());
         }
         for v in &vectors {
-            stdout.extend_from_slice(&expected_memcpy_buffer(v));
+            stdout.extend_from_slice(&expected_memcpy_echo(v));
         }
         let report = evaluate(&stdout, &vectors, HarnessShape::Memcpy);
         assert!(report.all_passed, "{:?}", report.cases);
 
-        // Wrong buffer for "short distinct src/dst pattern": keep counts,
-        // corrupt one byte (simulates "wrong: return 0 without copying").
+        // Wrong buffer for "short distinct src/dst pattern": corrupt dst payload.
         let mut bad = stdout.clone();
         let counts_end = vectors.len() * 8;
         let mut buf_off = counts_end;
         for v in &vectors {
-            let len = expected_memcpy_buffer(v).len();
-            if v.name == "short distinct src/dst pattern" && len > 0 {
-                bad[buf_off] = bad[buf_off].wrapping_add(1);
+            let echo = expected_memcpy_echo(v);
+            if v.name == "short distinct src/dst pattern" && echo.len() > 2 {
+                bad[buf_off + 1] = bad[buf_off + 1].wrapping_add(1);
                 break;
             }
-            buf_off += len;
+            buf_off += echo.len();
         }
         let failed = evaluate(&bad, &vectors, HarnessShape::Memcpy);
         assert!(!failed.all_passed);

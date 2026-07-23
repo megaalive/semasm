@@ -146,10 +146,10 @@ saying region-precise store proof is deferred.
 
 | Candidate | Focus | Status |
 |---|---|---|
-| Guard-byte harness fixtures | Detect out-of-declared-region writes inside the fixture allocation | Not scheduled |
-| Full alias / points-to analysis | General may-alias reasoning over pointer parameters | Not scheduled |
-| Formal store-region `ensures` | Prove writes confined to `[dst, dst+length)` for all inputs | Not scheduled |
-| AArch64/RISC-V write-shape harness | Lift `Skipped` for `replace_byte`/`memset`/`memcpy` | Not scheduled |
+| Guard-byte harness fixtures | Detect out-of-declared-region writes inside the fixture allocation | **Landed in H2** (x86 write-shape; sample-based canaries echoed in harness stdout; fail-closed on mutation). Owner evidence = existing `agent_verify_{replace_byte,memset,memcpy}` e2e + harness unit tests — not a separately named `region-gate` job. Criteria 2–3 progress; still **not** symbolic/formal proof (criterion 5 wording capped). |
+| Full alias / points-to analysis | General may-alias reasoning over pointer parameters | Horizon-locked deferred |
+| Formal store-region `ensures` | Prove writes confined to `[dst, dst+length)` for all inputs | Horizon-locked deferred |
+| AArch64/RISC-V write-shape harness | Lift fail-closed for `replace_byte`/`memset`/`memcpy` | Horizon-locked deferred (ADR 0005; after MemCmp A64/RV) |
 
 Next candidate outside this ADR: **W4 HlaX64 `replace_byte` bridge** (per
 ADR 0003's deferred-bridge note), not an Rmem analyzer.

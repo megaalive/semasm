@@ -127,7 +127,7 @@ guard-byte / oracle vectors ≠ formal `ensures` / symbolic alias proof.
 |---|---|---|---|
 | H0 Horizon map (this section) | docs | SemASM+VAA | **landed** |
 | H1 ADR 0005 multi-ISA MemCmp/write-shape | ADR | SemASM | **landed** (Accepted) |
-| H2 Guard-byte write-shape harness (ADR 0004 sample-based) | landable | SemASM | pending |
+| H2 Guard-byte write-shape harness (ADR 0004 sample-based) | landable | SemASM | **landed** (sample-based; ≠ proof) |
 | H3 A64/RV `memcmp` harness | landable | SemASM | pending |
 | H4 Dx adversarial deepen (no maturity bump) | landable | SemASM | pending |
 | H5 Remote-transparency honesty | ADR/docs | VAA | pending |
