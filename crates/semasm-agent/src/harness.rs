@@ -18,7 +18,7 @@
 //!
 //! - **Buffer scan** `(ptr<const u8> buffer, usize length, u8 needle) -> usize`
 //!   — `count_byte` (count), `find_first_byte` (first index, or length if absent),
-//!     or `find_last_byte` (last index, or length if absent).
+//!   or `find_last_byte` (last index, or length if absent).
 //! - **I64 wrapping sum** `(ptr<const i64> values, usize length) -> i64`
 //!   — canonical example `sum_i64`.
 //! - **Pure integer** `(usize, usize) -> usize` — canonical examples
