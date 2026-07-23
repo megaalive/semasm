@@ -211,7 +211,10 @@ fn agent_verify_replace_byte_aarch64_allow_execution_is_verified() {
         panic!("expected VerificationReport JSON ({error}): {stdout}\nstderr={stderr}")
     });
     assert_eq!(value["status"], "verified");
-    assert_eq!(value["behavior_oracle"]["id"], "builtin.buffer.replace_byte");
+    assert_eq!(
+        value["behavior_oracle"]["id"],
+        "builtin.buffer.replace_byte"
+    );
 }
 
 #[test]
@@ -237,7 +240,10 @@ fn agent_verify_replace_byte_riscv64_allow_execution_is_verified() {
         panic!("expected VerificationReport JSON ({error}): {stdout}\nstderr={stderr}")
     });
     assert_eq!(value["status"], "verified");
-    assert_eq!(value["behavior_oracle"]["id"], "builtin.buffer.replace_byte");
+    assert_eq!(
+        value["behavior_oracle"]["id"],
+        "builtin.buffer.replace_byte"
+    );
 }
 
 #[test]

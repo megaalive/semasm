@@ -1946,9 +1946,10 @@ pub fn generate_harness(
         (Abi::Riscv, HarnessShape::MemCmp) => {
             Ok(generate_riscv_memcmp_harness(routine_symbol, vectors))
         }
-        (Abi::Aapcs64, HarnessShape::ReplaceByte) => {
-            Ok(generate_aapcs64_replace_byte_harness(routine_symbol, vectors))
-        }
+        (Abi::Aapcs64, HarnessShape::ReplaceByte) => Ok(generate_aapcs64_replace_byte_harness(
+            routine_symbol,
+            vectors,
+        )),
         (Abi::Aapcs64, HarnessShape::Memset) => {
             Ok(generate_aapcs64_memset_harness(routine_symbol, vectors))
         }
@@ -2903,7 +2904,6 @@ fn generate_win64_i64_sum_harness(routine_symbol: &str, vectors: &[TestVector]) 
     out
 }
 
-
 fn emit_gas_replace_byte_vector_data(out: &mut String, vectors: &[TestVector]) {
     out.push_str(".section .data\n");
     for (i, v) in vectors.iter().enumerate() {
@@ -2911,7 +2911,11 @@ fn emit_gas_replace_byte_vector_data(out: &mut String, vectors: &[TestVector]) {
         out.push_str(".align 3\n");
         let _ = writeln!(out, "vec{i}_len:\n    .quad {}", vector_length(v));
         let _ = writeln!(out, "vec{i}_needle:\n    .byte {}", vector_needle(v));
-        let _ = writeln!(out, "vec{i}_replacement:\n    .byte {}", vector_replacement(v));
+        let _ = writeln!(
+            out,
+            "vec{i}_replacement:\n    .byte {}",
+            vector_replacement(v)
+        );
         let _ = writeln!(out, "vec{i}_guard_pre:\n    .byte {WRITE_GUARD_PRE}");
         let _ = write!(out, "vec{i}_buf:");
         if !bytes.is_empty() {
@@ -3205,7 +3209,6 @@ fn generate_riscv_memcpy_harness(routine_symbol: &str, vectors: &[TestVector]) -
     out.push_str("    li a0, 0\n    li a7, 93\n    ecall\n");
     out
 }
-
 
 fn emit_gas_memcmp_vector_data(out: &mut String, vectors: &[TestVector]) {
     out.push_str(".section .data\n");
