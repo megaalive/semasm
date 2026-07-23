@@ -187,3 +187,159 @@ fn agent_verify_memcmp_riscv64_allow_execution_is_verified() {
     assert_eq!(value["status"], "verified");
     assert_eq!(value["behavior_oracle"]["id"], "builtin.buffer.memcmp_i8");
 }
+
+#[test]
+#[ignore = "requires aarch64-linux-gnu-as/ld and qemu-aarch64 on PATH"]
+fn agent_verify_replace_byte_aarch64_allow_execution_is_verified() {
+    let source = workspace_root().join("fixtures/asm/replace_byte_aarch64.S");
+    let output = run_agent_verify_contract(
+        &source,
+        "aarch64-unknown-linux-gnu",
+        true,
+        "fixtures/contracts/replace_byte.sem.toml",
+    );
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    if skip_if_incomplete(&stderr) {
+        return;
+    }
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    assert!(
+        output.status.success(),
+        "expected success; stderr={stderr}; stdout={stdout}"
+    );
+    let value: serde_json::Value = serde_json::from_str(&stdout).unwrap_or_else(|error| {
+        panic!("expected VerificationReport JSON ({error}): {stdout}\nstderr={stderr}")
+    });
+    assert_eq!(value["status"], "verified");
+    assert_eq!(value["behavior_oracle"]["id"], "builtin.buffer.replace_byte");
+}
+
+#[test]
+#[ignore = "requires riscv64-linux-gnu-as/ld and qemu-riscv64 on PATH"]
+fn agent_verify_replace_byte_riscv64_allow_execution_is_verified() {
+    let source = workspace_root().join("fixtures/asm/replace_byte_riscv64.S");
+    let output = run_agent_verify_contract(
+        &source,
+        "riscv64gc-unknown-linux-gnu",
+        true,
+        "fixtures/contracts/replace_byte.sem.toml",
+    );
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    if skip_if_incomplete(&stderr) {
+        return;
+    }
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    assert!(
+        output.status.success(),
+        "expected success; stderr={stderr}; stdout={stdout}"
+    );
+    let value: serde_json::Value = serde_json::from_str(&stdout).unwrap_or_else(|error| {
+        panic!("expected VerificationReport JSON ({error}): {stdout}\nstderr={stderr}")
+    });
+    assert_eq!(value["status"], "verified");
+    assert_eq!(value["behavior_oracle"]["id"], "builtin.buffer.replace_byte");
+}
+
+#[test]
+#[ignore = "requires aarch64-linux-gnu-as/ld and qemu-aarch64 on PATH"]
+fn agent_verify_memset_aarch64_allow_execution_is_verified() {
+    let source = workspace_root().join("fixtures/asm/memset_aarch64.S");
+    let output = run_agent_verify_contract(
+        &source,
+        "aarch64-unknown-linux-gnu",
+        true,
+        "fixtures/contracts/memset.sem.toml",
+    );
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    if skip_if_incomplete(&stderr) {
+        return;
+    }
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    assert!(
+        output.status.success(),
+        "expected success; stderr={stderr}; stdout={stdout}"
+    );
+    let value: serde_json::Value = serde_json::from_str(&stdout).unwrap_or_else(|error| {
+        panic!("expected VerificationReport JSON ({error}): {stdout}\nstderr={stderr}")
+    });
+    assert_eq!(value["status"], "verified");
+    assert_eq!(value["behavior_oracle"]["id"], "builtin.buffer.memset");
+}
+
+#[test]
+#[ignore = "requires riscv64-linux-gnu-as/ld and qemu-riscv64 on PATH"]
+fn agent_verify_memset_riscv64_allow_execution_is_verified() {
+    let source = workspace_root().join("fixtures/asm/memset_riscv64.S");
+    let output = run_agent_verify_contract(
+        &source,
+        "riscv64gc-unknown-linux-gnu",
+        true,
+        "fixtures/contracts/memset.sem.toml",
+    );
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    if skip_if_incomplete(&stderr) {
+        return;
+    }
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    assert!(
+        output.status.success(),
+        "expected success; stderr={stderr}; stdout={stdout}"
+    );
+    let value: serde_json::Value = serde_json::from_str(&stdout).unwrap_or_else(|error| {
+        panic!("expected VerificationReport JSON ({error}): {stdout}\nstderr={stderr}")
+    });
+    assert_eq!(value["status"], "verified");
+    assert_eq!(value["behavior_oracle"]["id"], "builtin.buffer.memset");
+}
+
+#[test]
+#[ignore = "requires aarch64-linux-gnu-as/ld and qemu-aarch64 on PATH"]
+fn agent_verify_memcpy_aarch64_allow_execution_is_verified() {
+    let source = workspace_root().join("fixtures/asm/memcpy_aarch64.S");
+    let output = run_agent_verify_contract(
+        &source,
+        "aarch64-unknown-linux-gnu",
+        true,
+        "fixtures/contracts/memcpy.sem.toml",
+    );
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    if skip_if_incomplete(&stderr) {
+        return;
+    }
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    assert!(
+        output.status.success(),
+        "expected success; stderr={stderr}; stdout={stdout}"
+    );
+    let value: serde_json::Value = serde_json::from_str(&stdout).unwrap_or_else(|error| {
+        panic!("expected VerificationReport JSON ({error}): {stdout}\nstderr={stderr}")
+    });
+    assert_eq!(value["status"], "verified");
+    assert_eq!(value["behavior_oracle"]["id"], "builtin.buffer.memcpy");
+}
+
+#[test]
+#[ignore = "requires riscv64-linux-gnu-as/ld and qemu-riscv64 on PATH"]
+fn agent_verify_memcpy_riscv64_allow_execution_is_verified() {
+    let source = workspace_root().join("fixtures/asm/memcpy_riscv64.S");
+    let output = run_agent_verify_contract(
+        &source,
+        "riscv64gc-unknown-linux-gnu",
+        true,
+        "fixtures/contracts/memcpy.sem.toml",
+    );
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    if skip_if_incomplete(&stderr) {
+        return;
+    }
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    assert!(
+        output.status.success(),
+        "expected success; stderr={stderr}; stdout={stdout}"
+    );
+    let value: serde_json::Value = serde_json::from_str(&stdout).unwrap_or_else(|error| {
+        panic!("expected VerificationReport JSON ({error}): {stdout}\nstderr={stderr}")
+    });
+    assert_eq!(value["status"], "verified");
+    assert_eq!(value["behavior_oracle"]["id"], "builtin.buffer.memcpy");
+}

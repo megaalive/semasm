@@ -20,13 +20,12 @@ generators before MemCmp was green.
 
 ## Decision
 
-### After H3 (current)
+### Current (after H3 + write-shape follow-on)
 
-- **MemCmp** agent harness: **x86 SysV + Win64 + AArch64 + RISC-V** (H3
-  landed dual-buffer + length Linux syscall harnesses).
+- **MemCmp** agent harness: **x86 SysV + Win64 + AArch64 + RISC-V** (H3).
 - **Write-shape** (`replace_byte` / `memset` / `memcpy`) agent harness:
-  **x86 SysV + Win64 only**. AArch64 / RISC-V remain **fail-closed** with an
-  explicit unsupported-ABI error (**Horizon-locked deferred**).
+  **x86 SysV + Win64 + AArch64 + RISC-V** (follow-on after H3; sample-based
+  guard bytes on all those ISAs per ADR 0004 / H2).
 - HlaX64 bridges for these leaves: Win64 shared-library emit only; not SemASM
   A64/RV verification.
 
@@ -34,24 +33,22 @@ generators before MemCmp was green.
 
 1. **MemCmp on AArch64, then RISC-V** (Horizon H3) — **landed**.
 2. **Write-shape on A64/RV** (`replace_byte` / `memset` / `memcpy`) —
-  **separate tranche after MemCmp**; not co-shipped with H3; still locked.
+  **landed** as a separate tranche after MemCmp.
 3. Overlap / alias of distinct buffer args for `memcpy` stays **fail-closed**
   (ADR 0003); synthesis never claims defined overlapping behavior.
 4. Region-precise / guard-byte evidence remains governed by ADR 0004 (sample-
-  based dynamic checks ≠ formal store-region proof). H2 landed x86
-  guard/canary checks for write-shape (still ≠ proof).
+  based dynamic checks ≠ formal store-region proof).
 
 ### Caps honesty
 
-`capabilities.toml` must say MemCmp agent harness is **x86 + A64 + RV** and
-that write-shape remains **x86-only fail-closed** until a later wave. Do not
-bump write-shape ISA claims in the same change as MemCmp-only generators.
+`capabilities.toml` must say MemCmp **and** write-shape agent harnesses are
+**x86 + A64 + RV**. Do not conflate that with formal `ensures` or symbolic
+alias proof.
 
 ## Consequences
 
 - Horizon H3 removed MemCmp fail-closed arms for A64/RV.
-- Write-shape A64/RV stays **Horizon-locked deferred** until a named follow-on
-  wave.
+- Write-shape A64/RV fail-closed arms are removed in the follow-on tranche.
 - Formal `ensures`, symbolic alias, and decode/lower `verified_in_ci` remain
   out of scope (Horizon-locked deferred; see STABILIZATION_PROGRESS Horizon
   map).

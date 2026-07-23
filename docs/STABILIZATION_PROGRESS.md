@@ -138,7 +138,7 @@ guard-byte / oracle vectors ≠ formal `ensures` / symbolic alias proof.
 | Live-model Gate CI | **locked deferred** | VAA | locked |
 | Hardware HSM | **locked deferred** | VAA | locked |
 | `decode`/`lower` → `verified_in_ci` | **locked deferred** | SemASM | locked (Dx checklist exists; needs owner sign-off) |
-| A64/RV write-shape harness | **locked deferred** | SemASM | locked (after H1/H3 MemCmp) |
+| A64/RV write-shape harness | landable | SemASM | **landed** (follow-on after H3; sample-based guards) |
 
 #### Pipeline maturity bump checklist (D2 companion)
 
@@ -306,7 +306,8 @@ x86 harness comparing post-call buffer bytes (including sample-based guard
 bytes from H2) against synthesized oracle vectors — dynamic, sample-based,
 x86-only, no formal alias analysis. See `adr/0004-region-precise-memory-gate.md`
 and Horizon H2. W4 HlaX64 `replace_byte` bridge and Thin write-shape bridges
-landed separately; A64/RV write-shape remains Horizon-locked deferred.
+landed separately; A64/RV write-shape harness landed as priority follow-on
+after H3 (sample-based guards; still ≠ formal/symbolic proof).
 
 ### Completed recently (not deferred)
 
@@ -324,11 +325,10 @@ landed separately; A64/RV write-shape remains Horizon-locked deferred.
 
 - Formal `ensures result == count(...)` / general theorem proving
 - Full memory alias / symbolic / region-precise store proof
-- A64/RV write-shape harness (`replace`/`memset`/`memcpy`) — after H1/H3
 - `decode`/`lower` → `verified_in_ci` (Dx checklist landed; needs owner sign-off)
 - CryptOpt embed, live-model Gate CI, hardware HSM
 - C compiler `-O2` / `-Os` binary-size bake-off in CI
-- Broad mnemonic / new-ISA expansion beyond landed MemCmp A64/RV
+- Broad mnemonic / new-ISA expansion beyond landed MemCmp + write-shape A64/RV
 
 ### Shared vertical slice (SemASM + VAA) — done
 

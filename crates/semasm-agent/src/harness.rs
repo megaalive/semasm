@@ -21,17 +21,16 @@
 //!   or `find_last_byte` (last index, or length if absent).
 //! - **Replace byte** `(ptr<u8> buffer, usize length, u8 needle, u8 replacement) -> usize`
 //!   — `replace_byte`: count of replacements; harness also checks post-buffer
-//!   bytes. **x86-only** (SysV + Win64); AArch64/RISC-V fail closed.
+//!   bytes. Harness: x86 (SysV + Win64) **and** AArch64/RISC-V.
 //! - **MemCmp** `(ptr<const u8> a, ptr<const u8> b, usize length) -> isize`
 //!   - unsigned lexicographic comparison returning only `-1`, `0`, or `1`.
-//!   - Harness generation is **x86-only** (SysV + Win64); AArch64/RISC-V
-//!     fail closed with a clear error (not partial support).
+//!   - Harness generation: x86 (SysV + Win64) **and** AArch64/RISC-V.
 //! - **MemCpy** `(ptr<u8> dst, ptr<const u8> src, usize length) -> usize`
 //!   — `memcpy`: whole-buffer copy; harness checks the void-as-`0` return
 //!   **and** the post-call `dst` buffer only (`src` is unchanged input, never
 //!   echoed). Wire layout matches `MemCmp` (two array/null buffers plus a
 //!   length); disambiguated via the recognized contract oracle, never vector
-//!   layout alone. **x86-only** (SysV + Win64); AArch64/RISC-V fail closed.
+//!   layout alone. Harness: x86 (SysV + Win64) **and** AArch64/RISC-V.
 //!   Overlapping/aliasing `dst`/`src` is out of scope (ADR 0003): every
 //!   synthesized vector uses distinct, non-aliasing buffers; this never
 //!   claims defined behavior for aliasing regions.
@@ -1947,14 +1946,23 @@ pub fn generate_harness(
         (Abi::Riscv, HarnessShape::MemCmp) => {
             Ok(generate_riscv_memcmp_harness(routine_symbol, vectors))
         }
-        (Abi::Aapcs64 | Abi::Riscv, HarnessShape::Memcpy) => {
-            Err("memcpy harness not yet supported on this ABI".into())
+        (Abi::Aapcs64, HarnessShape::ReplaceByte) => {
+            Ok(generate_aapcs64_replace_byte_harness(routine_symbol, vectors))
         }
-        (Abi::Aapcs64 | Abi::Riscv, HarnessShape::ReplaceByte) => {
-            Err("replace_byte harness not yet supported on this ABI".into())
+        (Abi::Aapcs64, HarnessShape::Memset) => {
+            Ok(generate_aapcs64_memset_harness(routine_symbol, vectors))
         }
-        (Abi::Aapcs64 | Abi::Riscv, HarnessShape::Memset) => {
-            Err("memset harness not yet supported on this ABI".into())
+        (Abi::Aapcs64, HarnessShape::Memcpy) => {
+            Ok(generate_aapcs64_memcpy_harness(routine_symbol, vectors))
+        }
+        (Abi::Riscv, HarnessShape::ReplaceByte) => {
+            Ok(generate_riscv_replace_byte_harness(routine_symbol, vectors))
+        }
+        (Abi::Riscv, HarnessShape::Memset) => {
+            Ok(generate_riscv_memset_harness(routine_symbol, vectors))
+        }
+        (Abi::Riscv, HarnessShape::Memcpy) => {
+            Ok(generate_riscv_memcpy_harness(routine_symbol, vectors))
         }
         (Abi::Aapcs64, HarnessShape::I64Sum) => {
             Ok(generate_aapcs64_i64_sum_harness(routine_symbol, vectors))
@@ -2895,6 +2903,310 @@ fn generate_win64_i64_sum_harness(routine_symbol: &str, vectors: &[TestVector]) 
     out
 }
 
+
+fn emit_gas_replace_byte_vector_data(out: &mut String, vectors: &[TestVector]) {
+    out.push_str(".section .data\n");
+    for (i, v) in vectors.iter().enumerate() {
+        let bytes = vector_buffer_bytes(v);
+        out.push_str(".align 3\n");
+        let _ = writeln!(out, "vec{i}_len:\n    .quad {}", vector_length(v));
+        let _ = writeln!(out, "vec{i}_needle:\n    .byte {}", vector_needle(v));
+        let _ = writeln!(out, "vec{i}_replacement:\n    .byte {}", vector_replacement(v));
+        let _ = writeln!(out, "vec{i}_guard_pre:\n    .byte {WRITE_GUARD_PRE}");
+        let _ = write!(out, "vec{i}_buf:");
+        if !bytes.is_empty() {
+            let _ = write!(out, "\n    .byte {}", bytes.join(", "));
+        }
+        let _ = writeln!(out, "\nvec{i}_guard_post:\n    .byte {WRITE_GUARD_POST}");
+    }
+}
+
+fn emit_gas_memset_vector_data(out: &mut String, vectors: &[TestVector]) {
+    out.push_str(".section .data\n");
+    for (i, v) in vectors.iter().enumerate() {
+        let bytes = vector_buffer_bytes(v);
+        out.push_str(".align 3\n");
+        let _ = writeln!(out, "vec{i}_len:\n    .quad {}", vector_length(v));
+        let _ = writeln!(out, "vec{i}_needle:\n    .byte {}", vector_needle(v));
+        let _ = writeln!(out, "vec{i}_guard_pre:\n    .byte {WRITE_GUARD_PRE}");
+        let _ = write!(out, "vec{i}_buf:");
+        if !bytes.is_empty() {
+            let _ = write!(out, "\n    .byte {}", bytes.join(", "));
+        }
+        let _ = writeln!(out, "\nvec{i}_guard_post:\n    .byte {WRITE_GUARD_POST}");
+    }
+}
+
+fn emit_gas_memcpy_vector_data(out: &mut String, vectors: &[TestVector]) {
+    out.push_str(".section .data\n");
+    for (i, v) in vectors.iter().enumerate() {
+        let dst = vector_memcmp_a_bytes(v);
+        let src = vector_memcmp_b_bytes(v);
+        out.push_str(".align 3\n");
+        let _ = writeln!(out, "vec{i}_len:\n    .quad {}", vector_memcmp_length(v));
+        let _ = writeln!(out, "vec{i}_a_guard_pre:\n    .byte {WRITE_GUARD_PRE}");
+        let _ = write!(out, "vec{i}_a:");
+        if !dst.is_empty() {
+            let _ = write!(out, "\n    .byte {}", dst.join(", "));
+        }
+        let _ = writeln!(out, "\nvec{i}_a_guard_post:\n    .byte {WRITE_GUARD_POST}");
+        let _ = writeln!(out, "vec{i}_b_guard_pre:\n    .byte {WRITE_GUARD_PRE}");
+        let _ = write!(out, "vec{i}_b:");
+        if !src.is_empty() {
+            let _ = write!(out, "\n    .byte {}", src.join(", "));
+        }
+        let _ = writeln!(out, "\nvec{i}_b_guard_post:\n    .byte {WRITE_GUARD_POST}");
+    }
+}
+
+/// Generate GNU as AArch64 replace_byte harness (x0=buf, x1=len, x2=needle, x3=repl).
+fn generate_aapcs64_replace_byte_harness(routine_symbol: &str, vectors: &[TestVector]) -> String {
+    let mut out = String::new();
+    let results_len = vectors.len() * 8;
+    emit_gas_replace_byte_vector_data(&mut out, vectors);
+    out.push_str("\n.section .bss\n.align 3\nresults:\n");
+    let _ = writeln!(out, "    .space {results_len}");
+    out.push_str("\n.section .text\n.global _start\n_start:\n");
+    for (i, v) in vectors.iter().enumerate() {
+        let _ = writeln!(out, "    // vector {i}: {}", v.name);
+        if v.inputs.first().is_some_and(serde_json::Value::is_null) {
+            out.push_str("    mov x0, xzr\n");
+        } else {
+            let _ = writeln!(out, "    ldr x0, =vec{i}_buf");
+        }
+        let _ = writeln!(out, "    ldr x1, =vec{i}_len");
+        out.push_str("    ldr x1, [x1]\n");
+        let _ = writeln!(out, "    ldr x2, =vec{i}_needle");
+        out.push_str("    ldrb w2, [x2]\n");
+        let _ = writeln!(out, "    ldr x3, =vec{i}_replacement");
+        out.push_str("    ldrb w3, [x3]\n");
+        let _ = writeln!(out, "    bl {routine_symbol}");
+        out.push_str("    ldr x4, =results\n");
+        let _ = writeln!(out, "    str x0, [x4, #{offset}]", offset = i * 8);
+    }
+    out.push_str("    mov x0, #1\n    ldr x1, =results\n");
+    let _ = writeln!(out, "    mov x2, #{results_len}");
+    out.push_str("    mov x8, #64\n    svc #0\n");
+    for (i, v) in vectors.iter().enumerate() {
+        let len = usize::try_from(vector_length(v)).unwrap_or(0) + 2;
+        let _ = writeln!(out, "    // write guarded buffer {i} ({len} bytes)");
+        out.push_str("    mov x0, #1\n");
+        let _ = writeln!(out, "    ldr x1, =vec{i}_guard_pre");
+        let _ = writeln!(out, "    mov x2, #{len}");
+        out.push_str("    mov x8, #64\n    svc #0\n");
+    }
+    out.push_str("    mov x0, #0\n    mov x8, #93\n    svc #0\n");
+    out
+}
+
+/// Generate GNU as AArch64 memset harness (x0=buf, x1=len, x2=value).
+fn generate_aapcs64_memset_harness(routine_symbol: &str, vectors: &[TestVector]) -> String {
+    let mut out = String::new();
+    let results_len = vectors.len() * 8;
+    emit_gas_memset_vector_data(&mut out, vectors);
+    out.push_str("\n.section .bss\n.align 3\nresults:\n");
+    let _ = writeln!(out, "    .space {results_len}");
+    out.push_str("\n.section .text\n.global _start\n_start:\n");
+    for (i, v) in vectors.iter().enumerate() {
+        let _ = writeln!(out, "    // vector {i}: {}", v.name);
+        if v.inputs.first().is_some_and(serde_json::Value::is_null) {
+            out.push_str("    mov x0, xzr\n");
+        } else {
+            let _ = writeln!(out, "    ldr x0, =vec{i}_buf");
+        }
+        let _ = writeln!(out, "    ldr x1, =vec{i}_len");
+        out.push_str("    ldr x1, [x1]\n");
+        let _ = writeln!(out, "    ldr x2, =vec{i}_needle");
+        out.push_str("    ldrb w2, [x2]\n");
+        let _ = writeln!(out, "    bl {routine_symbol}");
+        out.push_str("    ldr x3, =results\n");
+        let _ = writeln!(out, "    str x0, [x3, #{offset}]", offset = i * 8);
+    }
+    out.push_str("    mov x0, #1\n    ldr x1, =results\n");
+    let _ = writeln!(out, "    mov x2, #{results_len}");
+    out.push_str("    mov x8, #64\n    svc #0\n");
+    for (i, v) in vectors.iter().enumerate() {
+        let len = usize::try_from(vector_length(v)).unwrap_or(0) + 2;
+        out.push_str("    mov x0, #1\n");
+        let _ = writeln!(out, "    ldr x1, =vec{i}_guard_pre");
+        let _ = writeln!(out, "    mov x2, #{len}");
+        out.push_str("    mov x8, #64\n    svc #0\n");
+    }
+    out.push_str("    mov x0, #0\n    mov x8, #93\n    svc #0\n");
+    out
+}
+
+/// Generate GNU as AArch64 memcpy harness (x0=dst, x1=src, x2=len).
+fn generate_aapcs64_memcpy_harness(routine_symbol: &str, vectors: &[TestVector]) -> String {
+    let mut out = String::new();
+    let results_len = vectors.len() * 8;
+    emit_gas_memcpy_vector_data(&mut out, vectors);
+    out.push_str("\n.section .bss\n.align 3\nresults:\n");
+    let _ = writeln!(out, "    .space {results_len}");
+    out.push_str("\n.section .text\n.global _start\n_start:\n");
+    for (i, v) in vectors.iter().enumerate() {
+        let _ = writeln!(out, "    // vector {i}: {}", v.name);
+        if v.inputs.first().is_some_and(serde_json::Value::is_null) {
+            out.push_str("    mov x0, xzr\n");
+        } else {
+            let _ = writeln!(out, "    ldr x0, =vec{i}_a");
+        }
+        if v.inputs.get(1).is_some_and(serde_json::Value::is_null) {
+            out.push_str("    mov x1, xzr\n");
+        } else {
+            let _ = writeln!(out, "    ldr x1, =vec{i}_b");
+        }
+        let _ = writeln!(out, "    ldr x2, =vec{i}_len");
+        out.push_str("    ldr x2, [x2]\n");
+        let _ = writeln!(out, "    bl {routine_symbol}");
+        out.push_str("    ldr x3, =results\n");
+        let _ = writeln!(out, "    str x0, [x3, #{offset}]", offset = i * 8);
+    }
+    out.push_str("    mov x0, #1\n    ldr x1, =results\n");
+    let _ = writeln!(out, "    mov x2, #{results_len}");
+    out.push_str("    mov x8, #64\n    svc #0\n");
+    for (i, v) in vectors.iter().enumerate() {
+        let len = usize::try_from(vector_memcmp_length(v)).unwrap_or(0) + 2;
+        out.push_str("    mov x0, #1\n");
+        let _ = writeln!(out, "    ldr x1, =vec{i}_a_guard_pre");
+        let _ = writeln!(out, "    mov x2, #{len}");
+        out.push_str("    mov x8, #64\n    svc #0\n");
+        out.push_str("    mov x0, #1\n");
+        let _ = writeln!(out, "    ldr x1, =vec{i}_b_guard_pre");
+        let _ = writeln!(out, "    mov x2, #{len}");
+        out.push_str("    mov x8, #64\n    svc #0\n");
+    }
+    out.push_str("    mov x0, #0\n    mov x8, #93\n    svc #0\n");
+    out
+}
+
+/// Generate GNU as RISC-V replace_byte harness (a0=buf, a1=len, a2=needle, a3=repl).
+fn generate_riscv_replace_byte_harness(routine_symbol: &str, vectors: &[TestVector]) -> String {
+    let mut out = String::new();
+    let results_len = vectors.len() * 8;
+    out.push_str(".option norelax\n");
+    emit_gas_replace_byte_vector_data(&mut out, vectors);
+    out.push_str("\n.section .bss\n.align 4\nresults:\n");
+    let _ = writeln!(out, "    .space {results_len}");
+    out.push_str(".align 4\n    .space 16384\n__stack_top:\n");
+    out.push_str("\n.section .text\n.global _start\n_start:\n    la sp, __stack_top\n");
+    for (i, v) in vectors.iter().enumerate() {
+        let _ = writeln!(out, "    # vector {i}: {}", v.name);
+        if v.inputs.first().is_some_and(serde_json::Value::is_null) {
+            out.push_str("    li a0, 0\n");
+        } else {
+            let _ = writeln!(out, "    la a0, vec{i}_buf");
+        }
+        let _ = writeln!(out, "    la t0, vec{i}_len");
+        out.push_str("    ld a1, 0(t0)\n");
+        let _ = writeln!(out, "    la t0, vec{i}_needle");
+        out.push_str("    lbu a2, 0(t0)\n");
+        let _ = writeln!(out, "    la t0, vec{i}_replacement");
+        out.push_str("    lbu a3, 0(t0)\n");
+        let _ = writeln!(out, "    jal {routine_symbol}");
+        out.push_str("    la t0, results\n");
+        let _ = writeln!(out, "    sd a0, {offset}(t0)", offset = i * 8);
+    }
+    out.push_str("    li a0, 1\n    la a1, results\n");
+    let _ = writeln!(out, "    li a2, {results_len}");
+    out.push_str("    li a7, 64\n    ecall\n");
+    for (i, v) in vectors.iter().enumerate() {
+        let len = usize::try_from(vector_length(v)).unwrap_or(0) + 2;
+        out.push_str("    li a0, 1\n");
+        let _ = writeln!(out, "    la a1, vec{i}_guard_pre");
+        let _ = writeln!(out, "    li a2, {len}");
+        out.push_str("    li a7, 64\n    ecall\n");
+    }
+    out.push_str("    li a0, 0\n    li a7, 93\n    ecall\n");
+    out
+}
+
+/// Generate GNU as RISC-V memset harness (a0=buf, a1=len, a2=value).
+fn generate_riscv_memset_harness(routine_symbol: &str, vectors: &[TestVector]) -> String {
+    let mut out = String::new();
+    let results_len = vectors.len() * 8;
+    out.push_str(".option norelax\n");
+    emit_gas_memset_vector_data(&mut out, vectors);
+    out.push_str("\n.section .bss\n.align 4\nresults:\n");
+    let _ = writeln!(out, "    .space {results_len}");
+    out.push_str(".align 4\n    .space 16384\n__stack_top:\n");
+    out.push_str("\n.section .text\n.global _start\n_start:\n    la sp, __stack_top\n");
+    for (i, v) in vectors.iter().enumerate() {
+        let _ = writeln!(out, "    # vector {i}: {}", v.name);
+        if v.inputs.first().is_some_and(serde_json::Value::is_null) {
+            out.push_str("    li a0, 0\n");
+        } else {
+            let _ = writeln!(out, "    la a0, vec{i}_buf");
+        }
+        let _ = writeln!(out, "    la t0, vec{i}_len");
+        out.push_str("    ld a1, 0(t0)\n");
+        let _ = writeln!(out, "    la t0, vec{i}_needle");
+        out.push_str("    lbu a2, 0(t0)\n");
+        let _ = writeln!(out, "    jal {routine_symbol}");
+        out.push_str("    la t0, results\n");
+        let _ = writeln!(out, "    sd a0, {offset}(t0)", offset = i * 8);
+    }
+    out.push_str("    li a0, 1\n    la a1, results\n");
+    let _ = writeln!(out, "    li a2, {results_len}");
+    out.push_str("    li a7, 64\n    ecall\n");
+    for (i, v) in vectors.iter().enumerate() {
+        let len = usize::try_from(vector_length(v)).unwrap_or(0) + 2;
+        out.push_str("    li a0, 1\n");
+        let _ = writeln!(out, "    la a1, vec{i}_guard_pre");
+        let _ = writeln!(out, "    li a2, {len}");
+        out.push_str("    li a7, 64\n    ecall\n");
+    }
+    out.push_str("    li a0, 0\n    li a7, 93\n    ecall\n");
+    out
+}
+
+/// Generate GNU as RISC-V memcpy harness (a0=dst, a1=src, a2=len).
+fn generate_riscv_memcpy_harness(routine_symbol: &str, vectors: &[TestVector]) -> String {
+    let mut out = String::new();
+    let results_len = vectors.len() * 8;
+    out.push_str(".option norelax\n");
+    emit_gas_memcpy_vector_data(&mut out, vectors);
+    out.push_str("\n.section .bss\n.align 4\nresults:\n");
+    let _ = writeln!(out, "    .space {results_len}");
+    out.push_str(".align 4\n    .space 16384\n__stack_top:\n");
+    out.push_str("\n.section .text\n.global _start\n_start:\n    la sp, __stack_top\n");
+    for (i, v) in vectors.iter().enumerate() {
+        let _ = writeln!(out, "    # vector {i}: {}", v.name);
+        if v.inputs.first().is_some_and(serde_json::Value::is_null) {
+            out.push_str("    li a0, 0\n");
+        } else {
+            let _ = writeln!(out, "    la a0, vec{i}_a");
+        }
+        if v.inputs.get(1).is_some_and(serde_json::Value::is_null) {
+            out.push_str("    li a1, 0\n");
+        } else {
+            let _ = writeln!(out, "    la a1, vec{i}_b");
+        }
+        let _ = writeln!(out, "    la t0, vec{i}_len");
+        out.push_str("    ld a2, 0(t0)\n");
+        let _ = writeln!(out, "    jal {routine_symbol}");
+        out.push_str("    la t0, results\n");
+        let _ = writeln!(out, "    sd a0, {offset}(t0)", offset = i * 8);
+    }
+    out.push_str("    li a0, 1\n    la a1, results\n");
+    let _ = writeln!(out, "    li a2, {results_len}");
+    out.push_str("    li a7, 64\n    ecall\n");
+    for (i, v) in vectors.iter().enumerate() {
+        let len = usize::try_from(vector_memcmp_length(v)).unwrap_or(0) + 2;
+        out.push_str("    li a0, 1\n");
+        let _ = writeln!(out, "    la a1, vec{i}_a_guard_pre");
+        let _ = writeln!(out, "    li a2, {len}");
+        out.push_str("    li a7, 64\n    ecall\n");
+        out.push_str("    li a0, 1\n");
+        let _ = writeln!(out, "    la a1, vec{i}_b_guard_pre");
+        let _ = writeln!(out, "    li a2, {len}");
+        out.push_str("    li a7, 64\n    ecall\n");
+    }
+    out.push_str("    li a0, 0\n    li a7, 93\n    ecall\n");
+    out
+}
+
+
 fn emit_gas_memcmp_vector_data(out: &mut String, vectors: &[TestVector]) {
     out.push_str(".section .data\n");
     for (i, v) in vectors.iter().enumerate() {
@@ -3786,7 +4098,7 @@ expression = "count <= length"
     }
 
     #[test]
-    fn replace_byte_harness_x86_and_fail_closed_elsewhere() {
+    fn replace_byte_harness_x86_and_cross_isa() {
         let vectors = synthesize_vectors(&replace_byte_contract());
         let sysv = generate_harness(
             "replace_byte",
@@ -3811,16 +4123,18 @@ expression = "count <= length"
             Abi::Aapcs64,
             HarnessShape::ReplaceByte,
         )
-        .expect_err("AArch64 replace_byte must fail closed");
-        assert!(a64.contains("replace_byte harness not yet supported on this ABI"));
+        .expect("AArch64 replace_byte harness");
+        assert!(a64.contains("vec0_guard_pre"));
+        assert!(a64.contains("svc #0"));
         let rv = generate_harness(
             "replace_byte",
             &vectors,
             Abi::Riscv,
             HarnessShape::ReplaceByte,
         )
-        .expect_err("RISC-V replace_byte must fail closed");
-        assert!(rv.contains("replace_byte harness not yet supported on this ABI"));
+        .expect("RISC-V replace_byte harness");
+        assert!(rv.contains("vec0_guard_pre"));
+        assert!(rv.contains("ecall"));
     }
 
     #[test]
@@ -3907,7 +4221,7 @@ expression = "count <= length"
     }
 
     #[test]
-    fn memset_harness_x86_and_fail_closed_elsewhere() {
+    fn memset_harness_x86_and_cross_isa() {
         let vectors = synthesize_vectors(&memset_contract());
         let sysv = generate_harness("memset", &vectors, Abi::SysVAmd64, HarnessShape::Memset)
             .expect("sysv harness");
@@ -3918,11 +4232,13 @@ expression = "count <= length"
             .expect("win64 harness");
         assert!(win.contains("movzx r8d, byte [vec0_needle]"));
         let a64 = generate_harness("memset", &vectors, Abi::Aapcs64, HarnessShape::Memset)
-            .expect_err("AArch64 memset must fail closed");
-        assert!(a64.contains("memset harness not yet supported on this ABI"));
+            .expect("AArch64 memset harness");
+        assert!(a64.contains("vec0_guard_pre"));
+        assert!(a64.contains("svc #0"));
         let rv = generate_harness("memset", &vectors, Abi::Riscv, HarnessShape::Memset)
-            .expect_err("RISC-V memset must fail closed");
-        assert!(rv.contains("memset harness not yet supported on this ABI"));
+            .expect("RISC-V memset harness");
+        assert!(rv.contains("vec0_guard_pre"));
+        assert!(rv.contains("ecall"));
     }
 
     #[test]
@@ -4006,7 +4322,7 @@ expression = "count <= length"
     }
 
     #[test]
-    fn memcpy_harness_x86_and_fail_closed_elsewhere() {
+    fn memcpy_harness_x86_and_cross_isa() {
         let vectors = synthesize_vectors(&memcpy_contract());
         let sysv = generate_harness("memcpy", &vectors, Abi::SysVAmd64, HarnessShape::Memcpy)
             .expect("sysv harness");
@@ -4019,11 +4335,13 @@ expression = "count <= length"
         assert!(win.contains("lea rdx, [vec0_b]") || win.contains("xor edx, edx"));
         assert!(win.contains("mov r8, [vec0_len]"));
         let a64 = generate_harness("memcpy", &vectors, Abi::Aapcs64, HarnessShape::Memcpy)
-            .expect_err("AArch64 memcpy must fail closed");
-        assert!(a64.contains("memcpy harness not yet supported on this ABI"));
+            .expect("AArch64 memcpy harness");
+        assert!(a64.contains("vec0_a_guard_pre"));
+        assert!(a64.contains("svc #0"));
         let rv = generate_harness("memcpy", &vectors, Abi::Riscv, HarnessShape::Memcpy)
-            .expect_err("RISC-V memcpy must fail closed");
-        assert!(rv.contains("memcpy harness not yet supported on this ABI"));
+            .expect("RISC-V memcpy harness");
+        assert!(rv.contains("vec0_a_guard_pre"));
+        assert!(rv.contains("ecall"));
     }
 
     #[test]
