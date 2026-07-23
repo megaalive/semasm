@@ -29,8 +29,8 @@ before work advances past a failed item.
 Stabilization PR-01…18, Bulletproof P0–P5, X86 Golden Path Depth, Evidence
 W1–W5, controller handshake, shared `count_byte` / `sum_i64` / `min_usize` slices
 (VAA Gate-1/2), hardening T0–T6, runner JSON R0–R2, and Tranche M are complete on
-`main`. GitHub Release **`v0.1.0`** is the release tip. **Next = Tranche N**
-(`max_usize` Gate-ready pack + VAA handoff).
+`main`. GitHub Release **`v0.1.0`** is the release tip. **Tranche N**
+(`max_usize`) is closed. Next shared leaf TBD (buffer shape / adversarial depth).
 
 | Step | Focus | Status |
 |---|---|---|
@@ -121,13 +121,15 @@ Annotated tag + GitHub Release archives (`SHA256SUMS`) after
 |---|---|---|---|
 | **N0** | `max_usize` oracle/claim distinction + contract (min regression) | SemASM | **done** |
 | **N1** | `max_usize` asm/e2e/goldens/adversarial + capabilities evidence | SemASM | **done** |
-| **N2** | VAA pin tip + `max_usize` Gate-1/2 fixtures/smoke | VAA | queued |
+| **N2** | VAA pin tip + `max_usize` Gate-1/2 fixtures/smoke | VAA | **done** |
 
 **Honesty:** Gate-1 Incomplete ≠ Verified. SoftHSM / Fulcio / practice seals ≠
 SemASM Verified. Pipeline assemble/link/execute on x86 remains `experimental`.
 
 Demo: `scripts/golden-demo.sh` (Linux SysV) or `scripts/golden-demo.ps1`
 (Windows PE by default; `-SysV` for Linux tools).
+
+Tranche N is closed on tip `623d22c` (SemASM) with VAA handoff `5a5c6d9`.
 
 See `docs/CLI_COMPATIBILITY.md`, `docs/CONTROLLER_PROTOCOL.md`,
 `docs/AGENT_SCHEMA_POLICY.md`, and `ARCHITECTURE.md`.

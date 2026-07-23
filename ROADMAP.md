@@ -45,8 +45,7 @@ conformance evidence are proven.
 - **Done:** GitHub Release tag `v0.1.0` (checklist-gated; CLI archives only).
 
 Consumer pin / framed smoke / capability claim bind: see VAA `docs/progress.md`
-(waves N0–N4, P0–P2, R0–R2, VAA P7/P8, and Tranche M Done). Next shared work is
-**Tranche N** (`max_usize` Gate handoff) — see `docs/STABILIZATION_PROGRESS.md`.
+(waves through Tranche N / `max_usize` Gate Done).
 
 See `semasm-complete-project-plan.md` for the original ordered vertical slices
 and `docs/status/BASELINE-2026-07.md` for the stabilization baseline.
