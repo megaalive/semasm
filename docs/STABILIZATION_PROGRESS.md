@@ -29,8 +29,9 @@ before work advances past a failed item.
 Stabilization PR-01…18, Bulletproof P0–P5, X86 Golden Path Depth, Evidence
 W1–W5, controller handshake, shared `count_byte` / `sum_i64` / `min_usize` slices
 (VAA Gate-1/2), hardening T0–T6, runner JSON R0–R2, and Tranche M are complete on
-`main`. GitHub Release **`v0.1.0`** and Tranche N (`max_usize`) are complete.
-**Next = Tranche O** (x86 depth honesty) then **Tranche P** (`find_first_byte`).
+`main`. GitHub Release **`v0.1.0`**, Tranche N (`max_usize`), Tranche O (x86 depth),
+and Tranche P (`find_first_byte`) are complete. Next shared leaf TBD (VAA loop /
+further depth).
 
 | Step | Focus | Status |
 |---|---|---|
@@ -144,9 +145,11 @@ Tranche N is closed on tip `623d22c` (SemASM) with VAA handoff `5a5c6d9`.
 |---|---|---|---|
 | **P0** | Oracle/contract/vectors (absent → length) | SemASM | **done** |
 | **P1** | Asm/e2e/goldens/adversarial + capabilities | SemASM | **done** |
-| **P2** | VAA pin tip + Gate-1/2 smoke | VAA | queued |
+| **P2** | VAA pin tip + Gate-1/2 smoke | VAA | **done** |
 
 Buffer index-of shape (not another pure-int leaf). Pattern N0→N2 / M2→M4.
+
+Tranche P is closed on tip `511bb45` (SemASM) with VAA handoff `5961c1b`.
 
 **Honesty:** Gate-1 Incomplete ≠ Verified. SoftHSM / Fulcio / practice seals ≠
 SemASM Verified. Pipeline assemble/link/execute on x86 remains `experimental`.

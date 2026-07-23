@@ -45,8 +45,8 @@ conformance evidence are proven.
 - **Done:** GitHub Release tag `v0.1.0` (checklist-gated; CLI archives only).
 
 Consumer pin / framed smoke / capability claim bind: see VAA `docs/progress.md`
-(waves through Tranche N / `max_usize` Gate Done). Next shared work is
-**Tranche O** (x86 depth honesty) then **Tranche P** (`find_first_byte`) — see
+(waves through Tranche P / `find_first_byte` Gate Done). Next shared work is
+VAA controller loop depth or further x86 adversarial — see
 `docs/STABILIZATION_PROGRESS.md`.
 
 See `semasm-complete-project-plan.md` for the original ordered vertical slices
