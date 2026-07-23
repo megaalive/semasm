@@ -33,18 +33,23 @@ W1–W5, controller handshake, shared `count_byte` / `sum_i64` / `min_usize` sli
 Tranche R (search→ingest Gate loop) are complete. **X2 + S + T** closed
 (`find_last_byte` Gate + `vaa search --ingest`). **X3 + U + V** closed
 (`count_byte` Win64 callee_saved depth, `memcmp` Gate pack, VAA pin +
-search `--ingest --allow-execution` smoke).
+search `--ingest --allow-execution` smoke). **X4 + H4 + Y** closed
+(MemCmp A64/RV fail-closed, HlaX64 `find_last_byte` bridge, `memcmp`
+search-ingest Gate parity).
 
 ### Next waves (X4 + H4 + Y)
 
 | Wave | Focus | Owner | Status |
 |---|---|---|---|
-| **X4** | MemCmp harness fail-closed on AArch64/RISC-V + caps honesty | SemASM | **done** |
-| **H4** | HlaX64 → VAA bridge for `find_last_byte` | HlaX64+VAA | pending |
-| **Y0–Y2** | Pin tips + `memcmp` search `--ingest` Gate parity | VAA | pending |
+| **X4** | MemCmp harness fail-closed on AArch64/RISC-V + caps honesty | SemASM | **done** (`0c12bf7`) |
+| **H4** | HlaX64 → VAA bridge for `find_last_byte` | HlaX64+VAA | **done** (`3641428` / `e105ea0`) |
+| **Y0–Y2** | Pin tips + `memcmp` search `--ingest` Gate parity | VAA | **done** (`1c43236`) |
 
 MemCmp agent harness remains **x86-only** (SysV + Win64). AArch64/RISC-V
 generation fails closed with a clear error — not partial multi-ISA support.
+
+Tranche X4 + H4 + Y closed: SemASM tip `0c12bf7`; HlaX64 `3641428`;
+VAA Gate handoff `1c43236` (pin SemASM `0c12bf7`, HlaX64 `3641428`).
 
 | Step | Focus | Status |
 |---|---|---|
