@@ -8,8 +8,22 @@ fn workspace_root() -> PathBuf {
 }
 
 fn run_agent_verify(source: &Path, target: &str, allow_execution: bool) -> std::process::Output {
+    run_agent_verify_contract(
+        source,
+        target,
+        allow_execution,
+        "fixtures/contracts/count_byte.sem.toml",
+    )
+}
+
+fn run_agent_verify_contract(
+    source: &Path,
+    target: &str,
+    allow_execution: bool,
+    contract_rel: &str,
+) -> std::process::Output {
     let workspace = workspace_root();
-    let contract = workspace.join("fixtures/contracts/count_byte.sem.toml");
+    let contract = workspace.join(contract_rel);
     let binary = env!("CARGO_BIN_EXE_semasm");
     let mut args = vec![
         "agent",
@@ -120,4 +134,56 @@ fn agent_verify_riscv64_allow_execution_is_verified() {
         return;
     }
     assert_verified(&output);
+}
+
+#[test]
+#[ignore = "requires aarch64-linux-gnu-as/ld and qemu-aarch64 on PATH"]
+fn agent_verify_memcmp_aarch64_allow_execution_is_verified() {
+    let source = workspace_root().join("fixtures/asm/memcmp_aarch64.S");
+    let output = run_agent_verify_contract(
+        &source,
+        "aarch64-unknown-linux-gnu",
+        true,
+        "fixtures/contracts/memcmp.sem.toml",
+    );
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    if skip_if_incomplete(&stderr) {
+        return;
+    }
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    assert!(
+        output.status.success(),
+        "expected success; stderr={stderr}; stdout={stdout}"
+    );
+    let value: serde_json::Value = serde_json::from_str(&stdout).unwrap_or_else(|error| {
+        panic!("expected VerificationReport JSON ({error}): {stdout}\nstderr={stderr}")
+    });
+    assert_eq!(value["status"], "verified");
+    assert_eq!(value["behavior_oracle"]["id"], "builtin.buffer.memcmp_i8");
+}
+
+#[test]
+#[ignore = "requires riscv64-linux-gnu-as/ld and qemu-riscv64 on PATH"]
+fn agent_verify_memcmp_riscv64_allow_execution_is_verified() {
+    let source = workspace_root().join("fixtures/asm/memcmp_riscv64.S");
+    let output = run_agent_verify_contract(
+        &source,
+        "riscv64gc-unknown-linux-gnu",
+        true,
+        "fixtures/contracts/memcmp.sem.toml",
+    );
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    if skip_if_incomplete(&stderr) {
+        return;
+    }
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    assert!(
+        output.status.success(),
+        "expected success; stderr={stderr}; stdout={stdout}"
+    );
+    let value: serde_json::Value = serde_json::from_str(&stdout).unwrap_or_else(|error| {
+        panic!("expected VerificationReport JSON ({error}): {stdout}\nstderr={stderr}")
+    });
+    assert_eq!(value["status"], "verified");
+    assert_eq!(value["behavior_oracle"]["id"], "builtin.buffer.memcmp_i8");
 }

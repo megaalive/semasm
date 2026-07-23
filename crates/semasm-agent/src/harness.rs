@@ -1941,8 +1941,11 @@ pub fn generate_harness(
         (Abi::Aapcs64, HarnessShape::BufferScan) => {
             Ok(generate_aapcs64_buffer_harness(routine_symbol, vectors))
         }
-        (Abi::Aapcs64 | Abi::Riscv, HarnessShape::MemCmp) => {
-            Err("memcmp harness not yet supported on this ABI".into())
+        (Abi::Aapcs64, HarnessShape::MemCmp) => {
+            Ok(generate_aapcs64_memcmp_harness(routine_symbol, vectors))
+        }
+        (Abi::Riscv, HarnessShape::MemCmp) => {
+            Ok(generate_riscv_memcmp_harness(routine_symbol, vectors))
         }
         (Abi::Aapcs64 | Abi::Riscv, HarnessShape::Memcpy) => {
             Err("memcpy harness not yet supported on this ABI".into())
@@ -1997,10 +2000,7 @@ fn emit_replace_byte_vector_data(out: &mut String, vectors: &[TestVector]) {
         if !bytes.is_empty() {
             let _ = write!(out, "\n    db {}", bytes.join(", "));
         }
-        let _ = writeln!(
-            out,
-            "\nvec{i}_guard_post:\n    db {WRITE_GUARD_POST}"
-        );
+        let _ = writeln!(out, "\nvec{i}_guard_post:\n    db {WRITE_GUARD_POST}");
     }
 }
 
@@ -2015,10 +2015,7 @@ fn emit_memset_vector_data(out: &mut String, vectors: &[TestVector]) {
         if !bytes.is_empty() {
             let _ = write!(out, "\n    db {}", bytes.join(", "));
         }
-        let _ = writeln!(
-            out,
-            "\nvec{i}_guard_post:\n    db {WRITE_GUARD_POST}"
-        );
+        let _ = writeln!(out, "\nvec{i}_guard_post:\n    db {WRITE_GUARD_POST}");
     }
 }
 
@@ -2340,19 +2337,13 @@ fn emit_memcpy_vector_data(out: &mut String, vectors: &[TestVector]) {
         if !dst.is_empty() {
             let _ = write!(out, "\n    db {}", dst.join(", "));
         }
-        let _ = writeln!(
-            out,
-            "\nvec{i}_a_guard_post: db {WRITE_GUARD_POST}"
-        );
+        let _ = writeln!(out, "\nvec{i}_a_guard_post: db {WRITE_GUARD_POST}");
         let _ = writeln!(out, "vec{i}_b_guard_pre: db {WRITE_GUARD_PRE}");
         let _ = write!(out, "vec{i}_b:");
         if !src.is_empty() {
             let _ = write!(out, "\n    db {}", src.join(", "));
         }
-        let _ = writeln!(
-            out,
-            "\nvec{i}_b_guard_post: db {WRITE_GUARD_POST}"
-        );
+        let _ = writeln!(out, "\nvec{i}_b_guard_post: db {WRITE_GUARD_POST}");
     }
 }
 
@@ -2900,6 +2891,135 @@ fn generate_win64_i64_sum_harness(routine_symbol: &str, vectors: &[TestVector]) 
     out.push_str("    sub rsp, 40\n");
     out.push_str("    xor ecx, ecx\n");
     out.push_str("    call ExitProcess\n");
+
+    out
+}
+
+fn emit_gas_memcmp_vector_data(out: &mut String, vectors: &[TestVector]) {
+    out.push_str(".section .data\n");
+    for (i, v) in vectors.iter().enumerate() {
+        let a = vector_memcmp_a_bytes(v);
+        let b = vector_memcmp_b_bytes(v);
+        out.push_str(".align 3\n");
+        let _ = writeln!(out, "vec{i}_len:\n    .quad {}", vector_memcmp_length(v));
+        out.push_str(".align 3\n");
+        let _ = write!(out, "vec{i}_a:\n    .byte ");
+        if a.is_empty() {
+            out.push_str("0\n");
+        } else {
+            out.push_str(&a.join(", "));
+            out.push('\n');
+        }
+        out.push_str(".align 3\n");
+        let _ = write!(out, "vec{i}_b:\n    .byte ");
+        if b.is_empty() {
+            out.push_str("0\n");
+        } else {
+            out.push_str(&b.join(", "));
+            out.push('\n');
+        }
+    }
+}
+
+/// Generate GNU as AArch64 memcmp `_start` harness (x0=a, x1=b, x2=len).
+fn generate_aapcs64_memcmp_harness(routine_symbol: &str, vectors: &[TestVector]) -> String {
+    let mut out = String::new();
+    let results_len = vectors.len() * 8;
+
+    emit_gas_memcmp_vector_data(&mut out, vectors);
+
+    out.push_str("\n.section .bss\n");
+    out.push_str(".align 3\n");
+    out.push_str("results:\n");
+    let _ = writeln!(out, "    .space {results_len}");
+
+    out.push_str("\n.section .text\n");
+    out.push_str(".global _start\n");
+    out.push_str("_start:\n");
+
+    for (i, v) in vectors.iter().enumerate() {
+        let _ = writeln!(out, "    // vector {i}: {}", v.name);
+        if v.inputs.first().is_some_and(serde_json::Value::is_null) {
+            out.push_str("    mov x0, xzr\n");
+        } else {
+            let _ = writeln!(out, "    ldr x0, =vec{i}_a");
+        }
+        if v.inputs.get(1).is_some_and(serde_json::Value::is_null) {
+            out.push_str("    mov x1, xzr\n");
+        } else {
+            let _ = writeln!(out, "    ldr x1, =vec{i}_b");
+        }
+        let _ = writeln!(out, "    ldr x2, =vec{i}_len");
+        out.push_str("    ldr x2, [x2]\n");
+        let _ = writeln!(out, "    bl {routine_symbol}");
+        out.push_str("    ldr x3, =results\n");
+        let _ = writeln!(out, "    str x0, [x3, #{offset}]", offset = i * 8);
+    }
+
+    out.push_str("    // write(1, results, len)\n");
+    out.push_str("    mov x0, #1\n");
+    out.push_str("    ldr x1, =results\n");
+    let _ = writeln!(out, "    mov x2, #{results_len}");
+    out.push_str("    mov x8, #64\n");
+    out.push_str("    svc #0\n");
+    out.push_str("    // exit(0)\n");
+    out.push_str("    mov x0, #0\n");
+    out.push_str("    mov x8, #93\n");
+    out.push_str("    svc #0\n");
+
+    out
+}
+
+/// Generate GNU as RISC-V memcmp `_start` harness (a0=a, a1=b, a2=len).
+fn generate_riscv_memcmp_harness(routine_symbol: &str, vectors: &[TestVector]) -> String {
+    let mut out = String::new();
+    let results_len = vectors.len() * 8;
+
+    out.push_str(".option norelax\n");
+    emit_gas_memcmp_vector_data(&mut out, vectors);
+
+    out.push_str("\n.section .bss\n");
+    out.push_str(".align 4\n");
+    out.push_str("results:\n");
+    let _ = writeln!(out, "    .space {results_len}");
+    out.push_str(".align 4\n");
+    out.push_str("    .space 16384\n");
+    out.push_str("__stack_top:\n");
+
+    out.push_str("\n.section .text\n");
+    out.push_str(".global _start\n");
+    out.push_str("_start:\n");
+    out.push_str("    la sp, __stack_top\n");
+
+    for (i, v) in vectors.iter().enumerate() {
+        let _ = writeln!(out, "    # vector {i}: {}", v.name);
+        if v.inputs.first().is_some_and(serde_json::Value::is_null) {
+            out.push_str("    li a0, 0\n");
+        } else {
+            let _ = writeln!(out, "    la a0, vec{i}_a");
+        }
+        if v.inputs.get(1).is_some_and(serde_json::Value::is_null) {
+            out.push_str("    li a1, 0\n");
+        } else {
+            let _ = writeln!(out, "    la a1, vec{i}_b");
+        }
+        let _ = writeln!(out, "    la t0, vec{i}_len");
+        out.push_str("    ld a2, 0(t0)\n");
+        let _ = writeln!(out, "    jal {routine_symbol}");
+        out.push_str("    la t0, results\n");
+        let _ = writeln!(out, "    sd a0, {offset}(t0)", offset = i * 8);
+    }
+
+    out.push_str("    # write(1, results, len)\n");
+    out.push_str("    li a0, 1\n");
+    out.push_str("    la a1, results\n");
+    let _ = writeln!(out, "    li a2, {results_len}");
+    out.push_str("    li a7, 64\n");
+    out.push_str("    ecall\n");
+    out.push_str("    # exit(0)\n");
+    out.push_str("    li a0, 0\n");
+    out.push_str("    li a7, 93\n");
+    out.push_str("    ecall\n");
 
     out
 }
@@ -3629,20 +3749,18 @@ expression = "count <= length"
     }
 
     #[test]
-    fn memcmp_harness_fails_closed_on_aapcs64_and_riscv() {
+    fn memcmp_harness_aapcs64_and_riscv_generate() {
         let vectors = synthesize_vectors(&memcmp_contract());
         let a64 = generate_harness("memcmp", &vectors, Abi::Aapcs64, HarnessShape::MemCmp)
-            .expect_err("AArch64 memcmp harness must fail closed");
-        assert!(
-            a64.contains("memcmp harness not yet supported on this ABI"),
-            "unexpected AArch64 error: {a64}"
-        );
+            .expect("AArch64 memcmp harness");
+        assert!(a64.contains("ldr x0, =vec0_a") || a64.contains("mov x0, xzr"));
+        assert!(a64.contains("ldr x1, =vec0_b") || a64.contains("mov x1, xzr"));
+        assert!(a64.contains("svc #0"));
         let rv = generate_harness("memcmp", &vectors, Abi::Riscv, HarnessShape::MemCmp)
-            .expect_err("RISC-V memcmp harness must fail closed");
-        assert!(
-            rv.contains("memcmp harness not yet supported on this ABI"),
-            "unexpected RISC-V error: {rv}"
-        );
+            .expect("RISC-V memcmp harness");
+        assert!(rv.contains("la a0, vec0_a") || rv.contains("li a0, 0"));
+        assert!(rv.contains("la a1, vec0_b") || rv.contains("li a1, 0"));
+        assert!(rv.contains("ecall"));
     }
 
     fn replace_byte_contract() -> CheckedContract {

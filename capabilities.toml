@@ -20,11 +20,11 @@
 #   close the known gaps (unknown insn / trailing bytes / WX / indirect).
 # - AArch64/RV64 pipeline evidence is stronger than x86 decode/lower depth;
 #   that asymmetry is intentional, not an oversight.
-# - MemCmp agent harness is x86-only (SysV + Win64 evidence below). AArch64 /
-#   RISC-V memcmp harness generation fails closed; do not read that as partial
-#   multi-ISA support.
+# - MemCmp agent harness: x86 (SysV + Win64) **and** AArch64/RISC-V (H3).
+#   Write-shape (`replace_byte`/`memset`/`memcpy`) remains x86-only fail-closed
+#   on AArch64/RISC-V (ADR 0005).
 # - `memset` (write-shape Wm) agent harness is x86-only (SysV + Win64 evidence
-#   below), same fail-closed posture as `replace_byte`/MemCmp on AArch64/RISC-V.
+#   below), same fail-closed posture as `replace_byte` on AArch64/RISC-V.
 #   Harness shape is resolved from the recognized contract oracle, not vector
 #   layout alone, because `memset` intentionally reuses the read-only
 #   BufferScan wire layout (see `HarnessShape::resolve_harness_shape`).
@@ -228,6 +228,7 @@ fixtures = [
     "fixtures/asm/count_byte_wrong_aarch64.S",
     "fixtures/asm/count_byte_svc_aarch64.S",
     "fixtures/asm/min_usize_aarch64.S",
+    "fixtures/asm/memcmp_aarch64.S",
 ]
 ci_jobs = ["e2e (AArch64 Linux)"]
 
@@ -255,6 +256,7 @@ fixtures = [
     "fixtures/asm/count_byte_wrong_riscv64.S",
     "fixtures/asm/count_byte_ecall_riscv64.S",
     "fixtures/asm/min_usize_riscv64.S",
+    "fixtures/asm/memcmp_riscv64.S",
 ]
 ci_jobs = ["e2e (RV64 Linux)"]
 
