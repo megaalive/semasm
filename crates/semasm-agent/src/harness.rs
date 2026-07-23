@@ -307,9 +307,9 @@ pub fn validate_vectors_match_oracle(
     };
     let shape = detect_harness_shape(vectors)?;
     let expected = match oracle.id {
-        ORACLE_BUFFER_COUNT_EQUAL_U8
-        | ORACLE_BUFFER_FIND_FIRST_U8
-        | ORACLE_BUFFER_FIND_LAST_U8 => HarnessShape::BufferScan,
+        ORACLE_BUFFER_COUNT_EQUAL_U8 | ORACLE_BUFFER_FIND_FIRST_U8 | ORACLE_BUFFER_FIND_LAST_U8 => {
+            HarnessShape::BufferScan
+        }
         ORACLE_BUFFER_WRAPPING_SUM_I64 => HarnessShape::I64Sum,
         ORACLE_PURE_INT_BINARY_USIZE => HarnessShape::PureInt,
         other => {
@@ -2377,7 +2377,10 @@ bounded_stack_bytes = 64
             buffer_scan_op_from_name("find_first_byte"),
             Some(BufferScanOp::FindFirst)
         );
-        assert_eq!(buffer_scan_op_from_name("count_byte"), Some(BufferScanOp::Count));
+        assert_eq!(
+            buffer_scan_op_from_name("count_byte"),
+            Some(BufferScanOp::Count)
+        );
         assert!(buffer_scan_op_from_name("count_find_byte").is_none());
     }
 
