@@ -234,6 +234,19 @@ above — same discipline, applied to decode/lower instead of assemble/link):
 target (`x86_64-unknown-linux-gnu`, `x86_64-pc-windows-msvc`) after Dx. Do
 **not** bump until the Dx checklist owner signs off.
 
+#### Dx bump readiness (mechanical — not a sign-off)
+
+| Criterion | Status | Evidence |
+|---|---|---|
+| 1 Owner CI jobs | **met** | `decode (capstone)` → `_sysv_`; `e2e (x86-64 Windows)` → `_win64_`; cross-target → `_aarch64_` / `_riscv64_` |
+| 2 Coverage corpus | **met** | unknown insn (`vzeroupper`/`cpuid`/`rdtsc`); trailing (`count`/`find_first`/`find_last`); W+X SysV+Win64; indirect SysV+Win64 |
+| 3 Fail-closed asserts | **met** | adversarial tests assert `semantic_failed` / non-zero; `#[ignore]` only for missing toolchain |
+| 4 Owner sign-off | **open** | human review of ISA coverage vs fixtures; explicit PR approving TOML flip |
+| 5 Caps comment sync | **pending bump PR** | update honesty block in the same commit as `partial` → `verified_in_ci` |
+
+Until criterion 4 is signed, maturity values stay `partial`. Agent edits to this
+table ≠ sign-off.
+
 ### Write-shape v1 (W0–W3) — `replace_byte`
 
 | Wave | Focus | Status |

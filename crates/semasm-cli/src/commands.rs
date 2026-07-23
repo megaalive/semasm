@@ -481,20 +481,39 @@ fn run_agent_verify_core(
         directory.join("harness")
     };
 
-    match pipeline.assemble_for_target(source, &routine_object) {
-        Ok(output) if output.success() => {}
-        Ok(output) => {
+    let source_ext = source
+        .extension()
+        .and_then(|ext| ext.to_str())
+        .unwrap_or("")
+        .to_ascii_lowercase();
+    let prebuilt_object = matches!(source_ext.as_str(), "o" | "obj");
+    if prebuilt_object {
+        // Object-policy adversarial fixtures (e.g. patched Win64 W+X COFF) skip
+        // assemble and are copied into the scratch routine object path.
+        if let Err(error) = std::fs::copy(source, &routine_object) {
             eprintln!(
-                "assemble routine failed: {}",
-                String::from_utf8_lossy(&output.stderr)
+                "{}: error: cannot stage prebuilt object: {error}",
+                source.display()
             );
             let _ = std::fs::remove_dir_all(&directory);
             return VerifyCore::Early(ExitCode::from(1));
         }
-        Err(error) => {
-            eprintln!("assemble routine error: {error}");
-            let _ = std::fs::remove_dir_all(&directory);
-            return VerifyCore::Early(ExitCode::from(1));
+    } else {
+        match pipeline.assemble_for_target(source, &routine_object) {
+            Ok(output) if output.success() => {}
+            Ok(output) => {
+                eprintln!(
+                    "assemble routine failed: {}",
+                    String::from_utf8_lossy(&output.stderr)
+                );
+                let _ = std::fs::remove_dir_all(&directory);
+                return VerifyCore::Early(ExitCode::from(1));
+            }
+            Err(error) => {
+                eprintln!("assemble routine error: {error}");
+                let _ = std::fs::remove_dir_all(&directory);
+                return VerifyCore::Early(ExitCode::from(1));
+            }
         }
     }
 
