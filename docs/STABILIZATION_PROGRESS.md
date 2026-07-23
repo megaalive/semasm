@@ -112,7 +112,7 @@ for `count_byte`/`find_first`/`memset`/`memcpy`, plus
 `replace_byte`/`memset`/`memcpy` search-ingest); **Th8** closes the residual
 pure-int bridges — **residual Thin is now closed on VAA.**
 
-### Horizon Closeout Program (H0–H6) — in progress
+### Horizon Closeout Program (H0–H6) — **closed**
 
 Horizon is closed as a **queue** in two layers: **landable** cliffs that change
 capability without false Verified claims, and **Horizon-locked deferred** cliffs
@@ -130,8 +130,8 @@ guard-byte / oracle vectors ≠ formal `ensures` / symbolic alias proof.
 | H2 Guard-byte write-shape harness (ADR 0004 sample-based) | landable | SemASM | **landed** (sample-based; ≠ proof) |
 | H3 A64/RV `memcmp` harness | landable | SemASM | **landed** |
 | H4 Dx adversarial deepen (no maturity bump) | landable | SemASM | **landed** (`rdtsc` + `find_last` trailing; caps stay `partial`) |
-| H5 Remote-transparency honesty | ADR/docs | VAA | pending |
-| H6 Hygiene + locked-deferred table | docs | SemASM+VAA | pending |
+| H5 Remote-transparency honesty | ADR/docs | VAA | **landed** |
+| H6 Hygiene + locked-deferred table | docs | SemASM+VAA | **landed** |
 | Formal `ensures` / theorem prover | **locked deferred** | SemASM | locked |
 | Full symbolic alias / store-region proof | **locked deferred** | SemASM | locked |
 | CryptOpt embed | **locked deferred** | VAA | locked |
