@@ -44,11 +44,9 @@ harness checks the post-call `dst` buffer only, never `src`. **Rmem** (ADR
 analyzer. Next up: **W4** HlaX64 `replace_byte` bridge. Gate-2
 `ExecutionSandbox` (I2) landed on VAA (`execution_isolation` +
 `--execution-sandbox`); this SemASM wave does not retouch that path.
-decode/lower stay `partial`. Exception: bugfix / pin tip only. **Dx** landed
-the decode/lower maturity-bump checklist plus one more adversarial
-unknown-mnemonic-class and trailing-bytes-twin family (see below); decode/lower
-remain `partial` — Dx documents when a future bump *could* happen, it is not
-that bump.
+decode/lower on x86-64 Linux/Windows are `verified_in_ci` after **Dx owner
+sign-off** (adversarial corpus; ≠ full-ISA formal proof). AArch64/RV64
+`decode`/`lower` stay `partial`.
 
 ### Next waves (X4 + H4 + Y) — closed
 
@@ -129,7 +127,7 @@ guard-byte / oracle vectors ≠ formal `ensures` / symbolic alias proof.
 | H1 ADR 0005 multi-ISA MemCmp/write-shape | ADR | SemASM | **landed** (Accepted) |
 | H2 Guard-byte write-shape harness (ADR 0004 sample-based) | landable | SemASM | **landed** (sample-based; ≠ proof) |
 | H3 A64/RV `memcmp` harness | landable | SemASM | **landed** |
-| H4 Dx adversarial deepen (no maturity bump) | landable | SemASM | **landed** (`rdtsc` + `find_last` trailing; caps stay `partial`) |
+| H4 Dx adversarial deepen (no maturity bump at H4) | landable | SemASM | **landed** (`rdtsc` + `find_last` trailing; bump signed later) |
 | H5 Remote-transparency honesty | ADR/docs | VAA | **landed** |
 | H6 Hygiene + locked-deferred table | docs | SemASM+VAA | **landed** |
 | Formal `ensures` / theorem prover | **locked deferred** | SemASM | locked |
@@ -137,7 +135,7 @@ guard-byte / oracle vectors ≠ formal `ensures` / symbolic alias proof.
 | CryptOpt embed | **locked deferred** | VAA | locked |
 | Live-model Gate CI | **locked deferred** | VAA | locked |
 | Hardware HSM | **locked deferred** | VAA | locked |
-| `decode`/`lower` → `verified_in_ci` | **locked deferred** | SemASM | locked (Dx checklist exists; needs owner sign-off) |
+| `decode`/`lower` → `verified_in_ci` (x86-64) | landable | SemASM | **landed** (owner sign-off; A64/RV stay `partial`) |
 | A64/RV write-shape harness | landable | SemASM | **landed** (follow-on after H3; sample-based guards) |
 
 #### Pipeline maturity bump checklist (D2 companion)
@@ -181,17 +179,18 @@ Honesty locked for the bump (M1):
 |---|---|---|---|
 | **Dx** | x86 decode/lower bump-criteria checklist (M0-style ownership map) + one more adversarial decode/lower twin family | SemASM | **done** (this doc) |
 
-**Honesty: Dx documents bump criteria and extends the adversarial corpus; it
-does not bump `decode`/`lower`.** Both stay `partial` on every x86-64 target
-after this wave (see `capabilities.toml`). Agent (this document, or a coding
-agent editing it) ≠ pipeline. Incomplete ≠ Verified — a green adversarial
-corpus is evidence the checklist owner reviews, not a self-certifying bump.
+**Honesty: Dx documents bump criteria and extends the adversarial corpus.**
+Owner sign-off (this change) flips x86-64 Linux/Windows `decode`/`lower` to
+`verified_in_ci`. That claim is **CI-verified sample coverage** of the named
+adversarial families — not a certificate that every mnemonic in the ISA is
+modeled. AArch64/RV64 `decode`/`lower` stay `partial`. Incomplete ≠ Verified;
+agent ≠ pipeline.
 
 #### Decode/lower maturity bump checklist (Dx)
 
-Do **not** change x86-64 Linux/Windows `decode` / `lower` from `partial` →
-`verified_in_ci` until **all** hold (mirrors the M0/D2 pipeline ownership map
-above — same discipline, applied to decode/lower instead of assemble/link):
+x86-64 Linux/Windows `decode` / `lower` may move `partial` → `verified_in_ci`
+only when **all** hold (mirrors the M0/D2 pipeline ownership map above — same
+discipline, applied to decode/lower instead of assemble/link):
 
 1. **Owner CI jobs** named and green on `main`, and running the *adversarial*
    corpus (not only golden-path fixtures):
@@ -230,22 +229,20 @@ above — same discipline, applied to decode/lower instead of assemble/link):
    as the M0/D2 pipeline checklist above) — do not bump the TOML value
    without updating the honesty comments that explain what the value means.
 
-**Current status:** `decode` / `lower` remain `partial` on every x86-64
-target (`x86_64-unknown-linux-gnu`, `x86_64-pc-windows-msvc`) after Dx. Do
-**not** bump until the Dx checklist owner signs off.
+**Current status:** x86-64 Linux/Windows `decode` / `lower` are
+`verified_in_ci` after owner sign-off. AArch64/RV64 remain `partial`.
 
-#### Dx bump readiness (mechanical — not a sign-off)
+#### Dx bump readiness (sign-off recorded)
 
 | Criterion | Status | Evidence |
 |---|---|---|
 | 1 Owner CI jobs | **met** | `decode (capstone)` → `_sysv_`; `e2e (x86-64 Windows)` → `_win64_`; cross-target → `_aarch64_` / `_riscv64_` |
 | 2 Coverage corpus | **met** | unknown insn (`vzeroupper`/`cpuid`/`rdtsc`); trailing (`count`/`find_first`/`find_last`); W+X SysV+Win64; indirect SysV+Win64 |
 | 3 Fail-closed asserts | **met** | adversarial tests assert `semantic_failed` / non-zero; `#[ignore]` only for missing toolchain |
-| 4 Owner sign-off | **open** | human review of ISA coverage vs fixtures; explicit PR approving TOML flip |
-| 5 Caps comment sync | **pending bump PR** | update honesty block in the same commit as `partial` → `verified_in_ci` |
+| 4 Owner sign-off | **signed** | explicit user sign-off (“sign-off Dx bump”) authorizing the TOML flip |
+| 5 Caps comment sync | **met** | honesty block updated in the same change as `partial` → `verified_in_ci` |
 
-Until criterion 4 is signed, maturity values stay `partial`. Agent edits to this
-table ≠ sign-off.
+Claim scope: **x86-64 only**. CI-verified ≠ formal full-ISA decode proof.
 
 ### Write-shape v1 (W0–W3) — `replace_byte`
 
@@ -338,8 +335,8 @@ after H3 (sample-based guards; still ≠ formal/symbolic proof).
 
 - Formal `ensures result == count(...)` / general theorem proving
 - Full memory alias / symbolic / region-precise store proof
-- `decode`/`lower` → `verified_in_ci` (Dx checklist landed; needs owner sign-off)
 - CryptOpt embed, live-model Gate CI, hardware HSM
+- AArch64/RV64 `decode`/`lower` → `verified_in_ci` (x86 signed; cross-ISA separate)
 - C compiler `-O2` / `-Os` binary-size bake-off in CI
 - Broad mnemonic / new-ISA expansion beyond landed MemCmp + write-shape A64/RV
 

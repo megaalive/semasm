@@ -49,9 +49,10 @@ alias proof.
 
 - Horizon H3 removed MemCmp fail-closed arms for A64/RV.
 - Write-shape A64/RV fail-closed arms are removed in the follow-on tranche.
-- Formal `ensures`, symbolic alias, and decode/lower `verified_in_ci` remain
-  out of scope (Horizon-locked deferred; see STABILIZATION_PROGRESS Horizon
-  map).
+- Formal `ensures` and symbolic alias remain out of scope (Horizon-locked
+  deferred). x86-64 `decode`/`lower` → `verified_in_ci` is a separate Dx
+  owner-sign-off claim (CI sample coverage ≠ full-ISA proof); A64/RV
+  `decode`/`lower` stay `partial`.
 
 ## Non-goals
 

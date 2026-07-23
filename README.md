@@ -125,8 +125,10 @@ cargo doc --workspace --no-deps
   merely because some rows are `CI-verified`.
 - External-tool scenarios run in dedicated CI owner jobs
   (`SEMASM_REQUIRE_TOOLCHAIN=1`); local soft-skip is not allowed there.
-- A decoder or lowering implementation may cover only part of an ISA
-  (`decode` / `lower` remain `partial` even on primary targets).
+- A decoder or lowering implementation may cover only part of an ISA.
+  On x86-64 Linux/Windows, `decode` / `lower` are `CI-verified` against the
+  Dx adversarial corpus (not a full-ISA formal proof). AArch64/RV64
+  `decode` / `lower` remain `partial`.
 - Canonical report reproducibility is checked across independent output roots;
   this does not promise byte-identical artifacts from every toolchain.
 - Manifest **Pipeline** vs **Agent** columns are separate: pipeline
@@ -144,8 +146,8 @@ build e2e; **Agent** = `semasm agent verify`.
 <!-- capabilities:start -->
 | Identity | Decode | Lower | ABI | Assemble | Link | Execute | Pipeline | Agent |
 |---|---|---|---|---|---|---|---|---|
-| `x86_64-unknown-linux-gnu` | partial | partial | unit-tested | CI-verified | CI-verified | CI-verified | CI-verified | CI-verified |
-| `x86_64-pc-windows-msvc` | partial | partial | unit-tested | CI-verified | CI-verified | CI-verified | CI-verified | CI-verified |
+| `x86_64-unknown-linux-gnu` | CI-verified | CI-verified | unit-tested | CI-verified | CI-verified | CI-verified | CI-verified | CI-verified |
+| `x86_64-pc-windows-msvc` | CI-verified | CI-verified | unit-tested | CI-verified | CI-verified | CI-verified | CI-verified | CI-verified |
 | `aarch64-unknown-linux-gnu` | partial | partial | unit-tested | CI-verified | CI-verified | CI-verified | CI-verified | CI-verified |
 | `riscv64gc-unknown-linux-gnu` | partial | partial | unit-tested | CI-verified | CI-verified | CI-verified | CI-verified | CI-verified |
 | `riscv32imac-unknown-none-elf` | declared | partial | unit-tested | unavailable | unavailable | unavailable | unavailable | declared |

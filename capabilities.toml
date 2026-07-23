@@ -16,10 +16,13 @@
 #   `e2e (x86-64 Windows)` (pipeline corpus: exit.asm / Win64 PE build-run).
 # - `agent_verify = verified_in_ci` is a separate claim; Win64 agent verify
 #   steps in the Windows e2e job do **not** substitute for pipeline evidence.
-# - decode/lower stay `partial` until mnemonic coverage and adversarial twins
-#   close the known gaps (unknown insn / trailing bytes / WX / indirect).
-# - AArch64/RV64 pipeline evidence is stronger than x86 decode/lower depth;
-#   that asymmetry is intentional, not an oversight.
+# - x86-64 Linux/Windows `decode` / `lower` = `verified_in_ci` after Dx checklist
+#   owner sign-off (adversarial corpus on `decode (capstone)` / `e2e (x86-64
+#   Windows)`: unknown insn vzeroupper/cpuid/rdtsc, trailing bytes, W+X,
+#   indirect). This is CI-verified sample coverage, **not** a full-ISA formal
+#   decode proof. AArch64/RV64 `decode`/`lower` stay `partial` (separate claim).
+# - AArch64/RV64 **pipeline** evidence remains strong; do not read x86 decode
+#   bump as an A64/RV decode bump.
 # - MemCmp agent harness: x86 (SysV + Win64) **and** AArch64/RISC-V (H3).
 # - Write-shape (`replace_byte`/`memset`/`memcpy`) agent harness: x86 (SysV +
 #   Win64) **and** AArch64/RISC-V (priority follow-on after H3). Sample-based
@@ -33,16 +36,10 @@
 #   distinct fixture buffers, never aliased; the post-buffer Gate check
 #   covers `dst` only (`src` is unchanged input, never echoed back).
 # - Ownership map: docs/STABILIZATION_PROGRESS.md (maturity follow-up M0/M1).
-# - Dx (decode/lower depth checklist + adversarial wave): the explicit
-#   decode/lower bump-criteria checklist (owner CI jobs, coverage criteria,
-#   fail-closed rule, sign-off requirement) lives in
-#   docs/STABILIZATION_PROGRESS.md under "Decode/lower maturity bump
-#   checklist (Dx)". Dx also added a second unmodelled-mnemonic class
-#   (`count_byte_unknown_insn_cpuid*`, privileged/CPUID vs. the existing
-#   AVX/SIMD `vzeroupper`) and a second trailing-bytes leaf twin
-#   (`find_first_byte_trailing_bytes*`, alongside `count_byte_trailing_bytes*`).
-#   Dx does **not** bump `decode`/`lower` — both stay `partial` below until
-#   the Dx checklist owner signs off.
+# - Dx bump (owner sign-off): x86-64 `decode`/`lower` flipped to
+#   `verified_in_ci` below; checklist + readiness table in
+#   docs/STABILIZATION_PROGRESS.md. Incomplete ≠ Verified; agent ≠ formal ISA
+#   completeness certificate.
 
 schema_version = "0.1"
 
@@ -69,8 +66,8 @@ description = "x86-64 Linux, System V ABI, ELF"
 
 [target.capabilities]
 declared = "verified_in_unit_tests"
-decode = "partial"
-lower = "partial"
+decode = "verified_in_ci"
+lower = "verified_in_ci"
 abi_analysis = "verified_in_unit_tests"
 assemble = "verified_in_ci"
 link = "verified_in_ci"
@@ -139,8 +136,8 @@ description = "x86-64 Windows, Microsoft x64 ABI, PE/COFF"
 
 [target.capabilities]
 declared = "verified_in_unit_tests"
-decode = "partial"
-lower = "partial"
+decode = "verified_in_ci"
+lower = "verified_in_ci"
 abi_analysis = "verified_in_unit_tests"
 assemble = "verified_in_ci"
 link = "verified_in_ci"
