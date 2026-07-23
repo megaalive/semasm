@@ -301,14 +301,12 @@ untouched.
 | **Rmem** | ADR 0004: lock what the memory gate may claim for write-shape leaves (heuristic/dynamic, not proof); CI criteria for ADR 0003's "only into declared region" wording | **done** (docs-only) |
 
 Honesty: the static `memory` gate only runs for read-only buffer scans; for
-write-shape leaves (`replace_byte`/`memset`/`memcpy`) the only region
-evidence is the harness comparing post-call buffer bytes against synthesized
-oracle vectors — dynamic, sample-based, x86-only, no guard bytes, no alias
-analysis. See `adr/0004-region-precise-memory-gate.md` for the full honesty
-statement and the CI checklist for when ADR 0003's wording would actually be
-true. No analyzer, gate, or fixture code changed in this wave. Next:
-**W4** HlaX64 `replace_byte` bridge (per ADR 0003's deferred-bridge note),
-not an Rmem analyzer.
+write-shape leaves (`replace_byte`/`memset`/`memcpy`) region evidence is the
+x86 harness comparing post-call buffer bytes (including sample-based guard
+bytes from H2) against synthesized oracle vectors — dynamic, sample-based,
+x86-only, no formal alias analysis. See `adr/0004-region-precise-memory-gate.md`
+and Horizon H2. W4 HlaX64 `replace_byte` bridge and Thin write-shape bridges
+landed separately; A64/RV write-shape remains Horizon-locked deferred.
 
 ### Completed recently (not deferred)
 
@@ -320,20 +318,17 @@ not an Rmem analyzer.
 - `sum_i64` shape `builtin.buffer.wrapping_sum_i64` (SysV + Win64 e2e)
 - Win64 framed ABI: `mov rsp,rbp` restore + `[rbp±disp]` spill carve-out for
   compiler-produced leaves (needs dedicated regression lock — T1)
+- Horizon Closeout H0–H6 (guard-byte Rmem, A64/RV MemCmp, Dx deepen, ADRs)
 
-### Deferred (explicitly out of current waves)
+### Horizon-locked deferred (out of current waves)
 
-- HlaX64 `replace_byte` / `memset` / `memcpy` bridges (W4)
-- Gate-2 process isolation / `ExecutionSandbox` on Gate path (I2) — landed on
-  VAA; not reopened here
 - Formal `ensures result == count(...)` / general theorem proving
 - Full memory alias / symbolic / region-precise store proof
+- A64/RV write-shape harness (`replace`/`memset`/`memcpy`) — after H1/H3
+- `decode`/`lower` → `verified_in_ci` (Dx checklist landed; needs owner sign-off)
+- CryptOpt embed, live-model Gate CI, hardware HSM
 - C compiler `-O2` / `-Os` binary-size bake-off in CI
-- New ISAs or broad mnemonic expansion; A64/RV MemCmp / replace harness;
-  decode/lower bump to `verified_in_ci` (Dx checklist landed — see criteria
-  above; decode/lower remain `partial` until checklist owner signs off)
-- Thin leaf / HlaX64 bridge treadmill (paused except write-shape W*)
-- CryptOpt embed, live-model Gate CI, remote transparency, hardware HSM
+- Broad mnemonic / new-ISA expansion beyond landed MemCmp A64/RV
 
 ### Shared vertical slice (SemASM + VAA) — done
 

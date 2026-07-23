@@ -24,20 +24,19 @@ aspirational, not a description of an implemented analysis. As of this ADR:
   synthesized oracle vectors and compares the post-call buffer to the
   oracle-predicted bytes for exactly `dst[0..length]` (or the scan buffer,
   for `replace_byte`). Sentinel prefill (e.g. `MEMCPY_DST_SENTINEL = 0xEE`)
-  catches a leaf that under-writes and leaves stale bytes in place; it does
-  not catch a leaf that writes correct bytes into the region **and also**
-  writes somewhere else.
-- Nothing in the current harness allocates or checks guard/canary bytes
-  immediately before or after the declared region, so an out-of-declared-
-  region write that lands inside the same fixture allocation (or on an
-  adjacent page the test happens not to probe) is not detected. Overlap/alias
-  avoidance is a **synthesis-side** guarantee (SemASM never generates
-  aliasing `dst`/`src` vectors) — it is not an analysis that rejects a leaf
-  submitted with genuinely aliasing behavior.
-- Coverage is bounded to a handful of lengths/values per leaf, x86-only
-  (AArch64/RISC-V `memory` gate is `Skipped`, not evaluated), and re-derived
-  by hand per contract — there is no general points-to, alias, or symbolic
-  memory model behind any of this.
+  catches a leaf that under-writes and leaves stale bytes in place.
+- **H2 (Horizon Closeout)** added sample-based guard/canary bytes immediately
+  before and after the declared write-shape region on x86; the harness fails
+  closed if those guards mutate. That is still **not** a proof against all
+  out-of-region writes (coverage is finite vectors; no symbolic alias).
+  Overlap/alias avoidance for synthesis remains a **synthesis-side**
+  guarantee — not an analysis that rejects a leaf with genuinely aliasing
+  behavior.
+- Coverage is bounded to a handful of lengths/values per leaf, x86-only for
+  write-shape (AArch64/RISC-V write-shape stays fail-closed per ADR 0005;
+  MemCmp A64/RV landed in H3), and re-derived by hand per contract — there
+  is no general points-to, alias, or symbolic memory model behind any of
+  this.
 
 Shipping a second write-shape leaf (`memset`) and a third (`memcpy`) without
 correcting the ADR 0003 wording risks the same "Incomplete ≠ Verified"
@@ -78,15 +77,13 @@ leaves have landed:
 - Symbolic memory / symbolic execution of a leaf's write set.
 - A formal `ensures`-style store-region proof (e.g. "writes only bytes in
   `[dst, dst+length)`, for all `dst`, `length`").
-- Guard/canary-byte detection of out-of-declared-region writes that land
-  inside the same fixture allocation or an adjacent page.
 - General multi-buffer overlap/aliasing detection (SemASM continues to avoid
   synthesizing aliasing vectors; it does not analyze submitted leaves for
   aliasing behavior).
-- AArch64/RISC-V write-shape harness (stays `Skipped`, matching MemCmp/X4).
+- AArch64/RISC-V write-shape harness (fail-closed; ADR 0005 / Horizon-locked).
 
-None of the above is scheduled by this ADR. If Rmem work is scoped, it gets
-its own ADR/plan, per ADR 0003's "separate W\* plan after Accept" pattern.
+Sample-based x86 guard/canary checks for write-shape **landed in H2** (see
+Follow-up). They do **not** discharge formal/symbolic deferred items above.
 
 ### When ADR 0003's "only into declared region" wording may be considered fulfilled in CI
 
@@ -118,6 +115,14 @@ not authorize the word "proof" — see non-goals below.
 
 Until all five hold, `docs/STABILIZATION_PROGRESS.md` and any ADR must keep
 saying region-precise store proof is deferred.
+
+**H2 status (Horizon Closeout):** criteria **2–3 landed** for x86 write-shape
+(sample-based guards in harness + fail-closed on mutation; evidence via
+existing write-shape e2e / unit tests). Criterion **1** is **partial**
+(no separately named `region-gate` job). Criterion **4** stated (x86-only;
+A64/RV write-shape fail-closed). Criterion **5** wording remains capped —
+still ≠ formal/symbolic proof. The ADR 0003 "only into declared region"
+sentence stays aspirational as a universal claim.
 
 ### Explicit non-goals (this ADR)
 
@@ -151,5 +156,6 @@ saying region-precise store proof is deferred.
 | Formal store-region `ensures` | Prove writes confined to `[dst, dst+length)` for all inputs | Horizon-locked deferred |
 | AArch64/RISC-V write-shape harness | Lift fail-closed for `replace_byte`/`memset`/`memcpy` | Horizon-locked deferred (ADR 0005; after MemCmp A64/RV) |
 
-Next candidate outside this ADR: **W4 HlaX64 `replace_byte` bridge** (per
-ADR 0003's deferred-bridge note), not an Rmem analyzer.
+W4 HlaX64 `replace_byte` bridge and Thin write-shape bridges landed outside
+this ADR. Residual Rmem depth is Horizon-locked (formal ensures / full
+symbolic alias / A64/RV write-shape).
