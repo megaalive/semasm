@@ -37,7 +37,7 @@ search `--ingest --allow-execution` smoke). **X4 + H4 + Y** closed
 (MemCmp A64/RV fail-closed, HlaX64 `find_last_byte` bridge, `memcmp`
 search-ingest Gate parity).
 
-### Next waves (X4 + H4 + Y)
+### Next waves (X4 + H4 + Y) — closed
 
 | Wave | Focus | Owner | Status |
 |---|---|---|---|
@@ -45,11 +45,15 @@ search-ingest Gate parity).
 | **H4** | HlaX64 → VAA bridge for `find_last_byte` | HlaX64+VAA | **done** (`3641428` / `e105ea0`) |
 | **Y0–Y2** | Pin tips + `memcmp` search `--ingest` Gate parity | VAA | **done** (`1c43236`) |
 
-MemCmp agent harness remains **x86-only** (SysV + Win64). AArch64/RISC-V
-generation fails closed with a clear error — not partial multi-ISA support.
+### Next waves (X5 + H5 + Z)
 
-Tranche X4 + H4 + Y closed: SemASM tip `0c12bf7`; HlaX64 `3641428`;
-VAA Gate handoff `1c43236` (pin SemASM `0c12bf7`, HlaX64 `3641428`).
+| Wave | Focus | Owner | Status |
+|---|---|---|---|
+| **X5** | Caps SysV write/indirect + A64/RV evidence sync | SemASM | **done** |
+| **H5** | HlaX64 → VAA bridge for `memcmp` | HlaX64+VAA | pending |
+| **Z0–Z2** | Pin tips + `find_first_byte` search `--ingest` Gate parity | VAA | pending |
+
+A64/RV MemCmp harness remains fail-closed (X4); X5 does not implement it.
 
 | Step | Focus | Status |
 |---|---|---|

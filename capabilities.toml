@@ -22,6 +22,8 @@
 # - MemCmp agent harness is x86-only (SysV + Win64 evidence below). AArch64 /
 #   RISC-V memcmp harness generation fails closed; do not read that as partial
 #   multi-ISA support.
+# - Tranche X5: SysV write/indirect + A64/RV adversarial/pure-int fixtures are
+#   listed as evidence honesty only — not a pipeline maturity bump.
 
 schema_version = "0.1"
 
@@ -73,6 +75,8 @@ fixtures = [
     "fixtures/asm/count_byte_unknown_insn.asm",
     "fixtures/asm/count_byte_trailing_bytes.asm",
     "fixtures/asm/count_byte_wx.asm",
+    "fixtures/asm/count_byte_write.asm",
+    "fixtures/asm/count_byte_indirect.asm",
     "fixtures/asm/find_first_byte.asm",
     "fixtures/asm/find_first_byte_wrong.asm",
     "fixtures/asm/find_first_byte_write.asm",
@@ -180,7 +184,13 @@ agent_verify = "verified_in_ci"
 
 [target.evidence]
 unit_tests = ["semasm-decode::tests", "semasm-aarch64::lower", "semasm-aarch64::abi"]
-fixtures = ["fixtures/asm/exit_aarch64.S", "fixtures/asm/count_byte_aarch64.S"]
+fixtures = [
+    "fixtures/asm/exit_aarch64.S",
+    "fixtures/asm/count_byte_aarch64.S",
+    "fixtures/asm/count_byte_wrong_aarch64.S",
+    "fixtures/asm/count_byte_svc_aarch64.S",
+    "fixtures/asm/min_usize_aarch64.S",
+]
 ci_jobs = ["e2e (AArch64 Linux)"]
 
 [[target]]
@@ -201,7 +211,13 @@ agent_verify = "verified_in_ci"
 
 [target.evidence]
 unit_tests = ["semasm-riscv::lower", "semasm-riscv::abi", "semasm-decode::tests"]
-fixtures = ["fixtures/asm/exit_riscv64.S", "fixtures/asm/count_byte_riscv64.S"]
+fixtures = [
+    "fixtures/asm/exit_riscv64.S",
+    "fixtures/asm/count_byte_riscv64.S",
+    "fixtures/asm/count_byte_wrong_riscv64.S",
+    "fixtures/asm/count_byte_ecall_riscv64.S",
+    "fixtures/asm/min_usize_riscv64.S",
+]
 ci_jobs = ["e2e (RV64 Linux)"]
 
 [[target]]
