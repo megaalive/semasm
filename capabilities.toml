@@ -29,8 +29,9 @@
 #   layout alone, because `memset` intentionally reuses the read-only
 #   BufferScan wire layout (see `HarnessShape::resolve_harness_shape`).
 # - `memcpy` (write-shape Wc) agent harness is x86-only (SysV + Win64 evidence
-#   below); AArch64/RISC-V fail closed, same posture as `memset`/MemCmp. Wire
-#   layout collides with MemCmp (two array/null buffers + length);
+#   below); AArch64/RISC-V fail closed, same posture as `memset`/`replace_byte`
+#   (MemCmp A64/RV landed in H3; write-shape does not). Wire layout collides
+#   with MemCmp (two array/null buffers + length);
 #   `resolve_harness_shape` disambiguates via the recognized contract oracle.
 #   Overlap fail-closed (ADR 0003): synthesized `dst`/`src` are always
 #   distinct fixture buffers, never aliased; the post-buffer Gate check
