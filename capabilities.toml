@@ -28,6 +28,13 @@
 #   Harness shape is resolved from the recognized contract oracle, not vector
 #   layout alone, because `memset` intentionally reuses the read-only
 #   BufferScan wire layout (see `HarnessShape::resolve_harness_shape`).
+# - `memcpy` (write-shape Wc) agent harness is x86-only (SysV + Win64 evidence
+#   below); AArch64/RISC-V fail closed, same posture as `memset`/MemCmp. Wire
+#   layout collides with MemCmp (two array/null buffers + length);
+#   `resolve_harness_shape` disambiguates via the recognized contract oracle.
+#   Overlap fail-closed (ADR 0003): synthesized `dst`/`src` are always
+#   distinct fixture buffers, never aliased; the post-buffer Gate check
+#   covers `dst` only (`src` is unchanged input, never echoed back).
 # - Ownership map: docs/STABILIZATION_PROGRESS.md (maturity follow-up M0/M1).
 
 schema_version = "0.1"
@@ -110,6 +117,8 @@ fixtures = [
     "fixtures/asm/replace_byte_wrong.asm",
     "fixtures/asm/memset.asm",
     "fixtures/asm/memset_wrong.asm",
+    "fixtures/asm/memcpy.asm",
+    "fixtures/asm/memcpy_wrong.asm",
 ]
 ci_jobs = ["e2e (x86-64 Linux)", "decode (capstone)"]
 
@@ -176,6 +185,8 @@ fixtures = [
     "fixtures/asm/replace_byte_wrong_win64.asm",
     "fixtures/asm/memset_win64.asm",
     "fixtures/asm/memset_wrong_win64.asm",
+    "fixtures/asm/memcpy_win64.asm",
+    "fixtures/asm/memcpy_wrong_win64.asm",
 ]
 ci_jobs = ["e2e (x86-64 Windows)"]
 

@@ -1,0 +1,48 @@
+contract_version = "0.1"
+
+[function]
+name = "memcpy"
+summary = "Copy src[0..length] into dst[0..length]; returns 0"
+
+[[function.parameters]]
+name = "dst"
+type = "ptr<u8>"
+role = "input"
+
+[[function.parameters]]
+name = "src"
+type = "ptr<const u8>"
+role = "input"
+
+[[function.parameters]]
+name = "length"
+type = "usize"
+role = "input"
+
+[[function.returns]]
+name = "status"
+type = "usize"
+
+[[function.requires]]
+expression = "length <= 4096"
+reason = "Arbitrary safety limit for this fixture."
+
+[[function.ensures]]
+expression = "status == 0"
+
+[[function.effects]]
+kind = "memory_read"
+region = "src[0..length]"
+
+[[function.effects]]
+kind = "memory_read"
+region = "dst[0..length]"
+
+[[function.effects]]
+kind = "memory_write"
+region = "dst[0..length]"
+
+[function.constraints]
+no_heap = true
+no_recursion = true
+bounded_stack_bytes = 128

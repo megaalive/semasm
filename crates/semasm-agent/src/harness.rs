@@ -26,12 +26,22 @@
 //!   - unsigned lexicographic comparison returning only `-1`, `0`, or `1`.
 //!   - Harness generation is **x86-only** (SysV + Win64); AArch64/RISC-V
 //!     fail closed with a clear error (not partial support).
+//! - **MemCpy** `(ptr<u8> dst, ptr<const u8> src, usize length) -> usize`
+//!   — `memcpy`: whole-buffer copy; harness checks the void-as-`0` return
+//!   **and** the post-call `dst` buffer only (`src` is unchanged input, never
+//!   echoed). Wire layout matches `MemCmp` (two array/null buffers plus a
+//!   length); disambiguated via the recognized contract oracle, never vector
+//!   layout alone. **x86-only** (SysV + Win64); AArch64/RISC-V fail closed.
+//!   Overlapping/aliasing `dst`/`src` is out of scope (ADR 0003): every
+//!   synthesized vector uses distinct, non-aliasing buffers; this never
+//!   claims defined behavior for aliasing regions.
 //! - **I64 wrapping sum** `(ptr<const i64> values, usize length) -> i64`
 //!   — canonical example `sum_i64`.
 //! - **Pure integer** `(usize, usize) -> usize` — canonical examples
 //!   `min_usize` / `max_usize` (same calling shape; op from name + ensures).
 //!
-//! Synthesis tries buffer-scan, replace-byte, MemCmp, i64-sum, then pure-integer.
+//! Synthesis tries buffer-scan, replace-byte, memset, memcpy, MemCmp,
+//! i64-sum, then pure-integer.
 //! When the contract matches none of those shapes the synthesizer returns an empty
 //! vector set and the caller may fall back to a hand-written set.
 //!
@@ -88,6 +98,9 @@ pub fn synthesize_vectors(contract: &CheckedContract) -> Vec<TestVector> {
     if let Some(shape) = memset_shape(contract) {
         return synthesize_memset_vectors(shape);
     }
+    if let Some(shape) = memcpy_shape(contract) {
+        return synthesize_memcpy_vectors(shape);
+    }
     if let Some(shape) = memcmp_shape(contract) {
         return synthesize_memcmp_vectors(shape);
     }
@@ -128,6 +141,10 @@ pub const ORACLE_BUFFER_REPLACE_BYTE_VERSION: u32 = 1;
 pub const ORACLE_BUFFER_MEMSET: &str = "builtin.buffer.memset";
 /// Profile version for [`ORACLE_BUFFER_MEMSET`].
 pub const ORACLE_BUFFER_MEMSET_VERSION: u32 = 1;
+/// Builtin oracle id for whole-buffer copy (`memcpy`).
+pub const ORACLE_BUFFER_MEMCPY: &str = "builtin.buffer.memcpy";
+/// Profile version for [`ORACLE_BUFFER_MEMCPY`].
+pub const ORACLE_BUFFER_MEMCPY_VERSION: u32 = 1;
 /// Builtin oracle id for pure two-`usize` integer shapes (`min_usize` / `max_usize`).
 pub const ORACLE_PURE_INT_BINARY_USIZE: &str = "builtin.pure_int.binary_usize";
 /// Profile version for [`ORACLE_PURE_INT_BINARY_USIZE`].
@@ -204,6 +221,13 @@ pub fn recognize_behavior_oracle(contract: &CheckedContract) -> Option<Recognize
             id: ORACLE_BUFFER_MEMSET,
             version: ORACLE_BUFFER_MEMSET_VERSION,
             claim: "every buffer[0..length] byte equals value after the call; result is always 0",
+        });
+    }
+    if memcpy_shape(contract).is_some() {
+        return Some(RecognizedOracle {
+            id: ORACLE_BUFFER_MEMCPY,
+            version: ORACLE_BUFFER_MEMCPY_VERSION,
+            claim: "dst[0..length] equals src[0..length] after the call; src is unchanged; result is always 0",
         });
     }
     if memcmp_shape(contract).is_some() {
@@ -381,10 +405,11 @@ pub fn resolve_harness_shape(
     let detected = detect_harness_shape(vectors)?;
     // Compatibility: write-shape oracles that reuse a read-only wire layout.
     // `Memset` (buffer, length, value) reuses the 3-field `BufferScan` layout.
-    // A future `Memcpy` (dst, src, length) would similarly reuse `MemCmp`'s
-    // 3-field dual-buffer layout; add that pair here if/when it ships.
+    // `Memcpy` (dst, src, length) similarly reuses `MemCmp`'s 3-field
+    // dual-buffer layout.
     let compatible = detected == expected
-        || (expected == HarnessShape::Memset && detected == HarnessShape::BufferScan);
+        || (expected == HarnessShape::Memset && detected == HarnessShape::BufferScan)
+        || (expected == HarnessShape::Memcpy && detected == HarnessShape::MemCmp);
     if !compatible {
         return Err(format!(
             "oracle `{}` expects {:?} vectors but harness detected {:?}",
@@ -402,6 +427,7 @@ fn oracle_expected_shape(oracle_id: &str) -> Result<HarnessShape, String> {
         }
         ORACLE_BUFFER_REPLACE_BYTE => Ok(HarnessShape::ReplaceByte),
         ORACLE_BUFFER_MEMSET => Ok(HarnessShape::Memset),
+        ORACLE_BUFFER_MEMCPY => Ok(HarnessShape::Memcpy),
         ORACLE_BUFFER_MEMCMP_I8 => Ok(HarnessShape::MemCmp),
         ORACLE_BUFFER_WRAPPING_SUM_I64 => Ok(HarnessShape::I64Sum),
         ORACLE_PURE_INT_BINARY_USIZE => Ok(HarnessShape::PureInt),
@@ -426,6 +452,9 @@ pub enum HarnessShape {
     Memset,
     /// `(ptr<const u8>, ptr<const u8>, usize) -> isize` — `memcmp`.
     MemCmp,
+    /// `(ptr<u8>, ptr<const u8>, usize) -> usize` — `memcpy`; shares its wire
+    /// layout with [`HarnessShape::MemCmp`] (see [`resolve_harness_shape`]).
+    Memcpy,
     /// `(ptr<const i64>, usize) -> i64` — wrapping sum.
     I64Sum,
     /// `(usize, usize) -> usize` — `min_usize` / `max_usize`.
@@ -1515,6 +1544,169 @@ fn expected_memset_buffer(v: &TestVector) -> Vec<u8> {
     vec![value; len]
 }
 
+/// Sentinel byte used to pre-fill the synthesised `dst` buffer in
+/// [`synthesize_memcpy_vectors`].
+///
+/// Distinct from the varying `src` fixture bytes so a passing check proves
+/// the routine actually copied `src` into `dst`, rather than `dst`
+/// coincidentally starting with the expected bytes.
+const MEMCPY_DST_SENTINEL: u8 = 0xEE;
+
+/// Resolved calling shape for whole-buffer copy.
+#[derive(Clone, Copy)]
+struct MemcpyShape {
+    /// Upper bound on buffer length, if derivable from requires.
+    max_length: Option<usize>,
+}
+
+/// Detect `(ptr<u8> dst, ptr<const u8> src, usize) -> usize` whole-buffer-copy shape.
+///
+/// Deliberately layout-identical on the wire to [`MemCmpShape`] (two
+/// array/null buffers plus a length): a non-const `dst` pointer, a const
+/// `src` pointer, and a `usize` length, returning `usize`. Callers must
+/// disambiguate via [`resolve_harness_shape`], not vector layout alone.
+///
+/// Overlap of `dst`/`src` is out of scope (ADR 0003, "overlap fail-closed"):
+/// [`synthesize_memcpy_vectors`] only ever emits distinct, non-aliasing
+/// buffers, so no synthesized vector can claim defined behavior for aliasing
+/// regions.
+fn memcpy_shape(contract: &CheckedContract) -> Option<MemcpyShape> {
+    if !contract.name.to_ascii_lowercase().contains("memcpy") {
+        return None;
+    }
+    let has_write = contract
+        .effects
+        .iter()
+        .any(|effect| effect.kind == "memory_write");
+    if !has_write {
+        return None;
+    }
+    if contract.parameters.len() != 3 || contract.returns.len() != 1 {
+        return None;
+    }
+
+    let mut dst_param = None;
+    let mut src_param = None;
+    let mut len_param = None;
+
+    for p in &contract.parameters {
+        match &p.ty {
+            SemType::Ptr {
+                is_const: false,
+                inner,
+            } if dst_param.is_none() && matches!(inner.as_ref(), SemType::UInt { bits: 8 }) => {
+                dst_param = Some(p);
+            }
+            SemType::Ptr {
+                is_const: true,
+                inner,
+            } if src_param.is_none() && matches!(inner.as_ref(), SemType::UInt { bits: 8 }) => {
+                src_param = Some(p);
+            }
+            SemType::Usize if len_param.is_none() => {
+                len_param = Some(p);
+            }
+            _ => {}
+        }
+    }
+
+    let returns_usize = contract
+        .returns
+        .iter()
+        .any(|r| matches!(r.ty, SemType::Usize));
+
+    let (_dst_param, _src_param, len_param) = match (dst_param, src_param, len_param) {
+        (Some(d), Some(s), Some(l)) if returns_usize => (d, s, l),
+        _ => return None,
+    };
+
+    Some(MemcpyShape {
+        max_length: length_bound_from_requires(contract, &len_param.name),
+    })
+}
+
+/// Synthesise memcpy vectors (status 0 expected; harness also checks `dst`).
+///
+/// Every vector uses **distinct, non-overlapping** `dst`/`src` fixture
+/// arrays (ADR 0003 overlap fail-closed): `dst` and `src` are separate NASM
+/// `.data` labels, so no synthesized vector can alias. `src` is left
+/// unchanged by construction — the harness never echoes it back, only the
+/// post-call `dst` buffer.
+#[allow(clippy::vec_init_then_push)]
+fn synthesize_memcpy_vectors(shape: MemcpyShape) -> Vec<TestVector> {
+    let max_len = shape
+        .max_length
+        .unwrap_or(MAX_FIXTURE_CAP)
+        .clamp(1, MAX_FIXTURE_CAP);
+    let sentinel = u64::from(MEMCPY_DST_SENTINEL);
+
+    let mut vectors = Vec::new();
+
+    vectors.push(TestVector {
+        name: "empty input".into(),
+        inputs: vec![
+            serde_json::Value::Null,
+            serde_json::Value::Null,
+            serde_json::json!(0u64),
+        ],
+        expected: serde_json::json!(0u64),
+    });
+
+    vectors.push(TestVector {
+        name: "one byte".into(),
+        inputs: vec![
+            serde_json::json!([sentinel]),
+            serde_json::json!([0x5au64]),
+            serde_json::json!(1u64),
+        ],
+        expected: serde_json::json!(0u64),
+    });
+
+    let short_src: Vec<serde_json::Value> = (1u64..=5).map(serde_json::Value::from).collect();
+    let short_dst: Vec<serde_json::Value> = (0..5).map(|_| serde_json::json!(sentinel)).collect();
+    vectors.push(TestVector {
+        name: "short distinct src/dst pattern".into(),
+        inputs: vec![
+            serde_json::Value::Array(short_dst),
+            serde_json::Value::Array(short_src),
+            serde_json::json!(5u64),
+        ],
+        expected: serde_json::json!(0u64),
+    });
+
+    let max_src: Vec<serde_json::Value> = (0..max_len)
+        .map(|i| serde_json::json!((i & 0xff) as u64))
+        .collect();
+    let max_dst: Vec<serde_json::Value> =
+        (0..max_len).map(|_| serde_json::json!(sentinel)).collect();
+    vectors.push(TestVector {
+        name: "maximum configured fixture length".into(),
+        inputs: vec![
+            serde_json::Value::Array(max_dst),
+            serde_json::Value::Array(max_src),
+            serde_json::json!(max_len as u64),
+        ],
+        expected: serde_json::json!(0u64),
+    });
+
+    vectors
+}
+
+/// Expected post-copy `dst` buffer for a memcpy vector: exact copy of `src`.
+///
+/// `src` is the vector's second input (see [`synthesize_memcpy_vectors`]);
+/// `dst`'s initial content (first input) is irrelevant to the expectation.
+#[allow(clippy::cast_possible_truncation)] // bytes are masked to 0xff
+fn expected_memcpy_buffer(v: &TestVector) -> Vec<u8> {
+    match v.inputs.get(1) {
+        Some(serde_json::Value::Array(items)) => items
+            .iter()
+            .map(|x| (x.as_u64().unwrap_or(0) & 0xff) as u8)
+            .collect(),
+        _ => Vec::new(),
+    }
+}
+
 /// Detect the `(ptr<const u8>, usize, u8) -> usize` shape.
 fn scan_shape(contract: &CheckedContract) -> Option<ScanShape> {
     let mut ptr_param = None;
@@ -1709,6 +1901,9 @@ pub fn generate_harness(
         (Abi::SysVAmd64, HarnessShape::MemCmp) => {
             Ok(generate_sysv_memcmp_harness(routine_symbol, vectors))
         }
+        (Abi::SysVAmd64, HarnessShape::Memcpy) => {
+            Ok(generate_sysv_memcpy_harness(routine_symbol, vectors))
+        }
         (Abi::SysVAmd64, HarnessShape::I64Sum) => {
             Ok(generate_sysv_i64_sum_harness(routine_symbol, vectors))
         }
@@ -1727,6 +1922,9 @@ pub fn generate_harness(
         (Abi::WindowsX64, HarnessShape::MemCmp) => {
             Ok(generate_win64_memcmp_harness(routine_symbol, vectors))
         }
+        (Abi::WindowsX64, HarnessShape::Memcpy) => {
+            Ok(generate_win64_memcpy_harness(routine_symbol, vectors))
+        }
         (Abi::WindowsX64, HarnessShape::I64Sum) => {
             Ok(generate_win64_i64_sum_harness(routine_symbol, vectors))
         }
@@ -1738,6 +1936,9 @@ pub fn generate_harness(
         }
         (Abi::Aapcs64 | Abi::Riscv, HarnessShape::MemCmp) => {
             Err("memcmp harness not yet supported on this ABI".into())
+        }
+        (Abi::Aapcs64 | Abi::Riscv, HarnessShape::Memcpy) => {
+            Err("memcpy harness not yet supported on this ABI".into())
         }
         (Abi::Aapcs64 | Abi::Riscv, HarnessShape::ReplaceByte) => {
             Err("replace_byte harness not yet supported on this ABI".into())
@@ -2406,6 +2607,151 @@ fn generate_win64_memcmp_harness(routine_symbol: &str, vectors: &[TestVector]) -
     out
 }
 
+/// Generate NASM source for a SysV dual-buffer memcpy `_start` harness.
+///
+/// Wire layout matches [`generate_sysv_memcmp_harness`] (`emit_memcmp_vector_data`,
+/// `dst` in `vec{i}_a`, `src` in `vec{i}_b`, args in `rdi`/`rsi`/`rdx`); only
+/// the post-call echo differs: memcpy echoes the mutated **`dst`** buffer
+/// only (`vec{i}_a`), never `src` (unchanged input, not part of the oracle).
+fn generate_sysv_memcpy_harness(routine_symbol: &str, vectors: &[TestVector]) -> String {
+    let mut out = String::new();
+
+    out.push_str("BITS 64\n");
+    out.push_str("DEFAULT REL\n\n");
+    emit_memcmp_vector_data(&mut out, vectors);
+
+    out.push_str("\nsection .bss\n");
+    let _ = writeln!(out, "results: resb {}", vectors.len() * 8);
+    out.push_str("\nsection .text\n");
+    let _ = writeln!(out, "extern {routine_symbol}");
+    out.push_str("global _start\n");
+    out.push_str("_start:\n");
+
+    for (i, v) in vectors.iter().enumerate() {
+        let _ = writeln!(out, "    ; vector {i}: {}", v.name);
+        if v.inputs.first().is_some_and(serde_json::Value::is_null) {
+            out.push_str("    xor edi, edi\n");
+        } else {
+            let _ = writeln!(out, "    lea rdi, [vec{i}_a]");
+        }
+        if v.inputs.get(1).is_some_and(serde_json::Value::is_null) {
+            out.push_str("    xor esi, esi\n");
+        } else {
+            let _ = writeln!(out, "    lea rsi, [vec{i}_b]");
+        }
+        let _ = writeln!(out, "    mov rdx, [vec{i}_len]");
+        let _ = writeln!(out, "    call {routine_symbol}");
+        let _ = writeln!(out, "    mov [results + {i}*8], rax");
+    }
+
+    out.push_str("    ; write(results, N*8)\n");
+    out.push_str("    mov eax, 1\n");
+    out.push_str("    mov edi, 1\n");
+    out.push_str("    lea rsi, [results]\n");
+    let _ = writeln!(out, "    mov edx, {}", vectors.len() * 8);
+    out.push_str("    syscall\n");
+
+    for (i, v) in vectors.iter().enumerate() {
+        let len = usize::try_from(vector_memcmp_length(v)).unwrap_or(0);
+        if len == 0 {
+            continue;
+        }
+        let _ = writeln!(out, "    ; write dst buffer {i} ({len} bytes)");
+        out.push_str("    mov eax, 1\n");
+        out.push_str("    mov edi, 1\n");
+        let _ = writeln!(out, "    lea rsi, [vec{i}_a]");
+        let _ = writeln!(out, "    mov edx, {len}");
+        out.push_str("    syscall\n");
+    }
+
+    out.push_str("    mov eax, 60\n");
+    out.push_str("    xor edi, edi\n");
+    out.push_str("    syscall\n");
+    out
+}
+
+/// Generate NASM source for a Win64 dual-buffer memcpy `main` harness.
+///
+/// Wire layout matches [`generate_win64_memcmp_harness`] (`emit_memcmp_vector_data`,
+/// `dst` in `vec{i}_a`, `src` in `vec{i}_b`, args in `rcx`/`rdx`/`r8`); only
+/// the post-call echo differs: memcpy echoes the mutated **`dst`** buffer
+/// only (`vec{i}_a`), never `src`.
+fn generate_win64_memcpy_harness(routine_symbol: &str, vectors: &[TestVector]) -> String {
+    let mut out = String::new();
+
+    out.push_str("BITS 64\n");
+    out.push_str("DEFAULT REL\n\n");
+    out.push_str("EXTERN GetStdHandle\n");
+    out.push_str("EXTERN WriteFile\n");
+    out.push_str("EXTERN ExitProcess\n\n");
+    emit_memcmp_vector_data(&mut out, vectors);
+
+    out.push_str("\nsection .bss\n");
+    let _ = writeln!(out, "results: resb {}", vectors.len() * 8);
+    out.push_str("written: resq 1\n");
+    out.push_str("stdout_handle: resq 1\n");
+
+    out.push_str("\nsection .text\n");
+    let _ = writeln!(out, "extern {routine_symbol}");
+    out.push_str("global main\n");
+    out.push_str("main:\n");
+
+    for (i, v) in vectors.iter().enumerate() {
+        let _ = writeln!(out, "    ; vector {i}: {}", v.name);
+        out.push_str("    sub rsp, 40\n");
+        if v.inputs.first().is_some_and(serde_json::Value::is_null) {
+            out.push_str("    xor ecx, ecx\n");
+        } else {
+            let _ = writeln!(out, "    lea rcx, [vec{i}_a]");
+        }
+        if v.inputs.get(1).is_some_and(serde_json::Value::is_null) {
+            out.push_str("    xor edx, edx\n");
+        } else {
+            let _ = writeln!(out, "    lea rdx, [vec{i}_b]");
+        }
+        let _ = writeln!(out, "    mov r8, [vec{i}_len]");
+        let _ = writeln!(out, "    call {routine_symbol}");
+        out.push_str("    add rsp, 40\n");
+        let _ = writeln!(out, "    mov [results + {i}*8], rax");
+    }
+
+    out.push_str("    sub rsp, 40\n");
+    out.push_str("    mov ecx, -11\n");
+    out.push_str("    call GetStdHandle\n");
+    out.push_str("    mov [stdout_handle], rax\n");
+    out.push_str("    add rsp, 40\n");
+
+    out.push_str("    sub rsp, 40\n");
+    out.push_str("    mov rcx, [stdout_handle]\n");
+    out.push_str("    lea rdx, [results]\n");
+    let _ = writeln!(out, "    mov r8d, {}", vectors.len() * 8);
+    out.push_str("    lea r9, [written]\n");
+    out.push_str("    mov qword [rsp + 32], 0\n");
+    out.push_str("    call WriteFile\n");
+    out.push_str("    add rsp, 40\n");
+
+    for (i, v) in vectors.iter().enumerate() {
+        let len = usize::try_from(vector_memcmp_length(v)).unwrap_or(0);
+        if len == 0 {
+            continue;
+        }
+        let _ = writeln!(out, "    ; write dst buffer {i}");
+        out.push_str("    sub rsp, 40\n");
+        out.push_str("    mov rcx, [stdout_handle]\n");
+        let _ = writeln!(out, "    lea rdx, [vec{i}_a]");
+        let _ = writeln!(out, "    mov r8d, {len}");
+        out.push_str("    lea r9, [written]\n");
+        out.push_str("    mov qword [rsp + 32], 0\n");
+        out.push_str("    call WriteFile\n");
+        out.push_str("    add rsp, 40\n");
+    }
+
+    out.push_str("    sub rsp, 40\n");
+    out.push_str("    xor ecx, ecx\n");
+    out.push_str("    call ExitProcess\n");
+    out
+}
+
 /// Generate NASM source for a Win64 pure-integer `main` harness.
 fn generate_win64_pure_int_harness(routine_symbol: &str, vectors: &[TestVector]) -> String {
     let mut out = String::new();
@@ -2917,11 +3263,12 @@ pub struct HarnessReport {
 /// contract via [`resolve_harness_shape`] — do not re-detect it from
 /// `vectors` alone (see [`HarnessShape`]).
 ///
-/// For [`HarnessShape::ReplaceByte`] and [`HarnessShape::Memset`], stdout is
-/// counts (`N*8` bytes, always `0` for `Memset`) followed by each
-/// mutated/filled buffer in order (length bytes each; empty buffers omit a
-/// chunk). All other shapes are a flat `N*8`-byte array of little-endian
-/// `u64` result words.
+/// For [`HarnessShape::ReplaceByte`], [`HarnessShape::Memset`], and
+/// [`HarnessShape::Memcpy`], stdout is counts (`N*8` bytes, always `0` for
+/// `Memset`/`Memcpy`) followed by each mutated/filled/copied-into buffer in
+/// order (length bytes each; empty buffers omit a chunk). For `Memcpy` that
+/// buffer is `dst` only — `src` is never echoed. All other shapes are a flat
+/// `N*8`-byte array of little-endian `u64` result words.
 #[must_use]
 pub fn evaluate(stdout: &[u8], vectors: &[TestVector], shape: HarnessShape) -> HarnessReport {
     match shape {
@@ -2929,6 +3276,7 @@ pub fn evaluate(stdout: &[u8], vectors: &[TestVector], shape: HarnessShape) -> H
             evaluate_count_and_buffer(stdout, vectors, expected_replace_byte_buffer)
         }
         HarnessShape::Memset => evaluate_count_and_buffer(stdout, vectors, expected_memset_buffer),
+        HarnessShape::Memcpy => evaluate_count_and_buffer(stdout, vectors, expected_memcpy_buffer),
         HarnessShape::BufferScan
         | HarnessShape::MemCmp
         | HarnessShape::I64Sum
@@ -3411,6 +3759,148 @@ expression = "count <= length"
         assert!(memset_shape(&unnamed).is_none());
         assert!(recognize_behavior_oracle(&unnamed).is_none());
         assert!(synthesize_vectors(&unnamed).is_empty());
+    }
+
+    fn memcpy_contract() -> CheckedContract {
+        check_contract(include_str!("../../../fixtures/contracts/memcpy.sem.toml"))
+    }
+
+    #[test]
+    fn recognizes_memcpy_oracle_and_is_not_read_only() {
+        let c = memcpy_contract();
+        let oracle = recognize_behavior_oracle(&c).expect("memcpy oracle");
+        assert_eq!(oracle.id, ORACLE_BUFFER_MEMCPY);
+        assert_eq!(oracle.version, ORACLE_BUFFER_MEMCPY_VERSION);
+        assert!(!is_read_only_buffer_scan(&c));
+    }
+
+    #[test]
+    fn memcpy_vectors_share_memcmp_wire_layout_but_resolve_distinct_shape() {
+        let c = memcpy_contract();
+        let vectors = synthesize_vectors(&c);
+        assert!(vectors.len() >= 4);
+        // Wire layout is indistinguishable from MemCmp by design: two
+        // array/null buffers plus a length.
+        assert_eq!(
+            detect_harness_shape(&vectors).expect("shape"),
+            HarnessShape::MemCmp
+        );
+        // The oracle disambiguates: resolved shape must be Memcpy, not
+        // MemCmp, and validation must accept the MemCmp-layout vectors as
+        // compatible.
+        assert_eq!(
+            resolve_harness_shape(&c, &vectors).expect("memcpy shape"),
+            HarnessShape::Memcpy
+        );
+        validate_vectors_match_oracle(&c, &vectors).expect("memcpy vectors match oracle");
+    }
+
+    #[test]
+    fn memcpy_harness_x86_and_fail_closed_elsewhere() {
+        let vectors = synthesize_vectors(&memcpy_contract());
+        let sysv = generate_harness("memcpy", &vectors, Abi::SysVAmd64, HarnessShape::Memcpy)
+            .expect("sysv harness");
+        assert!(sysv.contains("lea rdi, [vec0_a]") || sysv.contains("xor edi, edi"));
+        assert!(sysv.contains("lea rsi, [vec0_b]") || sysv.contains("xor esi, esi"));
+        assert!(sysv.contains("mov rdx, [vec0_len]"));
+        let win = generate_harness("memcpy", &vectors, Abi::WindowsX64, HarnessShape::Memcpy)
+            .expect("win64 harness");
+        assert!(win.contains("lea rcx, [vec0_a]") || win.contains("xor ecx, ecx"));
+        assert!(win.contains("lea rdx, [vec0_b]") || win.contains("xor edx, edx"));
+        assert!(win.contains("mov r8, [vec0_len]"));
+        let a64 = generate_harness("memcpy", &vectors, Abi::Aapcs64, HarnessShape::Memcpy)
+            .expect_err("AArch64 memcpy must fail closed");
+        assert!(a64.contains("memcpy harness not yet supported on this ABI"));
+        let rv = generate_harness("memcpy", &vectors, Abi::Riscv, HarnessShape::Memcpy)
+            .expect_err("RISC-V memcpy must fail closed");
+        assert!(rv.contains("memcpy harness not yet supported on this ABI"));
+    }
+
+    #[test]
+    fn evaluate_memcpy_checks_status_and_copied_dst_buffer() {
+        let vectors = synthesize_vectors(&memcpy_contract());
+        let short = vectors
+            .iter()
+            .find(|v| v.name == "short distinct src/dst pattern")
+            .expect("short distinct src/dst pattern");
+        let expected_buf = expected_memcpy_buffer(short);
+        assert_eq!(expected_buf, vec![1u8, 2, 3, 4, 5]);
+
+        let mut stdout = Vec::new();
+        for v in &vectors {
+            stdout.extend_from_slice(&expected_bits(&v.expected).to_le_bytes());
+        }
+        for v in &vectors {
+            stdout.extend_from_slice(&expected_memcpy_buffer(v));
+        }
+        let report = evaluate(&stdout, &vectors, HarnessShape::Memcpy);
+        assert!(report.all_passed, "{:?}", report.cases);
+
+        // Wrong buffer for "short distinct src/dst pattern": keep counts,
+        // corrupt one byte (simulates "wrong: return 0 without copying").
+        let mut bad = stdout.clone();
+        let counts_end = vectors.len() * 8;
+        let mut buf_off = counts_end;
+        for v in &vectors {
+            let len = expected_memcpy_buffer(v).len();
+            if v.name == "short distinct src/dst pattern" && len > 0 {
+                bad[buf_off] = bad[buf_off].wrapping_add(1);
+                break;
+            }
+            buf_off += len;
+        }
+        let failed = evaluate(&bad, &vectors, HarnessShape::Memcpy);
+        assert!(!failed.all_passed);
+    }
+
+    #[test]
+    fn memcpy_name_discriminator_is_fail_closed() {
+        let source = include_str!("../../../fixtures/contracts/memcpy.sem.toml");
+        let unnamed =
+            check_contract(&source.replace("name = \"memcpy\"", "name = \"copy_buffer\""));
+        assert!(memcpy_shape(&unnamed).is_none());
+        assert!(recognize_behavior_oracle(&unnamed).is_none());
+        assert!(synthesize_vectors(&unnamed).is_empty());
+    }
+
+    #[test]
+    fn memcpy_synth_never_aliases_dst_and_src() {
+        let vectors = synthesize_vectors(&memcpy_contract());
+        assert!(
+            vectors.len() >= 2,
+            "need at least one non-empty vector to check aliasing"
+        );
+        let mut checked_any_pair = false;
+        for v in &vectors {
+            let (Some(serde_json::Value::Array(dst)), Some(serde_json::Value::Array(src))) =
+                (v.inputs.first(), v.inputs.get(1))
+            else {
+                continue;
+            };
+            // `dst` and `src` are always independently constructed fixture
+            // arrays (ADR 0003 overlap fail-closed): never the same backing
+            // allocation, so no synthesized vector can alias.
+            assert_ne!(
+                dst.as_ptr(),
+                src.as_ptr(),
+                "vector `{}` aliases dst/src buffers",
+                v.name
+            );
+            checked_any_pair = true;
+        }
+        assert!(checked_any_pair, "expected at least one dual-array vector");
+
+        // The generated harness also loads `dst`/`src` from distinct NASM
+        // labels (`vec{i}_a` vs `vec{i}_b`), never a shared buffer.
+        let sysv = generate_harness("memcpy", &vectors, Abi::SysVAmd64, HarnessShape::Memcpy)
+            .expect("sysv harness");
+        assert!(sysv.contains("vec0_a:"));
+        assert!(sysv.contains("vec0_b:"));
+        assert_ne!(
+            sysv.find("vec0_a:").unwrap(),
+            sysv.find("vec0_b:").unwrap(),
+            "dst and src must not resolve to the same data label"
+        );
     }
 
     #[test]
