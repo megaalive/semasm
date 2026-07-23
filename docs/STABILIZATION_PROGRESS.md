@@ -31,7 +31,8 @@ W1–W5, controller handshake, shared `count_byte` / `sum_i64` / `min_usize` sli
 (VAA Gate-1/2), hardening T0–T6, runner JSON R0–R2, and Tranche M are complete on
 `main`. GitHub Release **`v0.1.0`**, Tranche N (`max_usize`), Tranche O (x86 depth),
 Tranche P (`find_first_byte`), Tranche Q (VAA repair/search loop), and X0 (Win64
-W+X object-policy) are complete. Next shared leaf TBD.
+W+X object-policy) are complete. Next: **Tranche R** (search→ingest Gate loop) and
+**X1** (Win64 import/noexport object-policy parity).
 
 | Step | Focus | Status |
 |---|---|---|
@@ -161,6 +162,14 @@ Tranche P is closed on tip `511bb45` (SemASM) with VAA handoff `5961c1b`.
 | **X0** | Win64 W+X object-policy (patched COFF; NASM cannot emit W+X code) | SemASM | **done** |
 
 Tranche Q + X0 closed on tip `7fa6e18` (SemASM) with VAA handoff `80f848b`.
+
+### Next waves (R0–R1 + X1 — search→ingest + object-policy depth)
+
+| Wave | Focus | Owner | Status |
+|---|---|---|---|
+| **R0** | Caps/docs honesty: next = search→ingest + Win64 import/noexport | SemASM+VAA | **in progress** |
+| **X1** | Win64 import + noexport object-policy twins (parity SysV) | SemASM | pending |
+| **R1** | `vaa search` staging → `vaa ingest` Gate smoke + verify-chain | VAA | pending |
 
 **Honesty:** Gate-1 Incomplete ≠ Verified. SoftHSM / Fulcio / practice seals ≠
 SemASM Verified. Pipeline assemble/link/execute on x86 remains `experimental`.
