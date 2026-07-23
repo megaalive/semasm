@@ -1,0 +1,48 @@
+{
+  "schema_version": "0.4",
+  "status": "execution_denied",
+  "target": "x86_64-unknown-linux-gnu",
+  "routine_symbol": "memcmp",
+  "isolation": "static_only",
+  "tool_version": "semasm 0.1.0",
+  "contract_digest": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+  "source_digest": "sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+  "semantic": {
+    "object_policy": "passed",
+    "executable_bytes": 40,
+    "decode": {
+      "total": 16,
+      "modeled": 16,
+      "unknown": 0
+    },
+    "lowering": {
+      "total": 16,
+      "modeled": 16,
+      "unknown": 0
+    },
+    "abi": "passed",
+    "capability": "passed",
+    "control": "passed",
+    "memory": "passed"
+  },
+  "executable": {
+    "status": "passed"
+  },
+  "behavior": null,
+  "behavior_oracle": {
+    "id": "builtin.buffer.memcmp_i8",
+    "version": 1,
+    "contract": "memcmp.sem.toml",
+    "contract_hash": "aaaaaaaaaaaa",
+    "contract_ensures": [
+      "result >= -1",
+      "result <= 1"
+    ],
+    "proof_basis": "oracle_and_vectors",
+    "claim": "result is -1, 0, or 1 from unsigned lexicographic comparison of a[0..length] and b[0..length]",
+    "vectors_passed": 0,
+    "vectors_failed": 0,
+    "vectors_total": 7,
+    "evidence_hash": "0123456789abcdef0123456789abcdef"
+  }
+}

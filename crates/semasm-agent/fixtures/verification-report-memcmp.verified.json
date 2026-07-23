@@ -1,0 +1,76 @@
+{
+  "schema_version": "0.4",
+  "status": "verified",
+  "target": "x86_64-unknown-linux-gnu",
+  "routine_symbol": "memcmp",
+  "isolation": "native_host",
+  "tool_version": "semasm 0.1.0",
+  "contract_digest": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+  "source_digest": "sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+  "semantic": {
+    "object_policy": "passed",
+    "executable_bytes": 40,
+    "decode": {
+      "total": 16,
+      "modeled": 16,
+      "unknown": 0
+    },
+    "lowering": {
+      "total": 16,
+      "modeled": 16,
+      "unknown": 0
+    },
+    "abi": "passed",
+    "capability": "passed",
+    "control": "passed",
+    "memory": "passed"
+  },
+  "executable": {
+    "status": "passed"
+  },
+  "behavior": {
+    "all_passed": true,
+    "cases": [
+      {
+        "name": "empty input",
+        "expected": "0",
+        "observed": "0",
+        "passed": true
+      },
+      {
+        "name": "equal buffers",
+        "expected": "0",
+        "observed": "0",
+        "passed": true
+      },
+      {
+        "name": "a less than b",
+        "expected": "-1",
+        "observed": "-1",
+        "passed": true
+      },
+      {
+        "name": "a greater than b",
+        "expected": "1",
+        "observed": "1",
+        "passed": true
+      }
+    ]
+  },
+  "behavior_oracle": {
+    "id": "builtin.buffer.memcmp_i8",
+    "version": 1,
+    "contract": "memcmp.sem.toml",
+    "contract_hash": "aaaaaaaaaaaa",
+    "contract_ensures": [
+      "result >= -1",
+      "result <= 1"
+    ],
+    "proof_basis": "oracle_and_vectors",
+    "claim": "result is -1, 0, or 1 from unsigned lexicographic comparison of a[0..length] and b[0..length]",
+    "vectors_passed": 4,
+    "vectors_failed": 0,
+    "vectors_total": 4,
+    "evidence_hash": "fedcba9876543210fedcba9876543210"
+  }
+}

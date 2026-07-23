@@ -190,8 +190,9 @@ VAA handoff `1ad5d0e` (S2+T content `dcbc536`).
 
 | Wave | Focus | Owner | Status |
 |---|---|---|---|
-| **X3** | Win64 `count_byte` callee_saved twin + caps write/indirect sync | SemASM | **in progress** |
-| **U0–U1** | `memcmp` dual-buffer Gate pack | SemASM | pending |
+| **X3** | Win64 `count_byte` callee_saved twin + caps write/indirect sync | SemASM | **done** (`b9a7079`) |
+| **U0** | `memcmp` dual-buffer oracle/contract/vectors | SemASM | **done** (`da8b57a`) |
+| **U1** | `memcmp` asm/e2e/goldens/adversarial + CI | SemASM | **in progress** |
 | **V0–V3** | VAA pin + memcmp Gate + search allow-execution smoke | VAA | pending |
 
 SysV `count_byte_red_zone` pairs with Win64 `count_byte_win64_shadow` as the ABI dual

@@ -957,4 +957,33 @@ mod tests {
         assert_eq!(oracle.id, "builtin.buffer.find_last_u8");
         assert!(oracle.claim.contains("length when absent"));
     }
+
+    #[test]
+    fn golden_memcmp_execution_denied_report_deserializes() {
+        let json = include_str!("../fixtures/verification-report-memcmp.execution_denied.json");
+        let report: VerificationReport =
+            serde_json::from_str(json).expect("memcmp golden must deserialize");
+        assert_eq!(report.schema_version, VERIFICATION_REPORT_SCHEMA_VERSION);
+        assert_eq!(report.status, VerificationStatus::ExecutionDenied);
+        assert_eq!(report.routine_symbol, "memcmp");
+        assert!(report.behavior.is_none());
+        let oracle = report.behavior_oracle.expect("golden includes oracle");
+        assert_eq!(oracle.id, "builtin.buffer.memcmp_i8");
+        assert_eq!(oracle.version, 1);
+        assert!(oracle.claim.contains("lexicographic"));
+    }
+
+    #[test]
+    fn golden_memcmp_verified_report_deserializes() {
+        let json = include_str!("../fixtures/verification-report-memcmp.verified.json");
+        let report: VerificationReport =
+            serde_json::from_str(json).expect("memcmp verified golden must deserialize");
+        assert_eq!(report.status, VerificationStatus::Verified);
+        assert_eq!(report.routine_symbol, "memcmp");
+        let behavior = report.behavior.expect("verified golden includes behavior");
+        assert!(behavior.all_passed);
+        let oracle = report.behavior_oracle.expect("oracle present");
+        assert_eq!(oracle.id, "builtin.buffer.memcmp_i8");
+        assert!(oracle.claim.contains("-1, 0, or 1"));
+    }
 }

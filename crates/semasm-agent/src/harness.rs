@@ -1315,7 +1315,7 @@ pub fn generate_harness(
         (Abi::Aapcs64, HarnessShape::BufferScan) => {
             Ok(generate_aapcs64_buffer_harness(routine_symbol, vectors))
         }
-        (Abi::Aapcs64, HarnessShape::MemCmp) => {
+        (Abi::Aapcs64 | Abi::Riscv, HarnessShape::MemCmp) => {
             Err("memcmp harness not yet supported on this ABI".into())
         }
         (Abi::Aapcs64, HarnessShape::I64Sum) => {
@@ -1326,9 +1326,6 @@ pub fn generate_harness(
         }
         (Abi::Riscv, HarnessShape::BufferScan) => {
             Ok(generate_riscv_buffer_harness(routine_symbol, vectors))
-        }
-        (Abi::Riscv, HarnessShape::MemCmp) => {
-            Err("memcmp harness not yet supported on this ABI".into())
         }
         (Abi::Riscv, HarnessShape::I64Sum) => {
             Ok(generate_riscv_i64_sum_harness(routine_symbol, vectors))
