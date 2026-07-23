@@ -38,7 +38,8 @@ Tranche R (search→ingest Gate loop) are complete. **X2 + S + T** through
 design-compatible write-shape follow-on (harness shape resolved from the
 contract oracle, not vector layout, so `memset` can safely reuse the
 `BufferScan` wire layout). Next up: **Wc** `memcpy`. Gate-2 `ExecutionSandbox`
-wire (I2) remains deferred **on the VAA side**; this wave does not touch VAA.
+(I2) landed on VAA (`execution_isolation` + `--execution-sandbox`); this
+SemASM wave does not retouch that path.
 decode/lower stay `partial`. Exception: bugfix / pin tip only.
 
 ### Next waves (X4 + H4 + Y) — closed
