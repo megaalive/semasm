@@ -180,9 +180,9 @@ Tranche R + X1 closed on tip `c8f2047` (SemASM) with VAA handoff `171b553`.
 | **X2a** | Win64 syscall + stack_imbalance object/capability twins | SemASM | **done** (asm encoding fix) |
 | **X2b** | VAA mutator `nop-before-ret` | VAA | **done** (`9a490d3`) |
 | **S0** | `find_last_byte` oracle/contract/vectors (absent→length) | SemASM | **done** |
-| **S1** | `find_last_byte` asm/e2e/goldens/adversarial + CI | SemASM | **in progress** |
-| **S2** | VAA pin + Gate-1/2 (+ run wrong→repair) | VAA | pending |
-| **T0–T2** | `vaa search --ingest` skip Violated → Incomplete | VAA | pending |
+| **S1** | `find_last_byte` asm/e2e/goldens/adversarial + CI | SemASM | **done** (`b6d3395`) |
+| **S2** | VAA pin + Gate-1/2 (+ run wrong→repair) | VAA | **in progress** |
+| **T0–T2** | `vaa search --ingest` skip Violated → Incomplete | VAA | **in progress** |
 
 **Honesty:** Gate-1 Incomplete ≠ Verified. SoftHSM / Fulcio / practice seals ≠
 SemASM Verified. Pipeline assemble/link/execute on x86 remains `experimental`.
