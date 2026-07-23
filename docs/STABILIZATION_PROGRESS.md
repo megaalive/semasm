@@ -30,8 +30,8 @@ Stabilization PR-01…18, Bulletproof P0–P5, X86 Golden Path Depth, Evidence
 W1–W5, controller handshake, shared `count_byte` / `sum_i64` / `min_usize` slices
 (VAA Gate-1/2), hardening T0–T6, runner JSON R0–R2, and Tranche M are complete on
 `main`. GitHub Release **`v0.1.0`**, Tranche N (`max_usize`), Tranche O (x86 depth),
-and Tranche P (`find_first_byte`) are complete. Next shared leaf TBD (VAA loop /
-further depth).
+and Tranche P (`find_first_byte`) are complete. Next: **Tranche Q** (VAA repair/search
+loop) and **further x86 depth** (Win64 W+X object-policy parity).
 
 | Step | Focus | Status |
 |---|---|---|
@@ -151,8 +151,18 @@ Buffer index-of shape (not another pure-int leaf). Pattern N0→N2 / M2→M4.
 
 Tranche P is closed on tip `511bb45` (SemASM) with VAA handoff `5961c1b`.
 
+### Next waves (Q0… + X0 — VAA loop + further x86 depth)
+
+| Wave | Focus | Owner | Status |
+|---|---|---|---|
+| **Q0** | Caps/docs honesty: next = VAA repair/search loop + x86 depth | SemASM+VAA | **in progress** |
+| **Q1** | `find_first_byte` multi-candidate `vaa run` wrong→repair Gate smoke | VAA | pending |
+| **Q2** | `vaa search` nop-slide staging Gate smoke (offline; ≠ CryptOpt/Verified) | VAA | pending |
+| **X0** | Win64 W+X object-policy twin (parity SysV `count_byte_wx`) | SemASM | pending |
+
 **Honesty:** Gate-1 Incomplete ≠ Verified. SoftHSM / Fulcio / practice seals ≠
 SemASM Verified. Pipeline assemble/link/execute on x86 remains `experimental`.
+LLM / search mutator output ≠ Verified.
 
 Demo: `scripts/golden-demo.sh` (Linux SysV) or `scripts/golden-demo.ps1`
 (Windows PE by default; `-SysV` for Linux tools).
