@@ -19,6 +19,8 @@ follow [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - Capability manifest documents Tranche O honesty: x86 assemble/link/execute
   remain `experimental` despite `agent_verify = verified_in_ci`; no pipeline
   level bump without dedicated owner evidence.
+- Tranche O1 adversarial depth: `sum_i64` callee-saved twins (SysV+Win64) and
+  Win64 decode/lower-gap parity fixtures (`unknown_insn`, `trailing_bytes`).
 
 ## [0.1.0] - 2026-07-23
 

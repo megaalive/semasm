@@ -135,12 +135,18 @@ Tranche N is closed on tip `623d22c` (SemASM) with VAA handoff `5a5c6d9`.
 
 | Wave | Focus | Owner | Status |
 |---|---|---|---|
-| **O0** | Caps/docs honesty: x86 pipeline stays experimental; next = O→P | SemASM | **in progress** |
-| **O1** | One adversarial family around `sum_i64` / Win64 decode-gap parity | SemASM | queued |
+| **O0** | Caps/docs honesty: x86 pipeline stays experimental; next = O→P | SemASM | **done** |
+| **O1** | One adversarial family around `sum_i64` / Win64 decode-gap parity | SemASM | **done** |
 
 ### After O — Tranche P (`find_first_byte` Gate)
 
 Buffer index-of shape (not another pure-int leaf). Pattern N0→N2 / M2→M4.
+
+**Honesty:** Gate-1 Incomplete ≠ Verified. SoftHSM / Fulcio / practice seals ≠
+SemASM Verified. Pipeline assemble/link/execute on x86 remains `experimental`.
+
+Demo: `scripts/golden-demo.sh` (Linux SysV) or `scripts/golden-demo.ps1`
+(Windows PE by default; `-SysV` for Linux tools).
 
 See `docs/CLI_COMPATIBILITY.md`, `docs/CONTROLLER_PROTOCOL.md`,
 `docs/AGENT_SCHEMA_POLICY.md`, and `ARCHITECTURE.md`.
