@@ -296,6 +296,32 @@ fn agent_verify_sum_i64_callee_saved_win64_is_semantic_failed() {
 
 #[test]
 #[ignore = "requires nasm, ld, objdump, and qemu-user on PATH"]
+fn agent_verify_find_first_byte_callee_saved_sysv_is_semantic_failed() {
+    let source = workspace_root().join("fixtures/asm/find_first_byte_callee_saved.asm");
+    let contract = workspace_root().join("fixtures/contracts/find_first_byte.sem.toml");
+    let output = run_agent_verify(&source, &contract, None, false);
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    if skip_if_incomplete(&stderr) {
+        return;
+    }
+    assert_status(&output, "semantic_failed");
+}
+
+#[test]
+#[ignore = "requires nasm, lld-link, and native Windows host"]
+fn agent_verify_find_first_byte_callee_saved_win64_is_semantic_failed() {
+    let source = workspace_root().join("fixtures/asm/find_first_byte_callee_saved_win64.asm");
+    let contract = workspace_root().join("fixtures/contracts/find_first_byte.sem.toml");
+    let output = run_agent_verify(&source, &contract, Some("x86_64-pc-windows-msvc"), false);
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    if skip_if_incomplete(&stderr) {
+        return;
+    }
+    assert_status(&output, "semantic_failed");
+}
+
+#[test]
+#[ignore = "requires nasm, ld, objdump, and qemu-user on PATH"]
 fn agent_verify_red_zone_sysv_is_semantic_failed() {
     let source = workspace_root().join("fixtures/asm/count_byte_red_zone.asm");
     let contract = workspace_root().join("fixtures/contracts/count_byte.sem.toml");
@@ -534,6 +560,38 @@ fn agent_verify_max_usize_write_sysv_is_semantic_failed() {
 fn agent_verify_max_usize_write_win64_is_semantic_failed() {
     let source = workspace_root().join("fixtures/asm/max_usize_write_win64.asm");
     let contract = workspace_root().join("fixtures/contracts/max_usize.sem.toml");
+    let output = run_agent_verify(&source, &contract, Some("x86_64-pc-windows-msvc"), false);
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    if skip_if_incomplete(&stderr) {
+        return;
+    }
+    assert_status(&output, "semantic_failed");
+    let value: serde_json::Value =
+        serde_json::from_str(&String::from_utf8_lossy(&output.stdout)).expect("json");
+    assert_eq!(value["semantic"]["memory"], "failed");
+}
+
+#[test]
+#[ignore = "requires nasm, ld, objdump, and qemu-user on PATH"]
+fn agent_verify_find_first_byte_write_sysv_is_semantic_failed() {
+    let source = workspace_root().join("fixtures/asm/find_first_byte_write.asm");
+    let contract = workspace_root().join("fixtures/contracts/find_first_byte.sem.toml");
+    let output = run_agent_verify(&source, &contract, None, false);
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    if skip_if_incomplete(&stderr) {
+        return;
+    }
+    assert_status(&output, "semantic_failed");
+    let value: serde_json::Value =
+        serde_json::from_str(&String::from_utf8_lossy(&output.stdout)).expect("json");
+    assert_eq!(value["semantic"]["memory"], "failed");
+}
+
+#[test]
+#[ignore = "requires nasm, lld-link, and native Windows host"]
+fn agent_verify_find_first_byte_write_win64_is_semantic_failed() {
+    let source = workspace_root().join("fixtures/asm/find_first_byte_write_win64.asm");
+    let contract = workspace_root().join("fixtures/contracts/find_first_byte.sem.toml");
     let output = run_agent_verify(&source, &contract, Some("x86_64-pc-windows-msvc"), false);
     let stderr = String::from_utf8_lossy(&output.stderr);
     if skip_if_incomplete(&stderr) {

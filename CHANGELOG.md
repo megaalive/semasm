@@ -16,6 +16,8 @@ follow [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - Buffer find-first oracle `builtin.buffer.find_first_u8` (`find_first_byte`):
   first index of needle, or `length` when absent; name-ambiguous buffer scans
   stay fail-closed.
+- `find_first_byte` Gate-ready pack: SysV/Win64 asm (correct/wrong/write/
+  callee-saved), e2e verify tests, consumer goldens, capabilities evidence.
 
 ### Changed
 

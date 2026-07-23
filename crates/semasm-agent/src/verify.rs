@@ -897,4 +897,34 @@ mod tests {
         assert!(oracle.vectors_passed > 0);
         assert_eq!(oracle.vectors_failed, 0);
     }
+
+    #[test]
+    fn golden_find_first_byte_execution_denied_report_deserializes() {
+        let json =
+            include_str!("../fixtures/verification-report-find_first_byte.execution_denied.json");
+        let report: VerificationReport =
+            serde_json::from_str(json).expect("find_first_byte golden must deserialize");
+        assert_eq!(report.schema_version, VERIFICATION_REPORT_SCHEMA_VERSION);
+        assert_eq!(report.status, VerificationStatus::ExecutionDenied);
+        assert_eq!(report.routine_symbol, "find_first_byte");
+        assert!(report.behavior.is_none());
+        let oracle = report.behavior_oracle.expect("golden includes oracle");
+        assert_eq!(oracle.id, "builtin.buffer.find_first_u8");
+        assert_eq!(oracle.version, 1);
+        assert!(oracle.claim.contains("first index"));
+    }
+
+    #[test]
+    fn golden_find_first_byte_verified_report_deserializes() {
+        let json = include_str!("../fixtures/verification-report-find_first_byte.verified.json");
+        let report: VerificationReport =
+            serde_json::from_str(json).expect("find_first_byte verified golden must deserialize");
+        assert_eq!(report.status, VerificationStatus::Verified);
+        assert_eq!(report.routine_symbol, "find_first_byte");
+        let behavior = report.behavior.expect("verified golden includes behavior");
+        assert!(behavior.all_passed);
+        let oracle = report.behavior_oracle.expect("oracle present");
+        assert_eq!(oracle.id, "builtin.buffer.find_first_u8");
+        assert!(oracle.claim.contains("length when absent"));
+    }
 }
