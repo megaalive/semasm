@@ -33,11 +33,11 @@ W1–W5, controller handshake, shared `count_byte` / `sum_i64` / `min_usize` sli
 Tranche R (search→ingest Gate loop) are complete. **X2 + S + T** through
 **X5 + H5 + Z** are closed (leaf/Gate/bridge treadmill saturated).
 
-**Leaf treadmill paused.** Maturity inflection D0–D2 closed (write-shape ADR
-Proposed; pipeline + Gate-2 criteria). **Next:** maturity follow-up **M0**
-(deepen ownership / isolation phases) → **M1** (x86 pipeline bump). No new
-oracle leaf, no HlaX64 bridge, no ADR Accept / W*, no `ExecutionSandbox` Gate
-wire in M0–M1 except the M1 caps bump itself.
+**Leaf treadmill paused.** Maturity inflection D0–D2 closed. Maturity follow-up
+**M0–M1 closed:** x86 Linux/Windows `assemble` / `link` / `execute` /
+`pipeline_verify` are `verified_in_ci` (owner e2e jobs). ADR 0003 remains
+**Proposed** (no W*). Gate-2 `ExecutionSandbox` wire (I2) deferred. decode/lower
+stay `partial`. Exception: bugfix / pin tip only.
 
 ### Next waves (X4 + H4 + Y) — closed
 
@@ -69,8 +69,9 @@ VAA Gate handoff `9c2203e` (pin SemASM `0305846`, HlaX64 `eeac3ba`).
 | **D2** | Pipeline maturity + Gate-2 isolation criteria | SemASM+VAA | **done** (notes below + VAA) |
 
 **Honesty:** Incomplete ≠ Verified. SoftHSM / Fulcio / practice seals ≠ Verified.
-HlaX64 `-Wverify` ≠ SemASM Verified. Search ≠ CryptOpt. D* does **not** bump
-`assemble`/`link`/`execute`/`pipeline_verify` off `experimental`.
+HlaX64 `-Wverify` ≠ SemASM Verified. Search ≠ CryptOpt. D* did **not** bump
+pipeline; **M1** did bump x86 assemble/link/execute/pipeline_verify with owner
+e2e jobs bound in `capabilities.toml`.
 
 #### Leaf / Gate / bridge inventory (D0)
 
@@ -115,14 +116,16 @@ Honesty locked for the bump (M1):
 - Gap before M1: Linux `ci_jobs` still lists only `decode (capstone)`; M1 must bind
   `e2e (x86-64 Linux)` / keep `e2e (x86-64 Windows)` when bumping.
 
-### Maturity follow-up (M0–M1)
+### Maturity follow-up (M0–M1) — closed
 
 | Wave | Focus | Status |
 |---|---|---|
-| **M0** | Deepen ownership map + Gate-2 I0–I2 criteria (docs) | **in progress** |
-| **M1** | Bind `ci_jobs` + bump x86 pipeline → `verified_in_ci` | pending |
+| **M0** | Deepen ownership map + Gate-2 I0–I2 criteria (docs) | **done** |
+| **M1** | Bind `ci_jobs` + bump x86 pipeline → `verified_in_ci` | **done** |
 
-ADR 0003 remains **Proposed** (no W*). Gate-2 `ExecutionSandbox` wire (I2) deferred.
+x86 Linux/Windows pipeline levels are `verified_in_ci` owned by
+`e2e (x86-64 Linux)` and `e2e (x86-64 Windows)`. Agent ≠ pipeline. ADR 0003
+remains **Proposed** (no W*). Gate-2 `ExecutionSandbox` wire (I2) deferred.
 
 #### After D1 Accept — W* outline only (not this tranche)
 
@@ -163,12 +166,11 @@ See `adr/0003-write-shape-buffer-leaves.md`.
 ### Deferred (explicitly out of current waves)
 
 - Write-shape **implementation** (W*) until ADR 0003 Accept + separate plan
-- x86 pipeline maturity bump until D2 checklist owner job is green
-- Gate-2 process isolation / `ExecutionSandbox` on Gate path (VAA criteria)
+- Gate-2 process isolation / `ExecutionSandbox` on Gate path (I2; VAA)
 - Formal `ensures result == count(...)` / general theorem proving
 - Full memory alias / symbolic proof beyond the read-only leaf gate
 - C compiler `-O2` / `-Os` binary-size bake-off in CI
-- New ISAs or broad mnemonic expansion; A64/RV MemCmp harness
+- New ISAs or broad mnemonic expansion; A64/RV MemCmp harness; decode/lower bump
 - Thin leaf / HlaX64 bridge treadmill (paused; see maturity inflection)
 - CryptOpt embed, live-model Gate CI, remote transparency, hardware HSM
 

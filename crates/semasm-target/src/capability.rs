@@ -393,9 +393,13 @@ mod tests {
 
     #[test]
     fn rejects_invalid_transition() {
-        let invalid = MANIFEST.replacen("link = \"experimental\"", "link = \"unavailable\"", 1);
+        let invalid = MANIFEST.replacen("link = \"verified_in_ci\"", "link = \"unavailable\"", 1);
         let error = CapabilityManifest::parse(&invalid).unwrap_err();
-        assert!(error.to_string().contains("execute=experimental"));
+        let msg = error.to_string();
+        assert!(
+            msg.contains("execute=") && msg.contains("without implemented link"),
+            "unexpected error: {msg}"
+        );
     }
 
     #[test]

@@ -10,11 +10,12 @@
 # Legacy key `verify` remains a pipeline alias (schema 0.1). Prefer reading
 # `pipeline_verify` and `agent_verify` when both are present.
 #
-# Tranche O honesty (post-v0.1.0 / post-Tranche N):
-# - x86-64 Linux/Windows keep assemble/link/execute/pipeline_verify =
-#   `experimental` even though `agent_verify = verified_in_ci`.
-# - Do **not** raise those pipeline levels without a dedicated owner CI job
-#   that proves assemble→link→run for the golden leaves end-to-end.
+# Maturity follow-up M1 (post-M0 ownership map):
+# - x86-64 Linux/Windows assemble/link/execute/pipeline_verify =
+#   `verified_in_ci`, owned by CI jobs `e2e (x86-64 Linux)` and
+#   `e2e (x86-64 Windows)` (pipeline corpus: exit.asm / Win64 PE build-run).
+# - `agent_verify = verified_in_ci` is a separate claim; Win64 agent verify
+#   steps in the Windows e2e job do **not** substitute for pipeline evidence.
 # - decode/lower stay `partial` until mnemonic coverage and adversarial twins
 #   close the known gaps (unknown insn / trailing bytes / WX / indirect).
 # - AArch64/RV64 pipeline evidence is stronger than x86 decode/lower depth;
@@ -22,13 +23,7 @@
 # - MemCmp agent harness is x86-only (SysV + Win64 evidence below). AArch64 /
 #   RISC-V memcmp harness generation fails closed; do not read that as partial
 #   multi-ISA support.
-# - Tranche X5: SysV write/indirect + A64/RV adversarial/pure-int fixtures are
-#   listed as evidence honesty only — not a pipeline maturity bump.
-# - Maturity inflection D2: checklist before any x86 assemble/link/execute/
-#   pipeline_verify bump lives in docs/STABILIZATION_PROGRESS.md. Design notes
-#   only — this file stays experimental until that owner job is green.
-# - Maturity follow-up M0: ownership map (owner job names + pipeline corpus)
-#   is in docs/STABILIZATION_PROGRESS.md. M1 binds ci_jobs and bumps levels.
+# - Ownership map: docs/STABILIZATION_PROGRESS.md (maturity follow-up M0/M1).
 
 schema_version = "0.1"
 
@@ -58,11 +53,11 @@ declared = "verified_in_unit_tests"
 decode = "partial"
 lower = "partial"
 abi_analysis = "verified_in_unit_tests"
-assemble = "experimental"
-link = "experimental"
-execute = "experimental"
-verify = "experimental"
-pipeline_verify = "experimental"
+assemble = "verified_in_ci"
+link = "verified_in_ci"
+execute = "verified_in_ci"
+verify = "verified_in_ci"
+pipeline_verify = "verified_in_ci"
 agent_verify = "verified_in_ci"
 
 [target.evidence]
@@ -107,7 +102,7 @@ fixtures = [
     "fixtures/asm/sum_i64_write.asm",
     "fixtures/asm/sum_i64_callee_saved.asm",
 ]
-ci_jobs = ["decode (capstone)"]
+ci_jobs = ["e2e (x86-64 Linux)", "decode (capstone)"]
 
 [[target]]
 id = "x86_64-pc-windows-msvc"
@@ -118,11 +113,11 @@ declared = "verified_in_unit_tests"
 decode = "partial"
 lower = "partial"
 abi_analysis = "verified_in_unit_tests"
-assemble = "experimental"
-link = "experimental"
-execute = "experimental"
-verify = "experimental"
-pipeline_verify = "experimental"
+assemble = "verified_in_ci"
+link = "verified_in_ci"
+execute = "verified_in_ci"
+verify = "verified_in_ci"
+pipeline_verify = "verified_in_ci"
 agent_verify = "verified_in_ci"
 
 [target.evidence]

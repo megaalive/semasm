@@ -144,8 +144,8 @@ build e2e; **Agent** = `semasm agent verify`.
 <!-- capabilities:start -->
 | Identity | Decode | Lower | ABI | Assemble | Link | Execute | Pipeline | Agent |
 |---|---|---|---|---|---|---|---|---|
-| `x86_64-unknown-linux-gnu` | partial | partial | unit-tested | experimental | experimental | experimental | experimental | CI-verified |
-| `x86_64-pc-windows-msvc` | partial | partial | unit-tested | experimental | experimental | experimental | experimental | CI-verified |
+| `x86_64-unknown-linux-gnu` | partial | partial | unit-tested | CI-verified | CI-verified | CI-verified | CI-verified | CI-verified |
+| `x86_64-pc-windows-msvc` | partial | partial | unit-tested | CI-verified | CI-verified | CI-verified | CI-verified | CI-verified |
 | `aarch64-unknown-linux-gnu` | partial | partial | unit-tested | CI-verified | CI-verified | CI-verified | CI-verified | CI-verified |
 | `riscv64gc-unknown-linux-gnu` | partial | partial | unit-tested | CI-verified | CI-verified | CI-verified | CI-verified | CI-verified |
 | `riscv32imac-unknown-none-elf` | declared | partial | unit-tested | unavailable | unavailable | unavailable | unavailable | declared |
