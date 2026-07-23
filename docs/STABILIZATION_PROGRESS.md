@@ -202,7 +202,7 @@ SysV `count_byte_red_zone` pairs with Win64 `count_byte_win64_shadow` as the ABI
 
 Tranche X3 + U + V closed: SemASM tip
 `b8d24c1` / functional U1 `ca959f39924a34a3bca2a5effe71e96e63238250`;
-VAA Gate handoff `a9f926d` / V3 docs `789f7ad` (pin remains U1 `ca959f3`).
+VAA Gate handoff `a9f926d` / V3 docs `789f7ad` (CI pin remains U1 `ca959f3`).
 
 **Honesty:** Gate-1 Incomplete ≠ Verified. SoftHSM / Fulcio / practice seals ≠
 SemASM Verified. Pipeline assemble/link/execute on x86 remains `experimental`.
