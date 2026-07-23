@@ -169,7 +169,7 @@ Tranche Q + X0 closed on tip `7fa6e18` (SemASM) with VAA handoff `80f848b`.
 | **X1** | Win64 import + noexport object-policy twins (parity SysV) | SemASM | **done** |
 | **R1** | `vaa search` staging → `vaa ingest` Gate smoke + verify-chain | VAA | **done** |
 
-Tranche R + X1 closed on tip `c8f2047` (SemASM) with VAA handoff pending pin.
+Tranche R + X1 closed on tip `c8f2047` (SemASM) with VAA handoff `171b553`.
 
 **Honesty:** Gate-1 Incomplete ≠ Verified. SoftHSM / Fulcio / practice seals ≠
 SemASM Verified. Pipeline assemble/link/execute on x86 remains `experimental`.
