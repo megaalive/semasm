@@ -39,10 +39,11 @@ Tranche R (search→ingest Gate loop) are complete. **X2 + S + T** through
 resolved from the contract oracle, not vector layout, so `memcpy` can safely
 reuse the `MemCmp` wire layout). Overlap stays fail-closed per ADR 0003: every
 synthesized `dst`/`src` pair is a distinct, non-aliasing fixture buffer; the
-harness checks the post-call `dst` buffer only, never `src`. Next up:
-**Rmem** (ADR 0004, region-precise memory proof). Gate-2 `ExecutionSandbox`
-(I2) landed on VAA (`execution_isolation` + `--execution-sandbox`); this
-SemASM wave does not retouch that path.
+harness checks the post-call `dst` buffer only, never `src`. **Rmem** (ADR
+0004, region-precise memory gate honesty) has landed — docs-only, no
+analyzer. Next up: **W4** HlaX64 `replace_byte` bridge. Gate-2
+`ExecutionSandbox` (I2) landed on VAA (`execution_isolation` +
+`--execution-sandbox`); this SemASM wave does not retouch that path.
 decode/lower stay `partial`. Exception: bugfix / pin tip only.
 
 ### Next waves (X4 + H4 + Y) — closed
@@ -95,7 +96,8 @@ e2e jobs bound in `capabilities.toml`.
 
 **Not all buffer leaves are read-only:** `replace_byte`/`memset`/`memcpy`
 declare `memory_write`. Region-precise store proof remains deferred (ADR
-0003; next candidate: **Rmem** / ADR 0004).
+0003; honesty locked in **ADR 0004** — heuristic/dynamic harness evidence
+only, not proof; see CI criteria checklist there before this line changes).
 
 **Intentionally not continued** in the same wave as write-shape:
 more HlaX64 bridges (`count_byte`, `find_first_byte`, pure-int), A64/RV MemCmp /
@@ -193,9 +195,24 @@ alone, so `generate_harness` / `evaluate` never collide with the read-only
 uses distinct, non-aliasing `dst`/`src` fixture buffers — SemASM never
 synthesizes or claims defined behavior for aliasing regions. AArch64/RISC-V
 harness stays fail-closed, matching `replace_byte`/`memset`/MemCmp.
-Next: **Rmem** (ADR 0004, region-precise memory proof — successor to the
-"region-precise store proof remains deferred" note below). VAA Gate/pin for
-`memcpy` is **not** part of this wave — SemASM only; VAA is untouched.
+VAA Gate/pin for `memcpy` is **not** part of this wave — SemASM only; VAA is
+untouched.
+
+### Region-precise memory gate honesty (Rmem, ADR 0004) — landed
+
+| Wave | Focus | Status |
+|---|---|---|
+| **Rmem** | ADR 0004: lock what the memory gate may claim for write-shape leaves (heuristic/dynamic, not proof); CI criteria for ADR 0003's "only into declared region" wording | **done** (docs-only) |
+
+Honesty: the static `memory` gate only runs for read-only buffer scans; for
+write-shape leaves (`replace_byte`/`memset`/`memcpy`) the only region
+evidence is the harness comparing post-call buffer bytes against synthesized
+oracle vectors — dynamic, sample-based, x86-only, no guard bytes, no alias
+analysis. See `adr/0004-region-precise-memory-gate.md` for the full honesty
+statement and the CI checklist for when ADR 0003's wording would actually be
+true. No analyzer, gate, or fixture code changed in this wave. Next:
+**W4** HlaX64 `replace_byte` bridge (per ADR 0003's deferred-bridge note),
+not an Rmem analyzer.
 
 ### Completed recently (not deferred)
 
