@@ -1199,6 +1199,7 @@ fn replace_byte_shape(contract: &CheckedContract) -> Option<ReplaceByteShape> {
 }
 
 /// Synthesise replace-byte vectors (count expected; harness also checks buffer).
+#[allow(clippy::vec_init_then_push)]
 fn synthesize_replace_byte_vectors(shape: ReplaceByteShape) -> Vec<TestVector> {
     let max_len = shape
         .max_length
@@ -1286,14 +1287,15 @@ fn synthesize_replace_byte_vectors(shape: ReplaceByteShape) -> Vec<TestVector> {
 }
 
 /// Expected post-mutation buffer for a replace-byte vector.
+#[allow(clippy::cast_possible_truncation)] // needle/replacement are masked to 0xff
 fn expected_replace_byte_buffer(v: &TestVector) -> Vec<u8> {
-    let needle = vector_needle(v) as u8;
-    let replacement = vector_replacement(v) as u8;
+    let needle = (vector_needle(v) & 0xff) as u8;
+    let replacement = (vector_replacement(v) & 0xff) as u8;
     match v.inputs.first() {
         Some(serde_json::Value::Array(items)) => items
             .iter()
             .map(|x| {
-                let b = x.as_u64().unwrap_or(0).min(255) as u8;
+                let b = (x.as_u64().unwrap_or(0) & 0xff) as u8;
                 if b == needle {
                     replacement
                 } else {
@@ -1620,7 +1622,7 @@ fn generate_sysv_replace_byte_harness(routine_symbol: &str, vectors: &[TestVecto
     out.push_str("    syscall\n");
 
     for (i, v) in vectors.iter().enumerate() {
-        let len = vector_length(v) as usize;
+        let len = usize::try_from(vector_length(v)).unwrap_or(0);
         if len == 0 {
             continue;
         }
@@ -1690,7 +1692,7 @@ fn generate_win64_replace_byte_harness(routine_symbol: &str, vectors: &[TestVect
     out.push_str("    add rsp, 40\n");
 
     for (i, v) in vectors.iter().enumerate() {
-        let len = vector_length(v) as usize;
+        let len = usize::try_from(vector_length(v)).unwrap_or(0);
         if len == 0 {
             continue;
         }

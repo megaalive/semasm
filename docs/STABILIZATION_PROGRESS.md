@@ -132,7 +132,7 @@ Honesty locked for the bump (M1):
 | **W0** | Accept ADR 0003 + contract/oracle | **done** |
 | **W1** | `HarnessShape::ReplaceByte` + post-buffer check + memory honesty | **done** |
 | **W2** | x86 asm/e2e/caps | **done** |
-| **W3** | VAA Gate + pin | pending |
+| **W3** | VAA Gate + pin | **done** |
 
 Oracle: `builtin.buffer.replace_byte`. Harness verifies return count **and**
 mutated buffer bytes. AArch64/RISC-V harness fail-closed. W4 HlaX64 bridge
