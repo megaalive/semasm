@@ -1,0 +1,40 @@
+contract_version = "0.1"
+
+[function]
+name = "find_last_byte"
+summary = "Return the last index of needle in a buffer, or length when absent"
+
+[[function.parameters]]
+name = "buffer"
+type = "ptr<const u8>"
+role = "input"
+
+[[function.parameters]]
+name = "length"
+type = "usize"
+role = "input"
+
+[[function.parameters]]
+name = "needle"
+type = "u8"
+role = "input"
+
+[[function.returns]]
+name = "result"
+type = "usize"
+
+[[function.requires]]
+expression = "length <= 4096"
+reason = "Arbitrary safety limit for this fixture."
+
+[[function.ensures]]
+expression = "result <= length"
+
+[[function.effects]]
+kind = "memory_read"
+region = "buffer[0..length]"
+
+[function.constraints]
+no_heap = true
+no_recursion = true
+bounded_stack_bytes = 128

@@ -17,7 +17,8 @@
 //! Supported calling shapes:
 //!
 //! - **Buffer scan** `(ptr<const u8> buffer, usize length, u8 needle) -> usize`
-//!   — `count_byte` (count) or `find_first_byte` (first index, or length if absent).
+//!   — `count_byte` (count), `find_first_byte` (first index, or length if absent),
+//!     or `find_last_byte` (last index, or length if absent).
 //! - **I64 wrapping sum** `(ptr<const i64> values, usize length) -> i64`
 //!   — canonical example `sum_i64`.
 //! - **Pure integer** `(usize, usize) -> usize` — canonical examples
@@ -71,6 +72,7 @@ pub fn synthesize_vectors(contract: &CheckedContract) -> Vec<TestVector> {
         return match shape.op {
             BufferScanOp::Count => synthesize_buffer_scan_vectors(shape),
             BufferScanOp::FindFirst => synthesize_find_first_vectors(shape),
+            BufferScanOp::FindLast => synthesize_find_last_vectors(shape),
         };
     }
     if let Some(shape) = i64_sum_shape(contract) {
@@ -90,6 +92,10 @@ pub const ORACLE_BUFFER_COUNT_EQUAL_U8_VERSION: u32 = 2;
 pub const ORACLE_BUFFER_FIND_FIRST_U8: &str = "builtin.buffer.find_first_u8";
 /// Profile version for [`ORACLE_BUFFER_FIND_FIRST_U8`].
 pub const ORACLE_BUFFER_FIND_FIRST_U8_VERSION: u32 = 1;
+/// Builtin oracle id for buffer find-last-u8 (`find_last_byte` shape).
+pub const ORACLE_BUFFER_FIND_LAST_U8: &str = "builtin.buffer.find_last_u8";
+/// Profile version for [`ORACLE_BUFFER_FIND_LAST_U8`].
+pub const ORACLE_BUFFER_FIND_LAST_U8_VERSION: u32 = 1;
 /// Builtin oracle id for i64 wrapping-sum shapes (`sum_i64`).
 pub const ORACLE_BUFFER_WRAPPING_SUM_I64: &str = "builtin.buffer.wrapping_sum_i64";
 /// Profile version for [`ORACLE_BUFFER_WRAPPING_SUM_I64`] (v2: ensures vs claim split).
@@ -150,6 +156,11 @@ pub fn recognize_behavior_oracle(contract: &CheckedContract) -> Option<Recognize
                 id: ORACLE_BUFFER_FIND_FIRST_U8,
                 version: ORACLE_BUFFER_FIND_FIRST_U8_VERSION,
                 claim: "result equals the first index of needle in buffer[0..length], or length when absent",
+            },
+            BufferScanOp::FindLast => RecognizedOracle {
+                id: ORACLE_BUFFER_FIND_LAST_U8,
+                version: ORACLE_BUFFER_FIND_LAST_U8_VERSION,
+                claim: "result equals the last index of needle in buffer[0..length], or length when absent",
             },
         });
     }
@@ -296,7 +307,9 @@ pub fn validate_vectors_match_oracle(
     };
     let shape = detect_harness_shape(vectors)?;
     let expected = match oracle.id {
-        ORACLE_BUFFER_COUNT_EQUAL_U8 | ORACLE_BUFFER_FIND_FIRST_U8 => HarnessShape::BufferScan,
+        ORACLE_BUFFER_COUNT_EQUAL_U8
+        | ORACLE_BUFFER_FIND_FIRST_U8
+        | ORACLE_BUFFER_FIND_LAST_U8 => HarnessShape::BufferScan,
         ORACLE_BUFFER_WRAPPING_SUM_I64 => HarnessShape::I64Sum,
         ORACLE_PURE_INT_BINARY_USIZE => HarnessShape::PureInt,
         other => {
@@ -555,6 +568,120 @@ fn synthesize_find_first_vectors(shape: ScanShape) -> Vec<TestVector> {
     vectors
 }
 
+/// Synthesise canonical find-last test vectors for `(ptr<const u8>, usize, u8) -> usize`.
+///
+/// Absent needle yields `length` (same fail-closed contract as find-first).
+#[allow(clippy::vec_init_then_push)]
+fn synthesize_find_last_vectors(shape: ScanShape) -> Vec<TestVector> {
+    let max_len = shape
+        .max_length
+        .unwrap_or(MAX_FIXTURE_CAP)
+        .clamp(1, MAX_FIXTURE_CAP);
+    let needle = u64::from(shape.needle);
+    let no_match = non_needle_bytes(shape.needle);
+
+    let mut vectors = Vec::new();
+
+    vectors.push(TestVector {
+        name: "empty input".into(),
+        inputs: vec![
+            serde_json::Value::Null,
+            serde_json::json!(0u64),
+            serde_json::json!(needle),
+        ],
+        expected: serde_json::json!(0u64),
+    });
+
+    vectors.push(TestVector {
+        name: "one byte (match)".into(),
+        inputs: vec![
+            serde_json::json!([needle]),
+            serde_json::json!(1u64),
+            serde_json::json!(needle),
+        ],
+        expected: serde_json::json!(0u64),
+    });
+
+    vectors.push(TestVector {
+        name: "no match".into(),
+        inputs: vec![
+            serde_json::json!([
+                u64::from(no_match[0]),
+                u64::from(no_match[1]),
+                u64::from(no_match[2])
+            ]),
+            serde_json::json!(3u64),
+            serde_json::json!(needle),
+        ],
+        expected: serde_json::json!(3u64),
+    });
+
+    vectors.push(TestVector {
+        name: "all match".into(),
+        inputs: vec![
+            serde_json::json!([needle, needle]),
+            serde_json::json!(2u64),
+            serde_json::json!(needle),
+        ],
+        expected: serde_json::json!(1u64),
+    });
+
+    vectors.push(TestVector {
+        name: "match after zeros".into(),
+        inputs: vec![
+            serde_json::json!([0u64, needle, 0u64]),
+            serde_json::json!(3u64),
+            serde_json::json!(needle),
+        ],
+        expected: serde_json::json!(1u64),
+    });
+
+    vectors.push(TestVector {
+        name: "match at end".into(),
+        inputs: vec![
+            serde_json::json!([u64::from(no_match[0]), u64::from(no_match[1]), needle]),
+            serde_json::json!(3u64),
+            serde_json::json!(needle),
+        ],
+        expected: serde_json::json!(2u64),
+    });
+
+    vectors.push(TestVector {
+        name: "last of two matches".into(),
+        inputs: vec![
+            serde_json::json!([needle, u64::from(no_match[0]), needle]),
+            serde_json::json!(3u64),
+            serde_json::json!(needle),
+        ],
+        expected: serde_json::json!(2u64),
+    });
+
+    let big: Vec<serde_json::Value> = (0..max_len).map(|_| serde_json::json!(needle)).collect();
+    vectors.push(TestVector {
+        name: "maximum configured fixture length".into(),
+        inputs: vec![
+            serde_json::Value::Array(big),
+            serde_json::json!(max_len as u64),
+            serde_json::json!(needle),
+        ],
+        expected: serde_json::json!((max_len as u64) - 1),
+    });
+
+    if shape.allows_null_when_empty {
+        vectors.push(TestVector {
+            name: "null pointer with zero length".into(),
+            inputs: vec![
+                serde_json::Value::Null,
+                serde_json::json!(0u64),
+                serde_json::json!(needle),
+            ],
+            expected: serde_json::json!(0u64),
+        });
+    }
+
+    vectors
+}
+
 /// Synthesise canonical pure-integer test vectors for `(usize, usize) -> usize`.
 #[allow(clippy::vec_init_then_push)]
 fn synthesize_pure_int_vectors(op: PureIntOp) -> Vec<TestVector> {
@@ -744,6 +871,7 @@ fn non_needle_bytes(needle: u8) -> [u8; 3] {
 enum BufferScanOp {
     Count,
     FindFirst,
+    FindLast,
 }
 
 /// Resolved calling shape for the canonical buffer-scan function.
@@ -852,10 +980,12 @@ fn scan_shape(contract: &CheckedContract) -> Option<ScanShape> {
 fn buffer_scan_op_from_name(name: &str) -> Option<BufferScanOp> {
     let lower = name.to_ascii_lowercase();
     let has_count = lower.contains("count");
+    let has_last = lower.contains("last") || lower.contains("rfind");
     let has_find = lower.contains("find") || lower.contains("index");
-    match (has_count, has_find) {
-        (true, false) => Some(BufferScanOp::Count),
-        (false, true) => Some(BufferScanOp::FindFirst),
+    match (has_count, has_last, has_find) {
+        (true, false, false) => Some(BufferScanOp::Count),
+        (false, true, _) => Some(BufferScanOp::FindLast),
+        (false, false, true) => Some(BufferScanOp::FindFirst),
         _ => None,
     }
 }
@@ -2202,6 +2332,53 @@ bounded_stack_bytes = 64
             .unwrap();
         assert_eq!(after.expected.as_u64(), Some(1));
         validate_vectors_match_oracle(&c, &v).expect("find_first vectors match oracle");
+    }
+
+    fn find_last_byte_contract() -> CheckedContract {
+        let toml = include_str!("../../../fixtures/contracts/find_last_byte.sem.toml");
+        check_contract(toml)
+    }
+
+    #[test]
+    fn recognizes_named_find_last_oracle() {
+        let c = find_last_byte_contract();
+        let oracle = recognize_behavior_oracle(&c).expect("find_last shape");
+        assert_eq!(oracle.id, ORACLE_BUFFER_FIND_LAST_U8);
+        assert_eq!(oracle.version, ORACLE_BUFFER_FIND_LAST_U8_VERSION);
+        assert!(oracle.claim.contains("last index"));
+        assert!(oracle.claim.contains("length when absent"));
+        assert!(is_read_only_buffer_scan(&c));
+    }
+
+    #[test]
+    fn synthesizes_find_last_vectors_with_absent_as_length() {
+        let c = find_last_byte_contract();
+        let v = synthesize_vectors(&c);
+        assert!(v.len() >= 7);
+        let no_match = v.iter().find(|case| case.name == "no match").unwrap();
+        assert_eq!(no_match.expected.as_u64(), Some(3));
+        let all = v.iter().find(|case| case.name == "all match").unwrap();
+        assert_eq!(all.expected.as_u64(), Some(1));
+        let last_two = v
+            .iter()
+            .find(|case| case.name == "last of two matches")
+            .unwrap();
+        assert_eq!(last_two.expected.as_u64(), Some(2));
+        validate_vectors_match_oracle(&c, &v).expect("find_last vectors match oracle");
+    }
+
+    #[test]
+    fn find_last_name_discriminator_fail_closed_on_ambiguous() {
+        assert_eq!(
+            buffer_scan_op_from_name("find_last_byte"),
+            Some(BufferScanOp::FindLast)
+        );
+        assert_eq!(
+            buffer_scan_op_from_name("find_first_byte"),
+            Some(BufferScanOp::FindFirst)
+        );
+        assert_eq!(buffer_scan_op_from_name("count_byte"), Some(BufferScanOp::Count));
+        assert!(buffer_scan_op_from_name("count_find_byte").is_none());
     }
 
     #[test]
