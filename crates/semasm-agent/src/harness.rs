@@ -19,12 +19,14 @@
 //! - **Buffer scan** `(ptr<const u8> buffer, usize length, u8 needle) -> usize`
 //!   — `count_byte` (count), `find_first_byte` (first index, or length if absent),
 //!   or `find_last_byte` (last index, or length if absent).
+//! - **MemCmp** `(ptr<const u8> a, ptr<const u8> b, usize length) -> isize`
+//!   - unsigned lexicographic comparison returning only `-1`, `0`, or `1`.
 //! - **I64 wrapping sum** `(ptr<const i64> values, usize length) -> i64`
 //!   — canonical example `sum_i64`.
 //! - **Pure integer** `(usize, usize) -> usize` — canonical examples
 //!   `min_usize` / `max_usize` (same calling shape; op from name + ensures).
 //!
-//! Synthesis tries buffer-scan, then i64-sum, then pure-integer.  When the
+//! Synthesis tries buffer-scan, MemCmp, i64-sum, then pure-integer.  When the
 //! contract matches none of those shapes the synthesizer returns an empty
 //! vector set and the caller may fall back to a hand-written set.
 //!
@@ -75,6 +77,9 @@ pub fn synthesize_vectors(contract: &CheckedContract) -> Vec<TestVector> {
             BufferScanOp::FindLast => synthesize_find_last_vectors(shape),
         };
     }
+    if let Some(shape) = memcmp_shape(contract) {
+        return synthesize_memcmp_vectors(shape);
+    }
     if let Some(shape) = i64_sum_shape(contract) {
         return synthesize_i64_sum_vectors(shape);
     }
@@ -96,6 +101,10 @@ pub const ORACLE_BUFFER_FIND_FIRST_U8_VERSION: u32 = 1;
 pub const ORACLE_BUFFER_FIND_LAST_U8: &str = "builtin.buffer.find_last_u8";
 /// Profile version for [`ORACLE_BUFFER_FIND_LAST_U8`].
 pub const ORACLE_BUFFER_FIND_LAST_U8_VERSION: u32 = 1;
+/// Builtin oracle id for unsigned bytewise lexicographic comparison.
+pub const ORACLE_BUFFER_MEMCMP_I8: &str = "builtin.buffer.memcmp_i8";
+/// Profile version for [`ORACLE_BUFFER_MEMCMP_I8`].
+pub const ORACLE_BUFFER_MEMCMP_I8_VERSION: u32 = 1;
 /// Builtin oracle id for i64 wrapping-sum shapes (`sum_i64`).
 pub const ORACLE_BUFFER_WRAPPING_SUM_I64: &str = "builtin.buffer.wrapping_sum_i64";
 /// Profile version for [`ORACLE_BUFFER_WRAPPING_SUM_I64`] (v2: ensures vs claim split).
@@ -164,6 +173,13 @@ pub fn recognize_behavior_oracle(contract: &CheckedContract) -> Option<Recognize
             },
         });
     }
+    if memcmp_shape(contract).is_some() {
+        return Some(RecognizedOracle {
+            id: ORACLE_BUFFER_MEMCMP_I8,
+            version: ORACLE_BUFFER_MEMCMP_I8_VERSION,
+            claim: "result is -1, 0, or 1 from unsigned lexicographic comparison of a[0..length] and b[0..length]",
+        });
+    }
     if i64_sum_shape(contract).is_some() {
         return Some(RecognizedOracle {
             id: ORACLE_BUFFER_WRAPPING_SUM_I64,
@@ -191,7 +207,10 @@ pub fn is_read_only_buffer_scan(contract: &CheckedContract) -> bool {
             .iter()
             .any(|effect| effect.kind == "memory_write");
     }
-    if scan_shape(contract).is_none() && i64_sum_shape(contract).is_none() {
+    if scan_shape(contract).is_none()
+        && memcmp_shape(contract).is_none()
+        && i64_sum_shape(contract).is_none()
+    {
         return false;
     }
     let has_read = contract
@@ -310,6 +329,7 @@ pub fn validate_vectors_match_oracle(
         ORACLE_BUFFER_COUNT_EQUAL_U8 | ORACLE_BUFFER_FIND_FIRST_U8 | ORACLE_BUFFER_FIND_LAST_U8 => {
             HarnessShape::BufferScan
         }
+        ORACLE_BUFFER_MEMCMP_I8 => HarnessShape::MemCmp,
         ORACLE_BUFFER_WRAPPING_SUM_I64 => HarnessShape::I64Sum,
         ORACLE_PURE_INT_BINARY_USIZE => HarnessShape::PureInt,
         other => {
@@ -329,6 +349,7 @@ pub fn validate_vectors_match_oracle(
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 enum HarnessShape {
     BufferScan,
+    MemCmp,
     I64Sum,
     PureInt,
 }
@@ -342,7 +363,20 @@ fn detect_harness_shape(vectors: &[TestVector]) -> Result<HarnessShape, String> 
         3 if matches!(
             first.inputs.first(),
             Some(serde_json::Value::Null | serde_json::Value::Array(_))
-        ) =>
+        ) && matches!(
+            first.inputs.get(1),
+            Some(serde_json::Value::Null | serde_json::Value::Array(_))
+        ) && first
+            .inputs
+            .get(2)
+            .is_some_and(serde_json::Value::is_number) =>
+        {
+            Ok(HarnessShape::MemCmp)
+        }
+        3 if matches!(
+            first.inputs.first(),
+            Some(serde_json::Value::Null | serde_json::Value::Array(_))
+        ) && first.inputs[1..].iter().all(serde_json::Value::is_number) =>
         {
             Ok(HarnessShape::BufferScan)
         }
@@ -359,7 +393,9 @@ fn detect_harness_shape(vectors: &[TestVector]) -> Result<HarnessShape, String> 
         2 if first.inputs.iter().all(serde_json::Value::is_number) => Ok(HarnessShape::PureInt),
         n => Err(format!(
             "unsupported test vector shape ({n} inputs); \
-             expected buffer-scan (3), i64-sum (2: array/null + length), or pure-int (2 numeric)"
+             expected buffer-scan (3: array/null + two numbers), memcmp \
+             (3: two arrays/null + length), i64-sum (2: array/null + length), \
+             or pure-int (2 numeric)"
         )),
     }
 }
@@ -682,6 +718,89 @@ fn synthesize_find_last_vectors(shape: ScanShape) -> Vec<TestVector> {
     vectors
 }
 
+/// Synthesise canonical unsigned lexicographic comparison vectors.
+#[allow(clippy::vec_init_then_push)]
+fn synthesize_memcmp_vectors(shape: MemCmpShape) -> Vec<TestVector> {
+    let max_len = shape
+        .max_length
+        .unwrap_or(MAX_FIXTURE_CAP)
+        .clamp(1, MAX_FIXTURE_CAP);
+    let mut vectors = Vec::new();
+
+    vectors.push(TestVector {
+        name: "empty buffers".into(),
+        inputs: vec![
+            serde_json::json!([]),
+            serde_json::json!([]),
+            serde_json::json!(0u64),
+        ],
+        expected: serde_json::json!(0i64),
+    });
+    vectors.push(TestVector {
+        name: "equal buffers".into(),
+        inputs: vec![
+            serde_json::json!([0u64, 127, 255]),
+            serde_json::json!([0u64, 127, 255]),
+            serde_json::json!(3u64),
+        ],
+        expected: serde_json::json!(0i64),
+    });
+    vectors.push(TestVector {
+        name: "a less than b".into(),
+        inputs: vec![
+            serde_json::json!([0u64]),
+            serde_json::json!([255u64]),
+            serde_json::json!(1u64),
+        ],
+        expected: serde_json::json!(-1i64),
+    });
+    vectors.push(TestVector {
+        name: "a greater than b".into(),
+        inputs: vec![
+            serde_json::json!([255u64]),
+            serde_json::json!([0u64]),
+            serde_json::json!(1u64),
+        ],
+        expected: serde_json::json!(1i64),
+    });
+    vectors.push(TestVector {
+        name: "equal prefix then difference".into(),
+        inputs: vec![
+            serde_json::json!([1u64, 2, 3, 4]),
+            serde_json::json!([1u64, 2, 3, 5]),
+            serde_json::json!(4u64),
+        ],
+        expected: serde_json::json!(-1i64),
+    });
+
+    let equal: Vec<serde_json::Value> = (0..max_len)
+        .map(|i| serde_json::json!((i & 0xff) as u64))
+        .collect();
+    vectors.push(TestVector {
+        name: "maximum configured fixture length".into(),
+        inputs: vec![
+            serde_json::Value::Array(equal.clone()),
+            serde_json::Value::Array(equal),
+            serde_json::json!(max_len as u64),
+        ],
+        expected: serde_json::json!(0i64),
+    });
+
+    if shape.allows_null {
+        vectors.push(TestVector {
+            name: "null buffers with zero length".into(),
+            inputs: vec![
+                serde_json::Value::Null,
+                serde_json::Value::Null,
+                serde_json::json!(0u64),
+            ],
+            expected: serde_json::json!(0i64),
+        });
+    }
+
+    vectors
+}
+
 /// Synthesise canonical pure-integer test vectors for `(usize, usize) -> usize`.
 #[allow(clippy::vec_init_then_push)]
 fn synthesize_pure_int_vectors(op: PureIntOp) -> Vec<TestVector> {
@@ -885,6 +1004,61 @@ struct ScanShape {
     max_length: Option<usize>,
     /// Whether a null buffer is permitted when length is zero.
     allows_null_when_empty: bool,
+}
+
+/// Resolved calling shape for unsigned lexicographic byte comparison.
+#[derive(Clone, Copy)]
+struct MemCmpShape {
+    /// Upper bound on buffer length, if derivable from requires.
+    max_length: Option<usize>,
+    /// Whether null buffers are permitted when length is zero.
+    allows_null: bool,
+}
+
+/// Detect `(ptr<const u8>, ptr<const u8>, usize) -> isize` memcmp shapes.
+fn memcmp_shape(contract: &CheckedContract) -> Option<MemCmpShape> {
+    let lower_name = contract.name.to_ascii_lowercase();
+    if !lower_name.contains("memcmp") && !lower_name.contains("bcmp") {
+        return None;
+    }
+    if contract.parameters.len() != 3 || contract.returns.len() != 1 {
+        return None;
+    }
+
+    let pointers: Vec<_> = contract
+        .parameters
+        .iter()
+        .filter(|p| {
+            matches!(
+                &p.ty,
+                SemType::Ptr {
+                    is_const: true,
+                    inner
+                } if matches!(inner.as_ref(), SemType::UInt { bits: 8 })
+            )
+        })
+        .collect();
+    let lengths: Vec<_> = contract
+        .parameters
+        .iter()
+        .filter(|p| matches!(p.ty, SemType::Usize))
+        .collect();
+    if pointers.len() != 2
+        || pointers[0].name == pointers[1].name
+        || lengths.len() != 1
+        || !matches!(contract.returns[0].ty, SemType::Isize)
+    {
+        return None;
+    }
+
+    let length = lengths[0];
+    let allows_null = pointers
+        .iter()
+        .all(|p| allows_null_when_empty(contract, &p.name, &length.name));
+    Some(MemCmpShape {
+        max_length: length_bound_from_requires(contract, &length.name),
+        allows_null,
+    })
 }
 
 /// Detect the `(ptr<const i64>, usize) -> i64` wrapping-sum shape.
@@ -1117,6 +1291,9 @@ pub fn generate_harness(
         (Abi::SysVAmd64, HarnessShape::BufferScan) => {
             Ok(generate_sysv_buffer_harness(routine_symbol, vectors))
         }
+        (Abi::SysVAmd64, HarnessShape::MemCmp) => {
+            Ok(generate_sysv_memcmp_harness(routine_symbol, vectors))
+        }
         (Abi::SysVAmd64, HarnessShape::I64Sum) => {
             Ok(generate_sysv_i64_sum_harness(routine_symbol, vectors))
         }
@@ -1125,6 +1302,9 @@ pub fn generate_harness(
         }
         (Abi::WindowsX64, HarnessShape::BufferScan) => {
             Ok(generate_win64_buffer_harness(routine_symbol, vectors))
+        }
+        (Abi::WindowsX64, HarnessShape::MemCmp) => {
+            Ok(generate_win64_memcmp_harness(routine_symbol, vectors))
         }
         (Abi::WindowsX64, HarnessShape::I64Sum) => {
             Ok(generate_win64_i64_sum_harness(routine_symbol, vectors))
@@ -1135,6 +1315,9 @@ pub fn generate_harness(
         (Abi::Aapcs64, HarnessShape::BufferScan) => {
             Ok(generate_aapcs64_buffer_harness(routine_symbol, vectors))
         }
+        (Abi::Aapcs64, HarnessShape::MemCmp) => {
+            Err("memcmp harness not yet supported on this ABI".into())
+        }
         (Abi::Aapcs64, HarnessShape::I64Sum) => {
             Ok(generate_aapcs64_i64_sum_harness(routine_symbol, vectors))
         }
@@ -1143,6 +1326,9 @@ pub fn generate_harness(
         }
         (Abi::Riscv, HarnessShape::BufferScan) => {
             Ok(generate_riscv_buffer_harness(routine_symbol, vectors))
+        }
+        (Abi::Riscv, HarnessShape::MemCmp) => {
+            Err("memcmp harness not yet supported on this ABI".into())
         }
         (Abi::Riscv, HarnessShape::I64Sum) => {
             Ok(generate_riscv_i64_sum_harness(routine_symbol, vectors))
@@ -1207,6 +1393,25 @@ fn emit_i64_sum_vector_data(out: &mut String, vectors: &[TestVector]) {
     }
 }
 
+fn emit_memcmp_vector_data(out: &mut String, vectors: &[TestVector]) {
+    out.push_str("section .data\n");
+    for (i, v) in vectors.iter().enumerate() {
+        let a = vector_memcmp_a_bytes(v);
+        let b = vector_memcmp_b_bytes(v);
+        let _ = writeln!(out, "vec{i}_len: dq {}", vector_memcmp_length(v));
+        let _ = write!(out, "vec{i}_a: db {}", a.join(", "));
+        if a.is_empty() {
+            out.push_str(" 0");
+        }
+        out.push('\n');
+        let _ = write!(out, "vec{i}_b: db {}", b.join(", "));
+        if b.is_empty() {
+            out.push_str(" 0");
+        }
+        out.push('\n');
+    }
+}
+
 fn emit_gas_i64_sum_vector_data(out: &mut String, vectors: &[TestVector]) {
     out.push_str(".section .data\n");
     for (i, v) in vectors.iter().enumerate() {
@@ -1264,6 +1469,51 @@ fn generate_sysv_buffer_harness(routine_symbol: &str, vectors: &[TestVector]) ->
     out.push_str("    mov eax, 1          ; sys_write\n");
     out.push_str("    mov edi, 1          ; stdout\n");
     let _ = writeln!(out, "    lea rsi, [results]");
+    let _ = writeln!(out, "    mov edx, {}", vectors.len() * 8);
+    out.push_str("    syscall\n");
+    out.push_str("    mov eax, 60         ; sys_exit\n");
+    out.push_str("    xor edi, edi\n");
+    out.push_str("    syscall\n");
+
+    out
+}
+
+/// Generate NASM source for a SysV dual-buffer memcmp `_start` harness.
+fn generate_sysv_memcmp_harness(routine_symbol: &str, vectors: &[TestVector]) -> String {
+    let mut out = String::new();
+
+    out.push_str("BITS 64\n");
+    out.push_str("DEFAULT REL\n\n");
+    emit_memcmp_vector_data(&mut out, vectors);
+
+    out.push_str("\nsection .bss\n");
+    let _ = writeln!(out, "results: resb {}", vectors.len() * 8);
+    out.push_str("\nsection .text\n");
+    let _ = writeln!(out, "extern {routine_symbol}");
+    out.push_str("global _start\n");
+    out.push_str("_start:\n");
+
+    for (i, v) in vectors.iter().enumerate() {
+        let _ = writeln!(out, "    ; vector {i}: {}", v.name);
+        if v.inputs.first().is_some_and(serde_json::Value::is_null) {
+            out.push_str("    xor edi, edi\n");
+        } else {
+            let _ = writeln!(out, "    lea rdi, [vec{i}_a]");
+        }
+        if v.inputs.get(1).is_some_and(serde_json::Value::is_null) {
+            out.push_str("    xor esi, esi\n");
+        } else {
+            let _ = writeln!(out, "    lea rsi, [vec{i}_b]");
+        }
+        let _ = writeln!(out, "    mov rdx, [vec{i}_len]");
+        let _ = writeln!(out, "    call {routine_symbol}");
+        let _ = writeln!(out, "    mov [results + {i}*8], rax");
+    }
+
+    out.push_str("    ; write(results, len)\n");
+    out.push_str("    mov eax, 1          ; sys_write\n");
+    out.push_str("    mov edi, 1          ; stdout\n");
+    out.push_str("    lea rsi, [results]\n");
     let _ = writeln!(out, "    mov edx, {}", vectors.len() * 8);
     out.push_str("    syscall\n");
     out.push_str("    mov eax, 60         ; sys_exit\n");
@@ -1393,6 +1643,62 @@ fn generate_win64_buffer_harness(routine_symbol: &str, vectors: &[TestVector]) -
     out.push_str("    call WriteFile\n");
     out.push_str("    add rsp, 40\n");
 
+    out.push_str("    sub rsp, 40\n");
+    out.push_str("    xor ecx, ecx\n");
+    out.push_str("    call ExitProcess\n");
+
+    out
+}
+
+/// Generate NASM source for a Win64 dual-buffer memcmp `main` harness.
+fn generate_win64_memcmp_harness(routine_symbol: &str, vectors: &[TestVector]) -> String {
+    let mut out = String::new();
+
+    out.push_str("BITS 64\n");
+    out.push_str("DEFAULT REL\n\n");
+    out.push_str("EXTERN GetStdHandle\n");
+    out.push_str("EXTERN WriteFile\n");
+    out.push_str("EXTERN ExitProcess\n\n");
+    emit_memcmp_vector_data(&mut out, vectors);
+
+    out.push_str("\nsection .bss\n");
+    let _ = writeln!(out, "results: resb {}", vectors.len() * 8);
+    out.push_str("written: resq 1\n");
+    out.push_str("\nsection .text\n");
+    let _ = writeln!(out, "extern {routine_symbol}");
+    out.push_str("global main\n");
+    out.push_str("main:\n");
+
+    for (i, v) in vectors.iter().enumerate() {
+        let _ = writeln!(out, "    ; vector {i}: {}", v.name);
+        out.push_str("    sub rsp, 40\n");
+        if v.inputs.first().is_some_and(serde_json::Value::is_null) {
+            out.push_str("    xor ecx, ecx\n");
+        } else {
+            let _ = writeln!(out, "    lea rcx, [vec{i}_a]");
+        }
+        if v.inputs.get(1).is_some_and(serde_json::Value::is_null) {
+            out.push_str("    xor edx, edx\n");
+        } else {
+            let _ = writeln!(out, "    lea rdx, [vec{i}_b]");
+        }
+        let _ = writeln!(out, "    mov r8, [vec{i}_len]");
+        let _ = writeln!(out, "    call {routine_symbol}");
+        out.push_str("    add rsp, 40\n");
+        let _ = writeln!(out, "    mov [results + {i}*8], rax");
+    }
+
+    out.push_str("    ; WriteFile(stdout, results, len, &written, NULL)\n");
+    out.push_str("    sub rsp, 40\n");
+    out.push_str("    mov ecx, -11        ; STD_OUTPUT_HANDLE\n");
+    out.push_str("    call GetStdHandle\n");
+    out.push_str("    mov rcx, rax\n");
+    out.push_str("    lea rdx, [results]\n");
+    let _ = writeln!(out, "    mov r8d, {}", vectors.len() * 8);
+    out.push_str("    lea r9, [written]\n");
+    out.push_str("    mov qword [rsp + 32], 0\n");
+    out.push_str("    call WriteFile\n");
+    out.push_str("    add rsp, 40\n");
     out.push_str("    sub rsp, 40\n");
     out.push_str("    xor ecx, ecx\n");
     out.push_str("    call ExitProcess\n");
@@ -1835,6 +2141,34 @@ fn vector_buffer_bytes(v: &TestVector) -> Vec<String> {
     }
 }
 
+fn vector_memcmp_buffer_bytes(v: &TestVector, index: usize) -> Vec<String> {
+    match v.inputs.get(index) {
+        Some(serde_json::Value::Array(items)) => items
+            .iter()
+            .map(|x| x.as_u64().unwrap_or(0).min(255).to_string())
+            .collect(),
+        _ => Vec::new(),
+    }
+}
+
+/// Extract memcmp buffer `a` (first input).
+fn vector_memcmp_a_bytes(v: &TestVector) -> Vec<String> {
+    vector_memcmp_buffer_bytes(v, 0)
+}
+
+/// Extract memcmp buffer `b` (second input).
+fn vector_memcmp_b_bytes(v: &TestVector) -> Vec<String> {
+    vector_memcmp_buffer_bytes(v, 1)
+}
+
+/// Extract memcmp length (third input).
+fn vector_memcmp_length(v: &TestVector) -> u64 {
+    v.inputs
+        .get(2)
+        .and_then(serde_json::Value::as_u64)
+        .unwrap_or(0)
+}
+
 /// Extract the length (second input) for a vector.
 fn vector_length(v: &TestVector) -> u64 {
     v.inputs
@@ -1998,6 +2332,82 @@ expression = "count <= length"
     fn sum_i64_contract() -> CheckedContract {
         let toml = include_str!("../../../fixtures/contracts/sum_i64.sem.toml");
         check_contract(toml)
+    }
+
+    fn memcmp_contract() -> CheckedContract {
+        let toml = include_str!("../../../fixtures/contracts/memcmp.sem.toml");
+        check_contract(toml)
+    }
+
+    #[test]
+    fn memcmp_recognizes_oracle() {
+        let c = memcmp_contract();
+        let oracle = recognize_behavior_oracle(&c).expect("memcmp shape");
+        assert_eq!(oracle.id, ORACLE_BUFFER_MEMCMP_I8);
+        assert_eq!(oracle.version, ORACLE_BUFFER_MEMCMP_I8_VERSION);
+        assert_eq!(oracle.version, 1);
+        assert!(oracle.claim.contains("-1, 0, or 1"));
+        assert!(oracle.claim.contains("unsigned lexicographic"));
+        assert!(is_read_only_buffer_scan(&c));
+    }
+
+    #[test]
+    fn memcmp_synthesizes_fail_closed_vectors() {
+        let vectors = synthesize_vectors(&memcmp_contract());
+        assert_eq!(vectors.len(), 7);
+        let expected: Vec<i64> = vectors
+            .iter()
+            .map(|v| v.expected.as_i64().expect("signed memcmp result"))
+            .collect();
+        assert!(expected.contains(&-1));
+        assert!(expected.contains(&0));
+        assert!(expected.contains(&1));
+        assert!(expected.iter().all(|value| (-1..=1).contains(value)));
+        assert_eq!(vectors[0].name, "empty buffers");
+        assert_eq!(vectors[0].expected, serde_json::json!(0i64));
+        assert!(vectors
+            .iter()
+            .any(|v| v.name == "equal prefix then difference"));
+        assert!(vectors
+            .iter()
+            .any(|v| v.name == "maximum configured fixture length"));
+        assert!(vectors
+            .iter()
+            .any(|v| v.name == "null buffers with zero length"));
+    }
+
+    #[test]
+    fn memcmp_name_discriminator_is_fail_closed() {
+        let source = include_str!("../../../fixtures/contracts/memcmp.sem.toml");
+        let unnamed = check_contract(&source.replace("name = \"memcmp\"", "name = \"compare\""));
+        assert!(memcmp_shape(&unnamed).is_none());
+        assert!(recognize_behavior_oracle(&unnamed).is_none());
+        assert!(synthesize_vectors(&unnamed).is_empty());
+
+        let bcmp = check_contract(&source.replace("name = \"memcmp\"", "name = \"secure_bcmp\""));
+        assert!(memcmp_shape(&bcmp).is_some());
+    }
+
+    #[test]
+    fn memcmp_vectors_validate_and_detect_distinct_shape() {
+        let c = memcmp_contract();
+        let vectors = synthesize_vectors(&c);
+        assert_eq!(
+            detect_harness_shape(&vectors).expect("shape"),
+            HarnessShape::MemCmp
+        );
+        validate_vectors_match_oracle(&c, &vectors).expect("memcmp vectors match oracle");
+    }
+
+    #[test]
+    fn memcmp_sysv_harness_loads_both_buffers() {
+        let vectors = synthesize_vectors(&memcmp_contract());
+        let src = generate_harness("memcmp", &vectors, Abi::SysVAmd64).expect("sysv harness");
+        assert!(src.contains("lea rdi, [vec0_a]"));
+        assert!(src.contains("lea rsi, [vec0_b]"));
+        assert!(src.contains("mov rdx, [vec0_len]"));
+        assert!(src.contains("vec0_a: db"));
+        assert!(src.contains("vec0_b: db"));
     }
 
     #[test]

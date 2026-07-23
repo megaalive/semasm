@@ -1,0 +1,47 @@
+contract_version = "0.1"
+
+[function]
+name = "memcmp"
+summary = "Compare two buffers lexicographically as unsigned bytes"
+
+[[function.parameters]]
+name = "a"
+type = "ptr<const u8>"
+role = "input"
+
+[[function.parameters]]
+name = "b"
+type = "ptr<const u8>"
+role = "input"
+
+[[function.parameters]]
+name = "length"
+type = "usize"
+role = "input"
+
+[[function.returns]]
+name = "result"
+type = "isize"
+
+[[function.requires]]
+expression = "length <= 4096"
+reason = "Arbitrary safety limit for this fixture."
+
+[[function.ensures]]
+expression = "result >= -1"
+
+[[function.ensures]]
+expression = "result <= 1"
+
+[[function.effects]]
+kind = "memory_read"
+region = "a[0..length]"
+
+[[function.effects]]
+kind = "memory_read"
+region = "b[0..length]"
+
+[function.constraints]
+no_heap = true
+no_recursion = true
+bounded_stack_bytes = 128
