@@ -155,10 +155,10 @@ Tranche P is closed on tip `511bb45` (SemASM) with VAA handoff `5961c1b`.
 
 | Wave | Focus | Owner | Status |
 |---|---|---|---|
-| **Q0** | Caps/docs honesty: next = VAA repair/search loop + x86 depth | SemASM+VAA | **in progress** |
-| **Q1** | `find_first_byte` multi-candidate `vaa run` wrong→repair Gate smoke | VAA | pending |
+| **Q0** | Caps/docs honesty: next = VAA repair/search loop + x86 depth | SemASM+VAA | **done** |
+| **Q1** | `find_first_byte` multi-candidate `vaa run` wrong→repair Gate smoke | VAA | **done** |
 | **Q2** | `vaa search` nop-slide staging Gate smoke (offline; ≠ CryptOpt/Verified) | VAA | pending |
-| **X0** | Win64 W+X object-policy twin (parity SysV `count_byte_wx`) | SemASM | pending |
+| **X0** | Win64 W+X object-policy twin (parity SysV `count_byte_wx`) | SemASM | **in progress** |
 
 **Honesty:** Gate-1 Incomplete ≠ Verified. SoftHSM / Fulcio / practice seals ≠
 SemASM Verified. Pipeline assemble/link/execute on x86 remains `experimental`.
