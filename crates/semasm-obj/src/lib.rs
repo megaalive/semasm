@@ -456,10 +456,34 @@ impl ObjectInfo {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::path::PathBuf;
 
     // Per-call unique counter so parallel tests don't race on a shared
     // temp directory.
     static UNIQUE: std::sync::atomic::AtomicUsize = std::sync::atomic::AtomicUsize::new(0);
+
+    #[test]
+    fn patched_win64_wx_fixture_reports_writable_executable() {
+        // NASM cannot emit W+X on win64 code sections; Gate uses a WRITE-bit–patched
+        // COFF object so object-policy fail-closed is exercised on PE/COFF.
+        let path = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+            .join("../../fixtures/obj/count_byte_wx_win64.obj");
+        let info = read(&path).expect("read patched wx win64 object");
+        assert_eq!(info.format, ContainerFormat::Pe);
+        assert_eq!(info.architecture, Isa::X86_64);
+        let wx: Vec<_> = info
+            .sections
+            .iter()
+            .filter(|s| s.writable && s.executable)
+            .map(|s| s.name.as_str())
+            .collect();
+        assert!(
+            !wx.is_empty(),
+            "expected writable+executable section(s), got sections={:?}",
+            info.sections
+        );
+        assert!(info.exports.iter().any(|s| s == "count_byte"));
+    }
 
     #[test]
     fn rejects_empty_buffer_without_panic() {
