@@ -1571,11 +1571,7 @@ fn emit_replace_byte_vector_data(out: &mut String, vectors: &[TestVector]) {
         let bytes = vector_buffer_bytes(v);
         let _ = writeln!(out, "align 8\nvec{i}_len:\n    dq {}", vector_length(v));
         let _ = writeln!(out, "vec{i}_needle:\n    db {}", vector_needle(v));
-        let _ = writeln!(
-            out,
-            "vec{i}_replacement:\n    db {}",
-            vector_replacement(v)
-        );
+        let _ = writeln!(out, "vec{i}_replacement:\n    db {}", vector_replacement(v));
         if bytes.is_empty() {
             // Keep a writable byte so lea is always valid when length is 0.
             let _ = writeln!(out, "vec{i}_buf:\n    db 0");
@@ -2855,7 +2851,9 @@ expression = "count <= length"
     }
 
     fn replace_byte_contract() -> CheckedContract {
-        check_contract(include_str!("../../../fixtures/contracts/replace_byte.sem.toml"))
+        check_contract(include_str!(
+            "../../../fixtures/contracts/replace_byte.sem.toml"
+        ))
     }
 
     #[test]
