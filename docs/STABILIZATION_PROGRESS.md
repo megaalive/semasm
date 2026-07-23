@@ -94,9 +94,9 @@ e2e jobs bound in `capabilities.toml`.
 | `memcmp` | yes (x86; A64/RV fail-closed) | yes | yes (Y) | yes (H5) |
 | `sum_i64` | yes | yes | — | yes (H1) |
 | `min_usize` / `max_usize` | yes | yes | — | — |
-| `replace_byte` | yes (x86; A64/RV fail-closed) | W3 | — | — |
-| `memset` | yes (x86; A64/RV fail-closed) | — | — | — |
-| `memcpy` | yes (x86; A64/RV fail-closed) | — | — | — |
+| `replace_byte` | yes (x86; A64/RV fail-closed) | W3 | yes (VAA Th3) | yes (W4) |
+| `memset` | yes (x86; A64/RV fail-closed) | Wm3 (VAA) | yes (VAA Th4) | yes (VAA Th5) |
+| `memcpy` | yes (x86; A64/RV fail-closed) | Wc (VAA) | yes (VAA Th6) | yes (VAA Th7) |
 
 **Not all buffer leaves are read-only:** `replace_byte`/`memset`/`memcpy`
 declare `memory_write`. Region-precise store proof remains deferred (ADR
@@ -105,10 +105,10 @@ only, not proof; see CI criteria checklist there before this line changes).
 
 **Intentionally not continued** in the same wave as write-shape: pure-int
 (`min_usize`/`max_usize`) HlaX64 bridges, A64/RV MemCmp / replace harness,
-CryptOpt embed, formal `ensures` / full alias. (`count_byte` and
-`find_first_byte` HlaX64 bridges landed on VAA's side as Thin Th1/Th2 —
-see VAA `docs/progress.md`; this row is HlaX64/VAA-owned, not a SemASM
-analyzer or Gate change.)
+CryptOpt embed, formal `ensures` / full alias. Thin Th1–Th7 closed on VAA
+(HlaX64 bridges for `count_byte`/`find_first`/`memset`/`memcpy`, plus
+`replace_byte`/`memset`/`memcpy` search-ingest). Residual Thin: pure-int
+bridges only. Horizon unchanged.
 
 #### Pipeline maturity bump checklist (D2 companion)
 
