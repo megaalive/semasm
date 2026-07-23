@@ -30,9 +30,8 @@ Stabilization PR-01…18, Bulletproof P0–P5, X86 Golden Path Depth, Evidence
 W1–W5, controller handshake, shared `count_byte` / `sum_i64` / `min_usize` slices
 (VAA Gate-1/2), hardening T0–T6, runner JSON R0–R2, and Tranche M are complete on
 `main`. GitHub Release **`v0.1.0`**, Tranche N–Q, X0/X1 object-policy depth, and
-Tranche R (search→ingest Gate loop) are complete. **X2a/X2b** and **S0–S1**
-(`find_last_byte` SemASM pack) land next; then **S2** VAA handoff and **Tranche T** (search
-ingest skip Violated).
+Tranche R (search→ingest Gate loop) are complete. **X2 + S + T** closed
+(`find_last_byte` Gate + `vaa search --ingest`).
 
 | Step | Focus | Status |
 |---|---|---|
@@ -181,8 +180,11 @@ Tranche R + X1 closed on tip `c8f2047` (SemASM) with VAA handoff `171b553`.
 | **X2b** | VAA mutator `nop-before-ret` | VAA | **done** (`9a490d3`) |
 | **S0** | `find_last_byte` oracle/contract/vectors (absent→length) | SemASM | **done** |
 | **S1** | `find_last_byte` asm/e2e/goldens/adversarial + CI | SemASM | **done** (`b6d3395`) |
-| **S2** | VAA pin + Gate-1/2 (+ run wrong→repair) | VAA | **in progress** |
-| **T0–T2** | `vaa search --ingest` skip Violated → Incomplete | VAA | **in progress** |
+| **S2** | VAA pin + Gate-1/2 (+ run wrong→repair) | VAA | **done** (`dcbc536`) |
+| **T0–T2** | `vaa search --ingest` skip Violated → Incomplete | VAA | **done** (`dcbc536`) |
+
+Tranche X2 + S + T closed: SemASM tip `1d57e8d` / functional S1 `b6d3395`;
+VAA handoff `1ad5d0e` (S2+T content `dcbc536`).
 
 **Honesty:** Gate-1 Incomplete ≠ Verified. SoftHSM / Fulcio / practice seals ≠
 SemASM Verified. Pipeline assemble/link/execute on x86 remains `experimental`.
