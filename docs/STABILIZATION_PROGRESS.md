@@ -35,7 +35,8 @@ Tranche R (search→ingest Gate loop) are complete. **X2 + S + T** closed
 (`count_byte` Win64 callee_saved depth, `memcmp` Gate pack, VAA pin +
 search `--ingest --allow-execution` smoke). **X4 + H4 + Y** closed
 (MemCmp A64/RV fail-closed, HlaX64 `find_last_byte` bridge, `memcmp`
-search-ingest Gate parity).
+search-ingest Gate parity). **X5 + H5 + Z** closed (caps evidence sync,
+HlaX64 `memcmp` bridge, `find_first_byte` search-ingest Gate parity).
 
 ### Next waves (X4 + H4 + Y) — closed
 
@@ -49,11 +50,14 @@ search-ingest Gate parity).
 
 | Wave | Focus | Owner | Status |
 |---|---|---|---|
-| **X5** | Caps SysV write/indirect + A64/RV evidence sync | SemASM | **done** |
-| **H5** | HlaX64 → VAA bridge for `memcmp` | HlaX64+VAA | pending |
-| **Z0–Z2** | Pin tips + `find_first_byte` search `--ingest` Gate parity | VAA | pending |
+| **X5** | Caps SysV write/indirect + A64/RV evidence sync | SemASM | **done** (`0305846`) |
+| **H5** | HlaX64 → VAA bridge for `memcmp` | HlaX64+VAA | **done** (`eeac3ba` / `d807e21`) |
+| **Z0–Z2** | Pin tips + `find_first_byte` search `--ingest` Gate parity | VAA | **done** (`9c2203e`) |
 
 A64/RV MemCmp harness remains fail-closed (X4); X5 does not implement it.
+
+Tranche X5 + H5 + Z closed: SemASM tip `0305846`; HlaX64 `eeac3ba`;
+VAA Gate handoff `9c2203e` (pin SemASM `0305846`, HlaX64 `eeac3ba`).
 
 | Step | Focus | Status |
 |---|---|---|
