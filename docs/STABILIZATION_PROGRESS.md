@@ -160,7 +160,7 @@ Tranche P is closed on tip `511bb45` (SemASM) with VAA handoff `5961c1b`.
 | **Q2** | `vaa search` nop-slide staging Gate smoke (offline; ≠ CryptOpt/Verified) | VAA | **done** |
 | **X0** | Win64 W+X object-policy (patched COFF; NASM cannot emit W+X code) | SemASM | **done** |
 
-Tranche Q + X0 closed on tip `7fa6e18` (SemASM) with VAA handoff pending pin.
+Tranche Q + X0 closed on tip `7fa6e18` (SemASM) with VAA handoff `80f848b`.
 
 **Honesty:** Gate-1 Incomplete ≠ Verified. SoftHSM / Fulcio / practice seals ≠
 SemASM Verified. Pipeline assemble/link/execute on x86 remains `experimental`.
