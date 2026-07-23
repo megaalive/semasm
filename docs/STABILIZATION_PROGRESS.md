@@ -31,7 +31,9 @@ W1–W5, controller handshake, shared `count_byte` / `sum_i64` / `min_usize` sli
 (VAA Gate-1/2), hardening T0–T6, runner JSON R0–R2, and Tranche M are complete on
 `main`. GitHub Release **`v0.1.0`**, Tranche N–Q, X0/X1 object-policy depth, and
 Tranche R (search→ingest Gate loop) are complete. **X2 + S + T** closed
-(`find_last_byte` Gate + `vaa search --ingest`).
+(`find_last_byte` Gate + `vaa search --ingest`). **X3 + U + V** closed
+(`count_byte` Win64 callee_saved depth, `memcmp` Gate pack, VAA pin +
+search `--ingest --allow-execution` smoke).
 
 | Step | Focus | Status |
 |---|---|---|
@@ -192,16 +194,22 @@ VAA handoff `1ad5d0e` (S2+T content `dcbc536`).
 |---|---|---|---|
 | **X3** | Win64 `count_byte` callee_saved twin + caps write/indirect sync | SemASM | **done** (`b9a7079`) |
 | **U0** | `memcmp` dual-buffer oracle/contract/vectors | SemASM | **done** (`da8b57a`) |
-| **U1** | `memcmp` asm/e2e/goldens/adversarial + CI | SemASM | **in progress** |
-| **V0–V3** | VAA pin + memcmp Gate + search allow-execution smoke | VAA | pending |
+| **U1** | `memcmp` asm/e2e/goldens/adversarial + CI | SemASM | **done** (`ca959f3`) |
+| **V0–V3** | VAA pin + memcmp Gate + search allow-execution smoke | VAA | **done** |
 
 SysV `count_byte_red_zone` pairs with Win64 `count_byte_win64_shadow` as the ABI dual
 (not a literal `*_red_zone_win64` name twin).
 
+Tranche X3 + U + V closed: SemASM tip
+`ca959f39924a34a3bca2a5effe71e96e63238250` (U1 fix after model-hostile
+`mov rax,-1`); VAA pin + Gate handoff on that tip (see VAA `docs/progress.md`).
+
 **Honesty:** Gate-1 Incomplete ≠ Verified. SoftHSM / Fulcio / practice seals ≠
 SemASM Verified. Pipeline assemble/link/execute on x86 remains `experimental`.
-LLM / search mutator output ≠ Verified. NASM win64 does not emit WRITE on code
-sections; X0 uses `fixtures/obj/count_byte_wx_win64.obj` (WRITE|EXECUTE patched).
+LLM / search mutator output ≠ Verified. `memcmp` oracle/vectors ≠ formal
+`ensures`/alias proof. Gate-2 `search --ingest --allow-execution` Verified ≠
+CryptOpt. NASM win64 does not emit WRITE on code sections; X0 uses
+`fixtures/obj/count_byte_wx_win64.obj` (WRITE|EXECUTE patched).
 
 Demo: `scripts/golden-demo.sh` (Linux SysV) or `scripts/golden-demo.ps1`
 (Windows PE by default; `-SysV` for Linux tools).
