@@ -83,9 +83,23 @@ evidence — not SMT / full contract verification. Plan:
 
 | Wave | Focus | Unlock when |
 |---|---|---|
-| **G3** | A64/RV memory-effect parity | **Unlocked for planning** after G2 Ce5 (implement with separate ADR/plan) |
+| **G3** | A64/RV memory-effect parity | **Unlocked** — ADR 0008 + [A64_RV_MEMORY_EFFECT_PARITY_PLAN.md](A64_RV_MEMORY_EFFECT_PARITY_PLAN.md) (Me0 landed; Me1–Me5 pending) |
 | **G4** | Isolation ops proof (VAA) | Public untrusted execution / network+credential bar |
 | **G5** | Trust root nyata (VAA) | After evidence semantics stable (Ra6 + G2 Ce5) |
+
+### A64/RV Memory-Effect Parity (Me0–Me5) — in progress
+
+Gelombang 3: produce Region/Alias v1 memory-effect facts on AArch64/RISC-V
+for supported leaves — **not** a `decode`/`lower` → `verified_in_ci` bump.
+Plan: [A64_RV_MEMORY_EFFECT_PARITY_PLAN.md](A64_RV_MEMORY_EFFECT_PARITY_PLAN.md).
+
+| Step | Focus | Status |
+|---|---|---|
+| **Me0** | ADR 0008 + plan + progress pointers | **landed** |
+| **Me1** | AArch64 effect collector | pending |
+| **Me2** | RISC-V effect collector | pending |
+| **Me3–Me4** | wire verify + ± CI fixtures | pending |
+| **Me5** | caps/docs honesty | pending |
 
 ### Next waves (X4 + H4 + Y) — closed
 
