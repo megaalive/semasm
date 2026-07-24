@@ -20,9 +20,13 @@
 #   owner sign-off (adversarial corpus on `decode (capstone)` / `e2e (x86-64
 #   Windows)`: unknown insn vzeroupper/cpuid/rdtsc, trailing bytes, W+X,
 #   indirect). This is CI-verified sample coverage, **not** a full-ISA formal
-#   decode proof. AArch64/RV64 `decode`/`lower` stay `partial` (separate claim).
+#   decode proof.
+# - AArch64/RV64 `decode`/`lower` = `verified_in_ci` after ADR 0009 / Da0–Da5
+#   (cross-target e2e adversarial: svc/ecall, unknown insn fmov/mrs/fence/mulh,
+#   trailing bytes, W+X). Same honesty as Dx: sample coverage ≠ full-ISA proof.
+#   Indirect CFG leaf policy remains x86-only (`control` skipped on A64/RV).
 # - AArch64/RV64 **pipeline** evidence remains strong; do not read x86 decode
-#   bump as an A64/RV decode bump.
+#   bump as an A64/RV decode bump without the Da checklist.
 # - MemCmp agent harness: x86 (SysV + Win64) **and** AArch64/RISC-V (H3).
 # - Write-shape (`replace_byte`/`memset`/`memcpy`) agent harness: x86 (SysV +
 #   Win64) **and** AArch64/RISC-V (priority follow-on after H3). Sample-based
@@ -42,17 +46,18 @@
 #   + `agent_verify_*` e2e (incl. unknown-address twins). **Not**
 #   general alias analysis / formal memory safety. `unknown`/`may_overlap`/
 #   `not_evaluated` ≠ passed. A64/RV memory-effect parity for this slice is
-#   ADR 0008 (Me0–Me5); A64/RV `decode`/`lower` stay `partial`.
+#   ADR 0008 (Me0–Me5); A64/RV `decode`/`lower` = `verified_in_ci` after
+#   ADR 0009 / Da (same sample-coverage honesty as Dx).
 # - Contract Expression Semantics v1 (`contract-expr-v1`, ADR 0007): documented
 #   subset of requires/ensures (see docs/CONTRACT_EXPR_V1_SUBSET.md), including
 #   `regions.disjoint|equal|contains` against living alias evidence. Owner:
 #   `semasm-contract` eval unit tests + `semasm-cli` `contract_expr_v1`.
 #   **Not** full ensures proof / SMT. `not_evaluated`/`incomplete` ≠ passed.
 # - Ownership map: docs/STABILIZATION_PROGRESS.md (maturity follow-up M0/M1).
-# - Dx bump (owner sign-off): x86-64 `decode`/`lower` flipped to
-#   `verified_in_ci` below; checklist + readiness table in
-#   docs/STABILIZATION_PROGRESS.md. Incomplete ≠ Verified; agent ≠ formal ISA
-#   completeness certificate.
+# - Dx / Da bumps (owner sign-off): x86-64 **and** AArch64/RV64 Linux
+#   `decode`/`lower` flipped to `verified_in_ci` below; checklist + readiness
+#   in docs/STABILIZATION_PROGRESS.md. Incomplete ≠ Verified; agent ≠ formal
+#   ISA completeness certificate.
 
 schema_version = "0.1"
 
@@ -221,8 +226,8 @@ description = "AArch64 Linux, AAPCS64 ABI, ELF"
 
 [target.capabilities]
 declared = "verified_in_ci"
-decode = "partial"
-lower = "partial"
+decode = "verified_in_ci"
+lower = "verified_in_ci"
 abi_analysis = "verified_in_unit_tests"
 assemble = "verified_in_ci"
 link = "verified_in_ci"
@@ -238,6 +243,10 @@ fixtures = [
     "fixtures/asm/count_byte_aarch64.S",
     "fixtures/asm/count_byte_wrong_aarch64.S",
     "fixtures/asm/count_byte_svc_aarch64.S",
+    "fixtures/asm/count_byte_unknown_insn_aarch64.S",
+    "fixtures/asm/count_byte_unknown_insn_mrs_aarch64.S",
+    "fixtures/asm/count_byte_trailing_bytes_aarch64.S",
+    "fixtures/asm/count_byte_wx_aarch64.S",
     "fixtures/asm/min_usize_aarch64.S",
     "fixtures/asm/memcmp_aarch64.S",
     "fixtures/asm/replace_byte_aarch64.S",
@@ -252,8 +261,8 @@ description = "RV64 Linux, RISC-V psABI, ELF"
 
 [target.capabilities]
 declared = "verified_in_ci"
-decode = "partial"
-lower = "partial"
+decode = "verified_in_ci"
+lower = "verified_in_ci"
 abi_analysis = "verified_in_unit_tests"
 assemble = "verified_in_ci"
 link = "verified_in_ci"
@@ -269,6 +278,10 @@ fixtures = [
     "fixtures/asm/count_byte_riscv64.S",
     "fixtures/asm/count_byte_wrong_riscv64.S",
     "fixtures/asm/count_byte_ecall_riscv64.S",
+    "fixtures/asm/count_byte_unknown_insn_riscv64.S",
+    "fixtures/asm/count_byte_unknown_insn_mulh_riscv64.S",
+    "fixtures/asm/count_byte_trailing_bytes_riscv64.S",
+    "fixtures/asm/count_byte_wx_riscv64.S",
     "fixtures/asm/min_usize_riscv64.S",
     "fixtures/asm/memcmp_riscv64.S",
     "fixtures/asm/replace_byte_riscv64.S",

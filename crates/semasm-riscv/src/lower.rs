@@ -535,6 +535,18 @@ mod tests {
         assert_eq!(l.operands[0], Operand::Reg(Gpr::A0.low32()));
     }
 
+    #[test]
+    fn fence_and_mulh_are_unsupported() {
+        assert!(matches!(
+            lower(&dec("fence", &[])),
+            Lowering::Unsupported { .. }
+        ));
+        assert!(matches!(
+            lower(&dec("mulh", &["a0", "a0", "a1"])),
+            Lowering::Unsupported { .. }
+        ));
+    }
+
     trait ExpectLowered {
         fn expect_lowered(self) -> LoweredInstr;
     }

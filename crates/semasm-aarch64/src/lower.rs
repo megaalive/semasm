@@ -454,6 +454,18 @@ mod tests {
         assert_eq!(l.operands[0], Operand::Reg(Gp::X0.low32()));
     }
 
+    #[test]
+    fn fmov_and_mrs_are_unsupported() {
+        assert!(matches!(
+            lower(&dec("fmov", &["d0", "d0"])),
+            Lowering::Unsupported { .. }
+        ));
+        assert!(matches!(
+            lower(&dec("mrs", &["x0", "nzcv"])),
+            Lowering::Unsupported { .. }
+        ));
+    }
+
     trait ExpectLowered {
         fn expect_lowered(self) -> LoweredInstr;
     }

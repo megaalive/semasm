@@ -1458,10 +1458,13 @@ fn check_aarch64_abi_capability(
             lowering: Some(lowering_coverage),
         });
     }
-    if lowered.iter().any(|ins| ins.mnemonic == "svc") {
+    if lowered
+        .iter()
+        .any(|ins| matches!(ins.mnemonic.as_str(), "svc" | "hvc" | "smc"))
+    {
         return Err(SemanticGateError {
             stage: "capability",
-            message: "candidate requests the forbidden svc capability".into(),
+            message: "candidate requests a forbidden AArch64 privilege/syscall capability".into(),
             decode: Some(decode_coverage),
             lowering: Some(lowering_coverage),
         });
@@ -1490,10 +1493,13 @@ fn check_riscv_abi_capability(
             lowering: Some(lowering_coverage),
         });
     }
-    if lowered.iter().any(|ins| ins.mnemonic == "ecall") {
+    if lowered.iter().any(|ins| {
+        let m = ins.mnemonic.as_str();
+        m == "ecall" || m == "ebreak" || m.starts_with("csr")
+    }) {
         return Err(SemanticGateError {
             stage: "capability",
-            message: "candidate requests the forbidden ecall capability".into(),
+            message: "candidate requests a forbidden RISC-V privilege/CSR capability".into(),
             decode: Some(decode_coverage),
             lowering: Some(lowering_coverage),
         });

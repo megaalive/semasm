@@ -19,22 +19,29 @@ Honesty: Incomplete ≠ Verified; agent ≠ pipeline; x86 Dx ≠ A64/RV bump.
 
 | Step | Focus | Status |
 |---|---|---|
-| **Da0** | ADR 0009 + this plan + progress unlock | **landed** (this commit) |
-| **Da1** | Inventory gaps vs Dx families (A64 + RV) | pending |
-| **Da2** | Grow adversarial corpus (± twins; fail-closed) | pending |
-| **Da3** | CI filters / owner-job assert coverage | pending |
-| **Da4** | Readiness table green + **owner sign-off** | pending |
-| **Da5** | Caps TOML flip + honesty comments (same commit) | pending |
+| **Da0** | ADR 0009 + this plan + progress unlock | **done** |
+| **Da1** | Inventory gaps vs Dx families (A64 + RV) | **done** |
+| **Da2** | Grow adversarial corpus (± twins; fail-closed) | **done** |
+| **Da3** | CI filters / owner-job assert coverage | **done** |
+| **Da4** | Readiness table green + **owner sign-off** | **done** (sign-off: “kerjakan eksekusi”) |
+| **Da5** | Caps TOML flip + honesty comments (same commit) | **done** |
 
-### Da1 — Gap inventory (vs Dx)
+### Da1 — Gap inventory (vs Dx) — recorded
 
-| Family (Dx) | A64/RV today | Gap |
+| Family (Dx) | A64/RV | Status |
 |---|---|---|
-| Syscall / privilege class | `svc` / `ecall` twins | likely **met** |
-| Wrong-behavior (oracle) | `count_byte_wrong_*` | met (behavior_failed) |
-| Unknown / unmodelled mnemonic | thin / absent | **need** ISA-appropriate unknowns |
-| Trailing / undecodable after ret | thin / absent | **need** |
-| W+X / indirect leaf policy | x86-heavy | port or document N/A |
+| Syscall / privilege | `svc` / `ecall` (+ hvc/smc / CSR capability widen) | **met** |
+| Wrong-behavior | `count_byte_wrong_*` | **met** |
+| Unknown / unmodelled | `fmov`/`mrs` · `fence`/`mulh` | **met** |
+| Trailing / undecodable | `count_byte_trailing_bytes_*` | **met** |
+| W+X | `count_byte_wx_*` ELF `awx` | **met** |
+| Indirect CFG leaf | x86-only (`control` skipped on A64/RV) | **N/A documented** |
+
+### Da4 — Sign-off
+
+Owner authorized Da5 caps flip via chat “kerjakan eksekusi” on the Da plan
+(2026-07-24). Claim remains CI-verified **sample coverage**, not full-ISA
+formal decode proof.
 
 ### Da2 — Corpus
 

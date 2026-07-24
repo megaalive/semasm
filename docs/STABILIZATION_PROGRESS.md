@@ -94,24 +94,37 @@ isolation ops → trust ops). Tips: SemASM `ffd0b58` / VAA `ef748c5`.
 
 | Wave | Focus | Unlock when |
 |---|---|---|
-| **Da0–Da5** | A64/RV `decode`/`lower` → `verified_in_ci` | **Unlocked** — ADR 0009 + [A64_RV_DECODE_LOWER_BUMP_PLAN.md](A64_RV_DECODE_LOWER_BUMP_PLAN.md) (Da0 landed; Da1–Da5 pending; needs owner sign-off before caps flip) |
+| **Da0–Da5** | A64/RV `decode`/`lower` → `verified_in_ci` | **Done** — ADR 0009; adversarial corpus + caps flip (sample coverage ≠ full-ISA proof; `control` still x86-only) |
 
-Hygiene: Unreleased CHANGELOG summarizes G1–G5; **new git tag is a separate
-ceremony** (not cut by Da0).
+Hygiene: Unreleased CHANGELOG summarizes G1–G5 + Da; **new git tag is a separate
+ceremony**.
 
-### A64/RV Decode/Lower Bump (Da0–Da5) — in progress
+### A64/RV Decode/Lower Bump (Da0–Da5) — done
 
 Dx-parity checklist for AArch64 + RISC-V decode/lower maturity. Plan:
 [A64_RV_DECODE_LOWER_BUMP_PLAN.md](A64_RV_DECODE_LOWER_BUMP_PLAN.md).
 
 | Step | Focus | Status |
 |---|---|---|
-| **Da0** | ADR 0009 + plan + progress unlock | **landed** |
-| **Da1** | Gap inventory vs Dx families | pending |
-| **Da2** | Adversarial corpus growth | pending |
-| **Da3** | CI filters | pending |
-| **Da4** | Readiness + owner sign-off | pending |
-| **Da5** | Caps flip + honesty | pending |
+| **Da0** | ADR 0009 + plan + progress unlock | **done** |
+| **Da1** | Gap inventory vs Dx families | **done** |
+| **Da2** | Adversarial corpus growth | **done** |
+| **Da3** | CI filters | **done** (`_aarch64_` / `_riscv64_`) |
+| **Da4** | Readiness + owner sign-off | **done** (“kerjakan eksekusi”) |
+| **Da5** | Caps flip + honesty | **done** |
+
+#### Da bump readiness (sign-off recorded)
+
+| Criterion | Status | Evidence |
+|---|---|---|
+| 1 Owner CI jobs | **met** | `e2e (AArch64 Linux)` / `e2e (RV64 Linux)` → `_aarch64_` / `_riscv64_` adversarial |
+| 2 Coverage corpus | **met** | privilege svc/ecall; unknown fmov/mrs/fence/mulh; trailing; W+X; wrong-behavior |
+| 3 Fail-closed asserts | **met** | tests assert `semantic_failed`; `#[ignore]` only for missing toolchain |
+| 4 Owner sign-off | **signed** | “kerjakan eksekusi” authorizing Da5 |
+| 5 Caps comment sync | **met** | honesty block + TOML flip same change |
+
+Claim scope: **AArch64 Linux + RV64 Linux**. Indirect CFG remains x86-only.
+CI-verified ≠ formal full-ISA decode proof.
 
 ### A64/RV Memory-Effect Parity (Me0–Me5) — done
 
@@ -308,8 +321,9 @@ discipline, applied to decode/lower instead of assemble/link):
    as the M0/D2 pipeline checklist above) — do not bump the TOML value
    without updating the honesty comments that explain what the value means.
 
-**Current status:** x86-64 Linux/Windows `decode` / `lower` are
-`verified_in_ci` after owner sign-off. AArch64/RV64 remain `partial`.
+**Current status:** x86-64 Linux/Windows **and** AArch64/RV64 Linux
+`decode` / `lower` are `verified_in_ci` after owner sign-off (Dx + Da).
+Indirect CFG leaf policy remains x86-only.
 
 #### Dx bump readiness (sign-off recorded)
 
@@ -417,8 +431,8 @@ after H3 (sample-based guards; still ≠ formal/symbolic proof).
 - Formal `ensures result == count(...)` / general theorem proving
 - Full memory alias / symbolic / region-precise store proof
 - CryptOpt embed, live-model Gate CI, hardware HSM
-- AArch64/RV64 `decode`/`lower` → `verified_in_ci` — **unlocked** under
-  ADR 0009 / Da0–Da5 (checklist + sign-off; still ≠ formal full-ISA proof)
+- AArch64/RV64 `decode`/`lower` → `verified_in_ci` — **landed** (ADR 0009 /
+  Da0–Da5; sample coverage ≠ formal full-ISA proof; `control` still x86-only)
 - C compiler `-O2` / `-Os` binary-size bake-off in CI
 - Broad mnemonic / new-ISA expansion beyond landed MemCmp + write-shape A64/RV
 

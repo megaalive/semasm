@@ -36,11 +36,13 @@ capabilities, behavioral oracles, and `VerificationReport` evidence. It is
   `docs/CONTRACT_EXPR_V1_SUBSET.md`); **0008 A64/RV memory-effect parity**
   (Me0–Me5: A64/RV collectors + `agent verify` alias/expr wire + ± fixtures;
   A64/RV `decode`/`lower` stay `partial` until ADR 0009 / Da\*);
-  **0009 A64/RV decode/lower bump** (Dx-parity checklist; Da0 plan —
-  caps flip pending sign-off).
+  **0009 A64/RV decode/lower bump** (Dx-parity; Da0–Da5 done —
+  `verified_in_ci` sample coverage; `control` still x86-only).
 - **G1–G5 program** — Region/Alias → ContractExpr → memory-effect parity →
   VAA isolation ops → VAA trust ops (**ops proof Done**; production trust root
   / hardware HSM / operated remote log remain locked).
+- **Da A64/RV decode/lower** — adversarial corpus (unknown insn, trailing,
+  W+X, privilege) + caps flip; CI-verified ≠ formal full-ISA proof.
 - **Region/Alias Evidence v1** — `function.memory.regions` /
   `relations` schema (CTR008), x86 + AArch64 + RISC-V effect collection,
   fail-closed relation engine, `VerificationReport.alias_analysis`, ± corpus
@@ -58,7 +60,9 @@ capabilities, behavioral oracles, and `VerificationReport` evidence. It is
 
 - **Dx owner sign-off** — x86-64 Linux/Windows `decode` / `lower` →
   `verified_in_ci` (adversarial CI corpus; **≠** full-ISA formal proof).
-  AArch64/RV64 `decode`/`lower` stay `partial`.
+- **Da owner sign-off** — AArch64/RV64 Linux `decode` / `lower` →
+  `verified_in_ci` (ADR 0009 adversarial corpus; **≠** full-ISA formal proof;
+  indirect CFG leaf policy still x86-only).
 - x86 assemble/link/execute/`pipeline_verify` already `verified_in_ci` (M1);
   `agent_verify` remains a separate claim from pipeline evidence.
 - Caps / README / STABILIZATION honesty synced with multi-ISA write-shape

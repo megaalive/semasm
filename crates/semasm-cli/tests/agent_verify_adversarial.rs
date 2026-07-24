@@ -203,6 +203,58 @@ fn agent_verify_svc_aarch64_is_semantic_failed() {
 }
 
 #[test]
+#[ignore = "requires aarch64-linux-gnu-as/ld on PATH"]
+fn agent_verify_unknown_insn_aarch64_is_semantic_failed() {
+    let source = workspace_root().join("fixtures/asm/count_byte_unknown_insn_aarch64.S");
+    let contract = workspace_root().join("fixtures/contracts/count_byte.sem.toml");
+    let output = run_agent_verify(&source, &contract, Some("aarch64-unknown-linux-gnu"), false);
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    if skip_if_incomplete(&stderr) {
+        return;
+    }
+    assert_status(&output, "semantic_failed");
+}
+
+#[test]
+#[ignore = "requires aarch64-linux-gnu-as/ld on PATH"]
+fn agent_verify_unknown_insn_mrs_aarch64_is_semantic_failed() {
+    let source = workspace_root().join("fixtures/asm/count_byte_unknown_insn_mrs_aarch64.S");
+    let contract = workspace_root().join("fixtures/contracts/count_byte.sem.toml");
+    let output = run_agent_verify(&source, &contract, Some("aarch64-unknown-linux-gnu"), false);
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    if skip_if_incomplete(&stderr) {
+        return;
+    }
+    assert_status(&output, "semantic_failed");
+}
+
+#[test]
+#[ignore = "requires aarch64-linux-gnu-as/ld on PATH"]
+fn agent_verify_trailing_bytes_aarch64_is_semantic_failed() {
+    let source = workspace_root().join("fixtures/asm/count_byte_trailing_bytes_aarch64.S");
+    let contract = workspace_root().join("fixtures/contracts/count_byte.sem.toml");
+    let output = run_agent_verify(&source, &contract, Some("aarch64-unknown-linux-gnu"), false);
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    if skip_if_incomplete(&stderr) {
+        return;
+    }
+    assert_status(&output, "semantic_failed");
+}
+
+#[test]
+#[ignore = "requires aarch64-linux-gnu-as/ld on PATH"]
+fn agent_verify_wx_aarch64_is_semantic_failed() {
+    let source = workspace_root().join("fixtures/asm/count_byte_wx_aarch64.S");
+    let contract = workspace_root().join("fixtures/contracts/count_byte.sem.toml");
+    let output = run_agent_verify(&source, &contract, Some("aarch64-unknown-linux-gnu"), false);
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    if skip_if_incomplete(&stderr) {
+        return;
+    }
+    assert_status(&output, "semantic_failed");
+}
+
+#[test]
 #[ignore = "requires riscv64-linux-gnu-as/ld and qemu-riscv64 on PATH"]
 fn agent_verify_wrong_riscv64_is_behavior_failed() {
     let source = workspace_root().join("fixtures/asm/count_byte_wrong_riscv64.S");
@@ -224,6 +276,78 @@ fn agent_verify_wrong_riscv64_is_behavior_failed() {
 #[ignore = "requires riscv64-linux-gnu-as/ld and qemu-riscv64 on PATH"]
 fn agent_verify_ecall_riscv64_is_semantic_failed() {
     let source = workspace_root().join("fixtures/asm/count_byte_ecall_riscv64.S");
+    let contract = workspace_root().join("fixtures/contracts/count_byte.sem.toml");
+    let output = run_agent_verify(
+        &source,
+        &contract,
+        Some("riscv64gc-unknown-linux-gnu"),
+        false,
+    );
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    if skip_if_incomplete(&stderr) {
+        return;
+    }
+    assert_status(&output, "semantic_failed");
+}
+
+#[test]
+#[ignore = "requires riscv64-linux-gnu-as/ld on PATH"]
+fn agent_verify_unknown_insn_riscv64_is_semantic_failed() {
+    let source = workspace_root().join("fixtures/asm/count_byte_unknown_insn_riscv64.S");
+    let contract = workspace_root().join("fixtures/contracts/count_byte.sem.toml");
+    let output = run_agent_verify(
+        &source,
+        &contract,
+        Some("riscv64gc-unknown-linux-gnu"),
+        false,
+    );
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    if skip_if_incomplete(&stderr) {
+        return;
+    }
+    assert_status(&output, "semantic_failed");
+}
+
+#[test]
+#[ignore = "requires riscv64-linux-gnu-as/ld on PATH"]
+fn agent_verify_unknown_insn_mulh_riscv64_is_semantic_failed() {
+    let source = workspace_root().join("fixtures/asm/count_byte_unknown_insn_mulh_riscv64.S");
+    let contract = workspace_root().join("fixtures/contracts/count_byte.sem.toml");
+    let output = run_agent_verify(
+        &source,
+        &contract,
+        Some("riscv64gc-unknown-linux-gnu"),
+        false,
+    );
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    if skip_if_incomplete(&stderr) {
+        return;
+    }
+    assert_status(&output, "semantic_failed");
+}
+
+#[test]
+#[ignore = "requires riscv64-linux-gnu-as/ld on PATH"]
+fn agent_verify_trailing_bytes_riscv64_is_semantic_failed() {
+    let source = workspace_root().join("fixtures/asm/count_byte_trailing_bytes_riscv64.S");
+    let contract = workspace_root().join("fixtures/contracts/count_byte.sem.toml");
+    let output = run_agent_verify(
+        &source,
+        &contract,
+        Some("riscv64gc-unknown-linux-gnu"),
+        false,
+    );
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    if skip_if_incomplete(&stderr) {
+        return;
+    }
+    assert_status(&output, "semantic_failed");
+}
+
+#[test]
+#[ignore = "requires riscv64-linux-gnu-as/ld on PATH"]
+fn agent_verify_wx_riscv64_is_semantic_failed() {
+    let source = workspace_root().join("fixtures/asm/count_byte_wx_riscv64.S");
     let contract = workspace_root().join("fixtures/contracts/count_byte.sem.toml");
     let output = run_agent_verify(
         &source,
