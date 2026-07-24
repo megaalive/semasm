@@ -340,7 +340,10 @@ fn classify(ins: &PhysicalInstruction) -> BlockEnd {
 
     if is_jump {
         let direct = parse_target(ins);
-        let unconditional = mnemonic == "jmp";
+        // x86: `jmp`. AArch64: `b` / `br`. RISC-V: `j` / `jr`.
+        // Register operands → Indirect; immediates → UnconditionalBranch.
+        // Capstone usually tags `jalr`/`blr` as call (handled above).
+        let unconditional = matches!(mnemonic.as_str(), "jmp" | "b" | "br" | "j" | "jr");
         if unconditional {
             return match direct {
                 Some(addr) => BlockEnd::UnconditionalBranch {
@@ -350,13 +353,24 @@ fn classify(ins: &PhysicalInstruction) -> BlockEnd {
                 None => BlockEnd::Indirect,
             };
         }
-        // Conditional jump.
+        // Conditional jump (x86 jcc; A64 b.cond; RV beq/bne/…).
         return match direct {
             Some(addr) => BlockEnd::ConditionalBranch {
                 taken: None,
                 taken_address: addr,
             },
             None => BlockEnd::Indirect,
+        };
+    }
+
+    // Mnemonic fallback when Capstone omits jump/call groups (A64/RV edges).
+    if matches!(mnemonic.as_str(), "br" | "jr") {
+        return BlockEnd::Indirect;
+    }
+    if matches!(mnemonic.as_str(), "blr") {
+        return BlockEnd::Call {
+            target: None,
+            address: None,
         };
     }
 
@@ -677,5 +691,74 @@ mod tests {
         let g = build(&instrs).expect("build");
         assert_eq!(g.blocks.len(), 1);
         assert_eq!(g.blocks[0].end, BlockEnd::Return);
+    }
+
+    #[test]
+    fn aarch64_br_register_is_indirect() {
+        let br = PhysicalInstruction {
+            address: 0x1000,
+            bytes: vec![0x00, 0x00, 0x1f, 0xd6],
+            mnemonic: "br".into(),
+            operands: vec!["x0".into()],
+            read_regs: vec!["x0".into()],
+            write_regs: vec![],
+            groups: vec!["jump".into()],
+            detail_available: true,
+        };
+        assert_eq!(classify_instruction(&br), BlockEnd::Indirect);
+    }
+
+    #[test]
+    fn aarch64_b_imm_is_unconditional() {
+        let b = PhysicalInstruction {
+            address: 0x1000,
+            bytes: vec![0x00, 0x00, 0x00, 0x14],
+            mnemonic: "b".into(),
+            operands: vec!["0x1000".into()],
+            read_regs: vec![],
+            write_regs: vec![],
+            groups: vec!["jump".into(), "branch_relative".into()],
+            detail_available: true,
+        };
+        assert!(matches!(
+            classify_instruction(&b),
+            BlockEnd::UnconditionalBranch { .. }
+        ));
+    }
+
+    #[test]
+    fn riscv_jr_register_is_indirect() {
+        let jr = PhysicalInstruction {
+            address: 0x1000,
+            bytes: vec![0x67, 0x80, 0x00, 0x00],
+            mnemonic: "jr".into(),
+            operands: vec!["a0".into()],
+            read_regs: vec!["a0".into()],
+            write_regs: vec![],
+            groups: vec!["jump".into()],
+            detail_available: true,
+        };
+        assert_eq!(classify_instruction(&jr), BlockEnd::Indirect);
+    }
+
+    #[test]
+    fn aarch64_blr_without_groups_is_indirect_call() {
+        let blr = PhysicalInstruction {
+            address: 0x1000,
+            bytes: vec![0x00, 0x00, 0x3f, 0xd6],
+            mnemonic: "blr".into(),
+            operands: vec!["x0".into()],
+            read_regs: vec!["x0".into()],
+            write_regs: vec![],
+            groups: vec![],
+            detail_available: true,
+        };
+        assert_eq!(
+            classify_instruction(&blr),
+            BlockEnd::Call {
+                target: None,
+                address: None
+            }
+        );
     }
 }

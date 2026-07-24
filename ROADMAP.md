@@ -39,13 +39,16 @@ conformance evidence are proven.
 - Keep CI owner jobs green with `SEMASM_REQUIRE_TOOLCHAIN=1`.
 - Prefer fail-closed adversarial fixtures over broader mnemonic coverage.
 - Do **not** add new ISAs until landed paths stay deep and honest.
-- **Next depth (queued):** A64/RV `control` gate (indirect CFG leaf; today
-  x86-only / A64/RV `skipped`) + VAA controller/Gate smoke on tip `v0.2.0`.
+- **Next depth (queued):** VAA controller/Gate smoke on tip `v0.2.0` (+ Co
+  control tip when landed). A64/RV `control` leaf ported (sample coverage;
+  `memory` still skipped).
 - Still deferred (Horizon-locked): full memory alias / symbolic proof; formal
   `ensures`; CryptOpt; hardware HSM; live-model Gate; optional offline C size
   comparison (not a CI gate).
 - **Done:** GitHub Release tags `v0.1.0` and `v0.2.0` (checklist-gated; CLI
   archives only; no crates.io).
+- **Done (Co):** A64/RV `control` gate (indirect CFG leaf; see
+  `docs/A64_RV_CONTROL_GATE_PLAN.md`).
 
 Consumer pin / Gate smoke: see VAA `docs/progress.md`. Shared progress:
 `docs/STABILIZATION_PROGRESS.md`.

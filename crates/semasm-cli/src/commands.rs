@@ -864,7 +864,7 @@ fn verify_candidate_semantics(
             let lowered = lower_x86_instructions(&physical, decode_coverage)?;
             let lowering_coverage = Coverage::complete(lowered.len());
             check_x86_abi_capability(&lowered, identity.abi, decode_coverage, lowering_coverage)?;
-            check_x86_cfg_leaf(&physical, decode_coverage, lowering_coverage)?;
+            check_cfg_leaf(&physical, decode_coverage, lowering_coverage)?;
             check_x86_read_only_buffer_leaf(
                 &lowered,
                 contract,
@@ -893,6 +893,7 @@ fn verify_candidate_semantics(
             let lowered = lower_aarch64_instructions(&physical, decode_coverage)?;
             let lowering_coverage = Coverage::complete(lowered.len());
             check_aarch64_abi_capability(&lowered, decode_coverage, lowering_coverage)?;
+            check_cfg_leaf(&physical, decode_coverage, lowering_coverage)?;
             let alias_analysis = evaluate_aarch64_alias(contract, &lowered);
             Ok((
                 SemanticGates {
@@ -902,8 +903,8 @@ fn verify_candidate_semantics(
                     lowering: lowering_coverage,
                     abi: GateStatus::Passed,
                     capability: GateStatus::Passed,
-                    // CFG / memory leaf policies are x86-only in this slice.
-                    control: GateStatus::Skipped,
+                    control: GateStatus::Passed,
+                    // Read-only buffer memory leaf remains x86-only in this slice.
                     memory: GateStatus::Skipped,
                 },
                 alias_analysis,
@@ -916,6 +917,7 @@ fn verify_candidate_semantics(
             let lowered = lower_riscv_instructions(&physical, decode_coverage)?;
             let lowering_coverage = Coverage::complete(lowered.len());
             check_riscv_abi_capability(&lowered, decode_coverage, lowering_coverage)?;
+            check_cfg_leaf(&physical, decode_coverage, lowering_coverage)?;
             let alias_analysis = evaluate_riscv_alias(contract, &lowered);
             Ok((
                 SemanticGates {
@@ -925,8 +927,8 @@ fn verify_candidate_semantics(
                     lowering: lowering_coverage,
                     abi: GateStatus::Passed,
                     capability: GateStatus::Passed,
-                    // CFG / memory leaf policies are x86-only in this slice.
-                    control: GateStatus::Skipped,
+                    control: GateStatus::Passed,
+                    // Read-only buffer memory leaf remains x86-only in this slice.
                     memory: GateStatus::Skipped,
                 },
                 alias_analysis,
@@ -1266,7 +1268,7 @@ fn check_x86_abi_capability(
 }
 
 #[cfg(feature = "capstone")]
-fn check_x86_cfg_leaf(
+fn check_cfg_leaf(
     physical: &[semasm_decode::PhysicalInstruction],
     decode_coverage: Coverage,
     lowering_coverage: Coverage,
@@ -1690,7 +1692,7 @@ mod semantic_gate_tests {
         assert!(gates.all_passed());
         assert_eq!(gates.abi, GateStatus::Passed);
         assert_eq!(gates.capability, GateStatus::Passed);
-        assert_eq!(gates.control, GateStatus::Skipped);
+        assert_eq!(gates.control, GateStatus::Passed);
         assert_eq!(gates.memory, GateStatus::Skipped);
         let _ = std::fs::remove_dir_all(scratch);
     }
@@ -1730,7 +1732,7 @@ mod semantic_gate_tests {
         assert!(gates.all_passed());
         assert_eq!(gates.abi, GateStatus::Passed);
         assert_eq!(gates.capability, GateStatus::Passed);
-        assert_eq!(gates.control, GateStatus::Skipped);
+        assert_eq!(gates.control, GateStatus::Passed);
         assert_eq!(gates.memory, GateStatus::Skipped);
         let _ = std::fs::remove_dir_all(scratch);
     }

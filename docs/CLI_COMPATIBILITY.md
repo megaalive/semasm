@@ -86,10 +86,10 @@ object/decode/lowering/ABI/capability checks for:
 - `aarch64-unknown-linux-gnu` (AAPCS64 + ELF, GNU `as` assemble path)
 - `riscv64gc-unknown-linux-gnu` (RISC-V LP64 + ELF, GNU `as` assemble path)
 
-On AArch64 and RV64, the x86-only `control` and `memory` leaf policies are
-reported as `skipped` (not `passed`) until those gates are implemented for the
-target. `SemanticGates::all_passed` treats `skipped` as acceptable for those
-two leaves only.
+On AArch64 and RV64, the `control` leaf (indirect CFG) is evaluated (sample
+coverage; ≠ full CFG/CFI proof). The x86-only `memory` (read-only buffer)
+leaf remains `skipped` until ported. `SemanticGates::all_passed` treats
+`skipped` as acceptable for `memory` (and historically for `control`).
 
 Behavioral harness execution (`--allow-execution`) is implemented for:
 

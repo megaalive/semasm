@@ -131,8 +131,9 @@ fn gate_status_passed() -> GateStatus {
 impl SemanticGates {
     /// True when every required semantic sub-gate passed with full coverage.
     ///
-    /// [`GateStatus::Skipped`] is allowed for `control` / `memory` when those
-    /// leaf policies are not implemented for the target (AArch64 / RV64 today).
+    /// [`GateStatus::Skipped`] is allowed for `memory` when the read-only
+    /// buffer leaf is not implemented for the target (AArch64 / RV64 today).
+    /// `control` is run on x86 and A64/RV (sample leaf policy).
     #[must_use]
     pub fn all_passed(&self) -> bool {
         fn required(status: GateStatus) -> bool {

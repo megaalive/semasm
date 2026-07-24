@@ -6,6 +6,13 @@ follow [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Added
+
+- **Co A64/RV `control` gate** — leaf indirect CFG fail-closed (`br`/`blr`,
+  `jr`/`jalr`) with adversarial fixtures; golden paths report `control:
+  passed`. Memory leaf still skipped on A64/RV. Sample coverage ≠ full CFG
+  proof. See `docs/A64_RV_CONTROL_GATE_PLAN.md`.
+
 ## [0.2.0] - 2026-07-24
 
 Pre-1.0 developer release past `v0.1.0`. Incomplete ≠ Verified; oracle vectors ≠
