@@ -18,7 +18,7 @@ pub mod validate;
 
 pub use alias::{
     evaluate_alias, AccessAddr, AccessMode, AliasAnalysisReport, AliasRelationEvidence,
-    AliasStatus, ObservedMemoryAccess, RelationObserved, REGION_AFFINE_V1,
+    AliasStatus, ObservedMemoryAccess, RelationEvidenceBasis, RelationObserved, REGION_AFFINE_V1,
 };
 pub use codes::ContractCode;
 pub use eval::{
@@ -35,7 +35,7 @@ pub use sem_type::SemType;
 pub use validate::{
     check_file, check_str, format_diagnostics_terminal, CheckReportJson, CheckResult,
     CheckedCondition, CheckedContract, CheckedMemory, CheckedParam, CheckedRegion, CheckedRelation,
-    CheckedReturn, DiagnosticJson, LengthSpec, RegionAccess, RelationRequire,
+    CheckedReturn, DiagnosticJson, LengthSpec, RegionAccess, RelationBasisDecl, RelationRequire,
 };
 
 /// Explain a stable contract diagnostic code.

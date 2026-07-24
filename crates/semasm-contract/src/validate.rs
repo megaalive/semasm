@@ -115,6 +115,34 @@ impl RelationRequire {
     }
 }
 
+/// How a required relation is justified in the contract (ADR 0010).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "schema", derive(schemars::JsonSchema))]
+#[serde(rename_all = "snake_case")]
+pub enum RelationBasisDecl {
+    /// Caller must establish the relation; callee analysis may assume it.
+    Precondition,
+}
+
+impl RelationBasisDecl {
+    /// Parse from contract string.
+    #[must_use]
+    pub fn parse(s: &str) -> Option<Self> {
+        match s {
+            "precondition" => Some(Self::Precondition),
+            _ => None,
+        }
+    }
+
+    /// Canonical string.
+    #[must_use]
+    pub const fn as_str(self) -> &'static str {
+        match self {
+            Self::Precondition => "precondition",
+        }
+    }
+}
+
 /// Length of a declared region.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[cfg_attr(feature = "schema", derive(schemars::JsonSchema))]
@@ -152,6 +180,9 @@ pub struct CheckedRelation {
     pub right: String,
     /// Required relation.
     pub require: RelationRequire,
+    /// Optional declared basis (`precondition` = caller obligation).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub basis: Option<RelationBasisDecl>,
 }
 
 /// Checked `[function.memory]` block.
@@ -673,10 +704,30 @@ fn check_memory(
             );
             continue;
         };
+        let basis = match rel.basis.as_deref() {
+            None => None,
+            Some(raw) => {
+                if let Some(b) = RelationBasisDecl::parse(raw) {
+                    Some(b)
+                } else {
+                    push_code(
+                        diagnostics,
+                        ContractCode::Ctr008,
+                        format!(
+                            "memory relation `{}`/`{}`: basis `{raw}` must be precondition",
+                            rel.left, rel.right
+                        ),
+                        None,
+                    );
+                    continue;
+                }
+            }
+        };
         relations.push(CheckedRelation {
             left: rel.left.clone(),
             right: rel.right.clone(),
             require,
+            basis,
         });
     }
 

@@ -1,11 +1,11 @@
-//! Region/Alias Evidence v1 corpus checks (ADR 0006).
+//! Region/Alias Evidence v1.1 corpus checks (ADR 0006 + 0010).
 //!
 //! These unit tests drive the relation engine + contract fixtures without a
 //! full `agent verify` pipeline. E2E agent filters still own live decode.
 
 use semasm_contract::{
     check_file, evaluate_alias, AccessAddr, AccessMode, AliasStatus, ObservedMemoryAccess,
-    RelationObserved,
+    RelationEvidenceBasis, RelationObserved,
 };
 use std::path::PathBuf;
 
@@ -22,14 +22,15 @@ fn load(name: &str) -> semasm_contract::CheckedContract {
 }
 
 #[test]
-fn memcpy_contract_alias_passes_without_unknowns() {
+fn memcpy_contract_alias_passes_under_precondition() {
     let checked = load("memcpy.sem.toml");
     let memory = checked.memory.as_ref().expect("memory block");
     let report = evaluate_alias(memory, &[]);
-    assert_eq!(report.status, AliasStatus::Passed);
+    assert_eq!(report.status, AliasStatus::PassedUnderPreconditions);
+    assert_eq!(report.relations[0].observed, RelationObserved::MayOverlap);
     assert_eq!(
-        report.relations[0].observed,
-        RelationObserved::ProvenDisjoint
+        report.relations[0].evidence_basis,
+        RelationEvidenceBasis::DeclaredPrecondition
     );
 }
 

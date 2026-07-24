@@ -292,8 +292,12 @@ impl ExecutableGate {
 #[serde(rename_all = "snake_case")]
 #[cfg_attr(feature = "schema", derive(schemars::JsonSchema))]
 pub enum VerificationStatus {
-    /// Static gates and all behavioral vectors passed.
+    /// Static gates and all behavioral vectors passed (no open caller obligations).
     Verified,
+    /// Passed under explicitly declared caller preconditions (ADR 0010).
+    ///
+    /// Not interchangeable with [`Self::Verified`].
+    VerifiedUnderPreconditions,
     /// A static semantic gate failed.
     SemanticFailed,
     /// Linked image failed the executable-container policy.
@@ -310,6 +314,7 @@ impl VerificationStatus {
     pub fn as_str(self) -> &'static str {
         match self {
             Self::Verified => "verified",
+            Self::VerifiedUnderPreconditions => "verified_under_preconditions",
             Self::SemanticFailed => "semantic_failed",
             Self::ExecutableFailed => "executable_failed",
             Self::BehaviorFailed => "behavior_failed",
@@ -409,7 +414,7 @@ impl ProofBasis {
 }
 
 /// Current experimental schema version for [`VerificationReport`] JSON.
-pub const VERIFICATION_REPORT_SCHEMA_VERSION: &str = "0.4";
+pub const VERIFICATION_REPORT_SCHEMA_VERSION: &str = "0.5";
 
 /// Prefixed SHA-256 digest for controller provenance (`sha256:` + lowercase hex).
 #[must_use]
@@ -489,16 +494,27 @@ impl VerificationReport {
 
     /// Attach Region/Alias Evidence v1 (fluent builder).
     ///
-    /// When the slice is not [`semasm_contract::AliasStatus::Passed`], the
-    /// report status becomes [`VerificationStatus::SemanticFailed`] (fail-closed;
-    /// incomplete ≠ verified).
+    /// - [`semasm_contract::AliasStatus::Passed`] — no change to report status.
+    /// - [`semasm_contract::AliasStatus::PassedUnderPreconditions`] — demote
+    ///   [`VerificationStatus::Verified`] to
+    ///   [`VerificationStatus::VerifiedUnderPreconditions`].
+    /// - Otherwise → [`VerificationStatus::SemanticFailed`] (fail-closed;
+    ///   incomplete ≠ verified).
     #[must_use]
     pub fn with_alias_analysis(
         mut self,
         alias_analysis: semasm_contract::AliasAnalysisReport,
     ) -> Self {
-        if alias_analysis.status != semasm_contract::AliasStatus::Passed {
-            self.status = VerificationStatus::SemanticFailed;
+        match alias_analysis.status {
+            semasm_contract::AliasStatus::Passed => {}
+            semasm_contract::AliasStatus::PassedUnderPreconditions => {
+                if self.status == VerificationStatus::Verified {
+                    self.status = VerificationStatus::VerifiedUnderPreconditions;
+                }
+            }
+            _ => {
+                self.status = VerificationStatus::SemanticFailed;
+            }
         }
         self.alias_analysis = Some(alias_analysis);
         self
@@ -506,15 +522,25 @@ impl VerificationReport {
 
     /// Attach Contract Expression Semantics v1 (fluent builder).
     ///
-    /// Non-[`semasm_contract::ContractExprStatus::Passed`] →
-    /// [`VerificationStatus::SemanticFailed`].
+    /// Non-pass statuses → [`VerificationStatus::SemanticFailed`], except
+    /// [`semasm_contract::ContractExprStatus::PassedUnderPreconditions`] which
+    /// demotes [`VerificationStatus::Verified`] to
+    /// [`VerificationStatus::VerifiedUnderPreconditions`].
     #[must_use]
     pub fn with_contract_expressions(
         mut self,
         contract_expressions: semasm_contract::ContractExprReport,
     ) -> Self {
-        if contract_expressions.status != semasm_contract::ContractExprStatus::Passed {
-            self.status = VerificationStatus::SemanticFailed;
+        match contract_expressions.status {
+            semasm_contract::ContractExprStatus::Passed => {}
+            semasm_contract::ContractExprStatus::PassedUnderPreconditions => {
+                if self.status == VerificationStatus::Verified {
+                    self.status = VerificationStatus::VerifiedUnderPreconditions;
+                }
+            }
+            _ => {
+                self.status = VerificationStatus::SemanticFailed;
+            }
         }
         self.contract_expressions = Some(contract_expressions);
         self

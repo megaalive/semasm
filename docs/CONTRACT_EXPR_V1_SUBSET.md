@@ -20,15 +20,18 @@ slice by themselves.
   bound name from the optional binding map): `==`, `!=`, `<`, `<=`, `>`, `>=`
 - Parentheses for grouping
 
-### Region / relation atoms (ADR 0006)
+### Region / relation atoms (ADR 0006 + 0010)
 
 Method-style calls on the reserved receiver `regions`:
 
 | Atom | Meaning | Alias evidence needed |
 |---|---|---|
-| `regions.disjoint(A, B)` | Regions `A` and `B` are disjoint | `proven_disjoint` for `(A,B)` or `(B,A)` |
-| `regions.equal(A, B)` | Regions identical | `proven_equal` |
-| `regions.contains(A, B)` | `A` contains `B` | `proven_contains` with left=`A`, right=`B` |
+| `regions.disjoint(A, B)` | Regions `A` and `B` are disjoint | `proven_disjoint` → `proven_true`; or `evidence_basis = declared_precondition` for the same require → `true_under_precondition` |
+| `regions.equal(A, B)` | Regions identical | `proven_equal` → `proven_true` (precondition analog as above) |
+| `regions.contains(A, B)` | `A` contains `B` | `proven_contains` with left=`A`, right=`B` → `proven_true` |
+
+Distinct pointer parameter names alone never yield `proven_true` (ADR 0010).
+`true_under_precondition` must not be promoted to `proven_true`.
 
 `A` / `B` must be identifiers naming declared `function.memory.regions`.
 

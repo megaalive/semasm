@@ -41,6 +41,7 @@ access = "write"
 left = "src"
 right = "dst"
 require = "disjoint"
+basis = "precondition"
 
 [function.constraints]
 no_heap = true

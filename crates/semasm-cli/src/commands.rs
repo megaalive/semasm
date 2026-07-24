@@ -266,7 +266,11 @@ pub(crate) fn do_agent_compare(
 
     // Compare always emits a report when both sides produced verification
     // evidence; exit 0 only if at least one candidate verified.
-    if a.0.status == VerificationStatus::Verified || b.0.status == VerificationStatus::Verified {
+    if a.0.status == VerificationStatus::Verified
+        || a.0.status == VerificationStatus::VerifiedUnderPreconditions
+        || b.0.status == VerificationStatus::Verified
+        || b.0.status == VerificationStatus::VerifiedUnderPreconditions
+    {
         ExitCode::SUCCESS
     } else {
         ExitCode::from(1)
@@ -726,7 +730,9 @@ fn run_agent_verify_core(
     }
 
     let exit = match report.status {
-        VerificationStatus::Verified => ExitCode::SUCCESS,
+        VerificationStatus::Verified | VerificationStatus::VerifiedUnderPreconditions => {
+            ExitCode::SUCCESS
+        }
         _ => ExitCode::from(1),
     };
     VerifyCore::Done {

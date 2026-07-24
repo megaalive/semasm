@@ -6,7 +6,7 @@ use std::collections::BTreeMap;
 
 use serde::{Deserialize, Serialize};
 
-use crate::alias::{AliasAnalysisReport, RelationObserved};
+use crate::alias::{AliasAnalysisReport, RelationEvidenceBasis, RelationObserved};
 use crate::expr::{BinOp, Expr, UnaryOp};
 use crate::validate::{CheckedCondition, CheckedContract, RelationRequire};
 
@@ -20,6 +20,8 @@ pub const CONTRACT_EXPR_V1: &str = "contract-expr-v1";
 pub enum ContractExprStatus {
     /// Every attempted expression was proven true.
     Passed,
+    /// Attempted expressions hold only under declared caller preconditions.
+    PassedUnderPreconditions,
     /// At least one attempted expression could not be decided.
     Incomplete,
     /// At least one attempted expression was proven false.
@@ -32,6 +34,7 @@ impl ContractExprStatus {
     pub const fn as_str(self) -> &'static str {
         match self {
             Self::Passed => "passed",
+            Self::PassedUnderPreconditions => "passed_under_preconditions",
             Self::Incomplete => "incomplete",
             Self::Failed => "failed",
         }
@@ -47,6 +50,8 @@ pub enum ExprJudgement {
     ProvenTrue,
     /// Expression evaluated to false under the subset rules.
     ProvenFalse,
+    /// True only under an explicit declared precondition (ADR 0010).
+    TrueUnderPrecondition,
     /// Subset rules apply but a fact was missing / unknown op.
     Incomplete,
     /// Out of static subset scope (e.g. unbound postcondition).
@@ -60,6 +65,7 @@ impl ExprJudgement {
         match self {
             Self::ProvenTrue => "proven_true",
             Self::ProvenFalse => "proven_false",
+            Self::TrueUnderPrecondition => "true_under_precondition",
             Self::Incomplete => "incomplete",
             Self::NotEvaluated => "not_evaluated",
         }
@@ -153,11 +159,16 @@ pub fn evaluate_contract_expressions(
     let mut any_false = false;
     let mut any_incomplete = false;
     let mut any_true = false;
+    let mut any_under_precondition = false;
     for row in &expressions {
         match row.judgement {
             ExprJudgement::ProvenFalse => any_false = true,
             ExprJudgement::Incomplete => any_incomplete = true,
             ExprJudgement::ProvenTrue => any_true = true,
+            ExprJudgement::TrueUnderPrecondition => {
+                any_true = true;
+                any_under_precondition = true;
+            }
             ExprJudgement::NotEvaluated => {}
         }
     }
@@ -166,6 +177,8 @@ pub fn evaluate_contract_expressions(
         ContractExprStatus::Failed
     } else if any_incomplete {
         ContractExprStatus::Incomplete
+    } else if any_under_precondition {
+        ContractExprStatus::PassedUnderPreconditions
     } else if any_true {
         ContractExprStatus::Passed
     } else {
@@ -247,6 +260,10 @@ fn eval_expr(
             match j {
                 ExprJudgement::ProvenTrue => (ExprJudgement::ProvenFalse, format!("not({basis})")),
                 ExprJudgement::ProvenFalse => (ExprJudgement::ProvenTrue, format!("not({basis})")),
+                ExprJudgement::TrueUnderPrecondition => (
+                    ExprJudgement::Incomplete,
+                    format!("not_under_precondition({basis})"),
+                ),
                 other => (other, format!("not({basis})")),
             }
         }
@@ -281,9 +298,19 @@ fn eval_expr(
                 ExprJudgement::ProvenFalse => {
                     (ExprJudgement::ProvenTrue, format!("implies_vacuous:{bl}"))
                 }
-                ExprJudgement::ProvenTrue => {
+                ExprJudgement::ProvenTrue | ExprJudgement::TrueUnderPrecondition => {
+                    let under = matches!(jl, ExprJudgement::TrueUnderPrecondition);
                     let (jr, br) = eval_expr(right, alias, bindings, true);
-                    (jr, format!("implies:{bl}=>{br}"))
+                    let j = match (under, jr) {
+                        (_, ExprJudgement::ProvenFalse) => ExprJudgement::ProvenFalse,
+                        (_, ExprJudgement::Incomplete) => ExprJudgement::Incomplete,
+                        (_, ExprJudgement::NotEvaluated) => ExprJudgement::NotEvaluated,
+                        (true, _) | (_, ExprJudgement::TrueUnderPrecondition) => {
+                            ExprJudgement::TrueUnderPrecondition
+                        }
+                        (false, ExprJudgement::ProvenTrue) => ExprJudgement::ProvenTrue,
+                    };
+                    (j, format!("implies:{bl}=>{br}"))
                 }
                 ExprJudgement::Incomplete => (
                     ExprJudgement::Incomplete,
@@ -363,9 +390,20 @@ fn eval_and(
     let (jl, bl) = eval_expr(left, alias, bindings, force);
     match jl {
         ExprJudgement::ProvenFalse => (ExprJudgement::ProvenFalse, format!("and_short:{bl}")),
-        ExprJudgement::ProvenTrue => {
+        ExprJudgement::ProvenTrue | ExprJudgement::TrueUnderPrecondition => {
+            let left_under = matches!(jl, ExprJudgement::TrueUnderPrecondition);
             let (jr, br) = eval_expr(right, alias, bindings, force);
-            (jr, format!("and:{bl}&{br}"))
+            let j = match (left_under, jr) {
+                (_, ExprJudgement::ProvenFalse) => ExprJudgement::ProvenFalse,
+                (_, ExprJudgement::Incomplete) => ExprJudgement::Incomplete,
+                (_, ExprJudgement::NotEvaluated) if force => ExprJudgement::Incomplete,
+                (_, ExprJudgement::NotEvaluated) => ExprJudgement::NotEvaluated,
+                (true, _) | (_, ExprJudgement::TrueUnderPrecondition) => {
+                    ExprJudgement::TrueUnderPrecondition
+                }
+                (false, ExprJudgement::ProvenTrue) => ExprJudgement::ProvenTrue,
+            };
+            (j, format!("and:{bl}&{br}"))
         }
         ExprJudgement::Incomplete => (ExprJudgement::Incomplete, format!("and_left:{bl}")),
         ExprJudgement::NotEvaluated => {
@@ -401,6 +439,10 @@ fn eval_or(
     let (jl, bl) = eval_expr(left, alias, bindings, force);
     match jl {
         ExprJudgement::ProvenTrue => (ExprJudgement::ProvenTrue, format!("or_short:{bl}")),
+        ExprJudgement::TrueUnderPrecondition => (
+            ExprJudgement::TrueUnderPrecondition,
+            format!("or_short:{bl}"),
+        ),
         ExprJudgement::ProvenFalse => {
             let (jr, br) = eval_expr(right, alias, bindings, force);
             (jr, format!("or:{bl}|{br}"))
@@ -506,15 +548,15 @@ fn eval_call(
         );
     };
 
-    match lookup_relation(alias, &left, &right) {
+    match lookup_relation_row(alias, &left, &right) {
         None => (
             ExprJudgement::Incomplete,
             format!("no_alias_row:{left}/{right}"),
         ),
-        Some(observed) => match pred {
-            "disjoint" => judge_require(RelationRequire::Disjoint, observed, &left, &right),
-            "equal" => judge_require(RelationRequire::Equal, observed, &left, &right),
-            "contains" => judge_require(RelationRequire::Contains, observed, &left, &right),
+        Some((row, observed)) => match pred {
+            "disjoint" => judge_require(RelationRequire::Disjoint, row, observed, &left, &right),
+            "equal" => judge_require(RelationRequire::Equal, row, observed, &left, &right),
+            "contains" => judge_require(RelationRequire::Contains, row, observed, &left, &right),
             _ => (ExprJudgement::Incomplete, format!("unknown_pred:{pred}")),
         },
     }
@@ -522,6 +564,7 @@ fn eval_call(
 
 fn judge_require(
     require: RelationRequire,
+    row: &crate::alias::AliasRelationEvidence,
     observed: RelationObserved,
     left: &str,
     right: &str,
@@ -538,6 +581,17 @@ fn judge_require(
                 "regions_{}({left},{right})<= {}",
                 require.as_str(),
                 observed.as_str()
+            ),
+        )
+    } else if row.evidence_basis == RelationEvidenceBasis::DeclaredPrecondition
+        && row.required == require.as_str()
+    {
+        // Declared precondition for the same require — not a static proof.
+        (
+            ExprJudgement::TrueUnderPrecondition,
+            format!(
+                "regions_{}({left},{right})<=declared_precondition",
+                require.as_str()
             ),
         )
     } else if matches!(
@@ -631,21 +685,22 @@ fn contains_region_atom(expr: &Expr) -> bool {
     }
 }
 
-fn lookup_relation(
-    alias: &AliasAnalysisReport,
+fn lookup_relation_row<'a>(
+    alias: &'a AliasAnalysisReport,
     left: &str,
     right: &str,
-) -> Option<RelationObserved> {
+) -> Option<(&'a crate::alias::AliasRelationEvidence, RelationObserved)> {
     for row in &alias.relations {
         if row.left == left && row.right == right {
-            return Some(row.observed);
+            return Some((row, row.observed));
         }
-        // Symmetric for disjoint/equal
+        // Symmetric for disjoint/equal; contains is not symmetric.
         if row.left == right && row.right == left {
-            return Some(match row.observed {
+            let observed = match row.observed {
                 RelationObserved::ProvenContains => RelationObserved::MayOverlap,
                 other => other,
-            });
+            };
+            return Some((row, observed));
         }
     }
     None
@@ -698,6 +753,7 @@ access = "write"
 left = "src"
 right = "dst"
 require = "disjoint"
+basis = "precondition"
 "#,
         )
         .contract
@@ -705,7 +761,7 @@ require = "disjoint"
     }
 
     #[test]
-    fn disjoint_atom_passes_with_alias() {
+    fn disjoint_atom_true_under_precondition() {
         let contract = memcpy_with_region_requires();
         let memory = contract.memory.as_ref().unwrap();
         let alias = evaluate_alias(memory, &[]);
@@ -713,14 +769,14 @@ require = "disjoint"
         let report =
             evaluate_contract_expressions(&contract, Some(&alias), &ExprBindings::default())
                 .expect("report");
-        assert_eq!(report.status, ContractExprStatus::Passed);
+        assert_eq!(report.status, ContractExprStatus::PassedUnderPreconditions);
         assert_eq!(report.model, CONTRACT_EXPR_V1);
         let region_row = report
             .expressions
             .iter()
             .find(|e| e.source.contains("regions.disjoint"))
             .unwrap();
-        assert_eq!(region_row.judgement, ExprJudgement::ProvenTrue);
+        assert_eq!(region_row.judgement, ExprJudgement::TrueUnderPrecondition);
         let length_row = report
             .expressions
             .iter()
@@ -778,15 +834,15 @@ require = "disjoint"
             regions: vec![
                 CheckedRegion {
                     name: "src".into(),
-                    base_param: "src".into(),
+                    base_param: "buf".into(),
                     offset: 0,
                     length: LengthSpec::Literal(8),
                     access: RegionAccess::Read,
                 },
                 CheckedRegion {
                     name: "dst".into(),
-                    base_param: "dst".into(),
-                    offset: 0,
+                    base_param: "buf".into(),
+                    offset: 8,
                     length: LengthSpec::Literal(8),
                     access: RegionAccess::Write,
                 },
@@ -795,6 +851,7 @@ require = "disjoint"
                 left: "src".into(),
                 right: "dst".into(),
                 require: RelationRequire::Disjoint,
+                basis: None,
             }],
         };
         let alias = evaluate_alias(&memory, &[]);
@@ -804,10 +861,7 @@ contract_version = "0.1"
 [function]
 name = "f"
 [[function.parameters]]
-name = "dst"
-type = "ptr<u8>"
-[[function.parameters]]
-name = "src"
+name = "buf"
 type = "ptr<u8>"
 [[function.returns]]
 name = "status"
@@ -816,13 +870,15 @@ type = "usize"
 expression = "regions.equal(src, dst)"
 [[function.memory.regions]]
 name = "src"
-base = "src"
-length = "1"
+base = "buf"
+offset = "0"
+length = "8"
 access = "read"
 [[function.memory.regions]]
 name = "dst"
-base = "dst"
-length = "1"
+base = "buf"
+offset = "8"
+length = "8"
 access = "write"
 [[function.memory.relations]]
 left = "src"

@@ -151,6 +151,11 @@
           "description": "Short proof basis or reason string.",
           "type": "string"
         },
+        "evidence_basis": {
+          "description": "Typed evidence basis (ADR 0010).",
+          "$ref": "#/$defs/RelationEvidenceBasis",
+          "default": "unknown"
+        },
         "left": {
           "description": "Left region name.",
           "type": "string"
@@ -180,9 +185,14 @@
       "description": "Aggregate status for the alias evidence slice.",
       "oneOf": [
         {
-          "description": "Every required relation was proven and no unknown accesses were seen.",
+          "description": "Every required relation was statically proven and no unknown accesses.",
           "type": "string",
           "const": "passed"
+        },
+        {
+          "description": "Required relations are met only via declared caller preconditions\n(and/or mixed with static proofs); no unknowns / contradictions.",
+          "type": "string",
+          "const": "passed_under_preconditions"
         },
         {
           "description": "Required relation unproven and/or unknown memory accesses present.",
@@ -341,6 +351,11 @@
           "const": "passed"
         },
         {
+          "description": "Attempted expressions hold only under declared caller preconditions.",
+          "type": "string",
+          "const": "passed_under_preconditions"
+        },
+        {
           "description": "At least one attempted expression could not be decided.",
           "type": "string",
           "const": "incomplete"
@@ -428,6 +443,11 @@
           "const": "proven_false"
         },
         {
+          "description": "True only under an explicit declared precondition (ADR 0010).",
+          "type": "string",
+          "const": "true_under_precondition"
+        },
+        {
           "description": "Subset rules apply but a fact was missing / unknown op.",
           "type": "string",
           "const": "incomplete"
@@ -505,11 +525,46 @@
         }
       ]
     },
+    "RelationEvidenceBasis": {
+      "description": "Why a relation observation is believed (ADR 0010).",
+      "oneOf": [
+        {
+          "description": "Static affine/identity reasoning over the candidate.",
+          "type": "string",
+          "const": "proven_static"
+        },
+        {
+          "description": "Explicit contract precondition; caller obligation remains.",
+          "type": "string",
+          "const": "declared_precondition"
+        },
+        {
+          "description": "Reserved: runtime observation.",
+          "type": "string",
+          "const": "observed_runtime"
+        },
+        {
+          "description": "Reserved: behavioral oracle / test vector.",
+          "type": "string",
+          "const": "behavioral_test"
+        },
+        {
+          "description": "Reserved: environment assumption.",
+          "type": "string",
+          "const": "assumed_environment"
+        },
+        {
+          "description": "No usable basis.",
+          "type": "string",
+          "const": "unknown"
+        }
+      ]
+    },
     "RelationObserved": {
       "description": "Observed status for one declared relation.",
       "oneOf": [
         {
-          "description": "Distinct pointer-parameter identities.",
+          "description": "Same-base constant affine spans do not overlap (static).",
           "type": "string",
           "const": "proven_disjoint"
         },
@@ -529,7 +584,7 @@
           "const": "proven_partial_overlap"
         },
         {
-          "description": "Possible overlap; not proven either way.",
+          "description": "Possible overlap; not proven either way (includes distinct param names).",
           "type": "string",
           "const": "may_overlap"
         },
@@ -627,9 +682,14 @@
       "description": "Overall verification outcome after composing immutable stage results.",
       "oneOf": [
         {
-          "description": "Static gates and all behavioral vectors passed.",
+          "description": "Static gates and all behavioral vectors passed (no open caller obligations).",
           "type": "string",
           "const": "verified"
+        },
+        {
+          "description": "Passed under explicitly declared caller preconditions (ADR 0010).\n\nNot interchangeable with [`Self::Verified`].",
+          "type": "string",
+          "const": "verified_under_preconditions"
         },
         {
           "description": "A static semantic gate failed.",

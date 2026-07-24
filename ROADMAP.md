@@ -21,7 +21,7 @@ CI-proven support.
 | Tw | A64/RV adversarial twins (write-shape / MemCmp / min) | **done** (`c0655f1`) |
 | Ff | A64/RV `find_first_byte` / `find_last_byte` packs | **done** (`3876277`) |
 | Ab | `abi_analysis` → `verified_in_ci` (primary four) | **done** (`0e35029`) |
-| Sei | Semantic Evidence Integrity (alias/obligation → VAA policy → region access) | **planned** |
+| Sei | Semantic Evidence Integrity (alias/obligation → VAA policy → region access) | **in progress** (ADR 0010 P0) |
 
 ## Declared target identities
 
@@ -46,10 +46,11 @@ conformance evidence are proven.
 - Keep CI owner jobs green with `SEMASM_REQUIRE_TOOLCHAIN=1`.
 - Prefer fail-closed adversarial fixtures over broader mnemonic coverage.
 - Do **not** add new ISAs until landed paths stay deep and honest.
-- **In progress:** _(none — Horizon cliffs stay locked)_
-- **Next (Sei):** Semantic Evidence Integrity — freeze new ISA/leaf/bridge while
-  fixing proof vs assumption vocabulary; plan
-  [`docs/SEMANTIC_EVIDENCE_INTEGRITY_PLAN.md`](docs/SEMANTIC_EVIDENCE_INTEGRITY_PLAN.md).
+- **In progress:** **Sei P0** — ADR 0010 alias proof vs assumption vs caller
+  obligation (`docs/SEMANTIC_EVIDENCE_INTEGRITY_PLAN.md`). Horizon cliffs stay
+  locked.
+- **Next (Sei):** after P0 green — VAA Evidence Requirement Profiles + Region
+  Access Evidence v1.
 - **Done (Tw):** A64/RV adversarial twins — `docs/A64_RV_ADVERSARIAL_TWINS_PLAN.md`
   (`c0655f1`).
 - **Done (Ff):** A64/RV find-index packs at `3876277`.

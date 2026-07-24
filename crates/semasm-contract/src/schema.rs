@@ -97,6 +97,12 @@ pub struct MemoryRelationSchema {
     pub right: String,
     /// Required relation (`disjoint` | `equal` | `contains`).
     pub require: String,
+    /// Optional evidence basis declaration (`precondition`).
+    ///
+    /// When set to `precondition`, the relation is a caller obligation (ADR 0010),
+    /// not a static proof inferred from parameter names.
+    #[serde(default)]
+    pub basis: Option<String>,
 }
 
 /// Parameter declaration.

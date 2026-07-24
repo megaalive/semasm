@@ -8,6 +8,12 @@ follow [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Added
 
+- **Sei P0 / ADR 0010** — Alias proof vs assumption vs caller obligation:
+  distinct pointer names are `may_overlap` (not `proven_disjoint`); contracts
+  may set `basis = "precondition"`; report statuses
+  `passed_under_preconditions` / `verified_under_preconditions` and judgement
+  `true_under_precondition`. Verification report schema `0.5`. See
+  `docs/SEMANTIC_EVIDENCE_INTEGRITY_PLAN.md`.
 - **Ab `abi_analysis` → `verified_in_ci`** — callee-saved + stack-imbalance
   twins on A64/RV; A64 3-op `sub sp` tracking fix; four primary targets (not
   RV32). Sample ≠ formal ABI proof. See `docs/ABI_ANALYSIS_CI_BUMP_PLAN.md`.
@@ -35,6 +41,8 @@ crates.io.
 ### Changed
 
 - Workflows use `actions/checkout@v7`. Dependabot disabled (config removed).
+- Agent verification report schema `0.4` → `0.5` (new status / evidence_basis /
+  judgement variants; additive for 0.x readers that tolerate new enums).
 
 ## [0.2.0] - 2026-07-24
 

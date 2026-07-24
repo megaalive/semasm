@@ -417,6 +417,17 @@
       "description": "Checked required relation.",
       "type": "object",
       "properties": {
+        "basis": {
+          "description": "Optional declared basis (`precondition` = caller obligation).",
+          "anyOf": [
+            {
+              "$ref": "#/$defs/RelationBasisDecl"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
         "left": {
           "description": "Left region name.",
           "type": "string"
@@ -1030,6 +1041,16 @@
           "description": "Read and write.",
           "type": "string",
           "const": "read_write"
+        }
+      ]
+    },
+    "RelationBasisDecl": {
+      "description": "How a required relation is justified in the contract (ADR 0010).",
+      "oneOf": [
+        {
+          "description": "Caller must establish the relation; callee analysis may assume it.",
+          "type": "string",
+          "const": "precondition"
         }
       ]
     },

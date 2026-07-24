@@ -60,9 +60,10 @@ passed. No `passed with warning`.
 
 ### Scope / non-goals
 
-**In:** x86-64 first; identity-based disjoint/equal for distinct/same params;
-affine constant overlap when obvious; mark unmodeled memory ops unknown;
-`memmove` out.
+**In:** x86-64 first; identity/const disjoint/equal when the **same** pointer
+parameter identity has comparable affine spans; mark unmodeled memory ops
+unknown; `memmove` out. **Superseded (ADR 0010):** distinct parameter names
+are **not** `proven_disjoint`.
 
 **Out:** pointer provenance, heap identity, pointer-from-arbitrary-int,
 nonlinear arithmetic, linked structures, general points-to, SMT/theorem

@@ -1,4 +1,4 @@
-//! Contract Expression Semantics v1 corpus (ADR 0007).
+//! Contract Expression Semantics v1 corpus (ADR 0007 + 0010).
 
 use semasm_contract::{
     check_file, evaluate_alias, evaluate_contract_expressions, ContractExprStatus, ExprBindings,
@@ -19,14 +19,14 @@ fn load(name: &str) -> semasm_contract::CheckedContract {
 }
 
 #[test]
-fn memcpy_region_atom_passes_with_alias() {
+fn memcpy_region_atom_true_under_precondition() {
     let checked = load("memcpy.sem.toml");
     let alias = evaluate_alias(checked.memory.as_ref().unwrap(), &[]);
     let report =
         evaluate_contract_expressions(&checked, Some(&alias), &ExprBindings::default()).unwrap();
-    assert_eq!(report.status, ContractExprStatus::Passed);
+    assert_eq!(report.status, ContractExprStatus::PassedUnderPreconditions);
     assert!(report.expressions.iter().any(|e| {
-        e.source.contains("regions.disjoint") && e.judgement == ExprJudgement::ProvenTrue
+        e.source.contains("regions.disjoint") && e.judgement == ExprJudgement::TrueUnderPrecondition
     }));
 }
 

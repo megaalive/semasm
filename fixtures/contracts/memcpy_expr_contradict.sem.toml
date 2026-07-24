@@ -2,15 +2,11 @@ contract_version = "0.1"
 
 [function]
 name = "memcpy"
-summary = "regions.equal while alias proves disjoint → contract-expr failed"
+summary = "regions.equal while alias proves same-base const disjoint → contract-expr failed"
 
 [[function.parameters]]
-name = "dst"
+name = "buf"
 type = "ptr<u8>"
-
-[[function.parameters]]
-name = "src"
-type = "ptr<const u8>"
 
 [[function.parameters]]
 name = "length"
@@ -27,14 +23,16 @@ expression = "regions.equal(src, dst)"
 
 [[function.memory.regions]]
 name = "src"
-base = "src"
-length = "length"
+base = "buf"
+offset = "0"
+length = "8"
 access = "read"
 
 [[function.memory.regions]]
 name = "dst"
-base = "dst"
-length = "length"
+base = "buf"
+offset = "8"
+length = "8"
 access = "write"
 
 [[function.memory.relations]]

@@ -1,5 +1,5 @@
 {
-  "schema_version": "0.4",
+  "schema_version": "0.5",
   "status": "execution_denied",
   "target": "x86_64-unknown-linux-gnu",
   "routine_symbol": "sum_i64",

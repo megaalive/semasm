@@ -44,6 +44,8 @@ Otherwise exit `1` and still emit a structured report when gates were reached:
 
 | Status | When |
 |---|---|
+| `verified` | Static gates + behavioral vectors passed; no open caller obligations |
+| `verified_under_preconditions` | Same as `verified`, but alias/expr evidence relies on declared caller preconditions (ADR 0010; ≠ unconditional `verified`) |
 | `semantic_failed` | Object/decode/lowering/ABI/capability gate failed |
 | `executable_failed` | Linked image failed the executable-container policy |
 | `execution_denied` | Static gates passed; `--allow-execution` was not set |
@@ -51,7 +53,7 @@ Otherwise exit `1` and still emit a structured report when gates were reached:
 
 JSON document type is `VerificationReport` from `semasm-agent::verify`:
 
-- `schema_version` — experimental agent schema (`0.4`); see
+- `schema_version` — experimental agent schema (`0.5`); see
   `AGENT_SCHEMA_POLICY.md` and
   `crates/semasm-agent/schemas/verification-report.json`
 - `tool_version` — `semasm {SEMASM_VERSION}`

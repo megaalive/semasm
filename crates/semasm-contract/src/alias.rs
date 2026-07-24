@@ -1,19 +1,25 @@
-//! Region/Alias Evidence v1 — fail-closed relation engine (ADR 0006).
+//! Region/Alias Evidence v1.1 — fail-closed relation engine (ADR 0006 + 0010).
 //!
-//! Proves selected affine identity/constant relations only. Does **not**
+//! Proves selected affine identity/constant relations only. Distinct pointer
+//! parameter names are **not** a proof of disjointness (ADR 0010). Does **not**
 //! claim general alias analysis, provenance, or formal memory safety.
 
 use serde::{Deserialize, Serialize};
 
-use crate::validate::{CheckedMemory, CheckedRegion, LengthSpec, RegionAccess, RelationRequire};
+use crate::validate::{
+    CheckedMemory, CheckedRegion, LengthSpec, RegionAccess, RelationBasisDecl, RelationRequire,
+};
 
 /// Aggregate status for the alias evidence slice.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[cfg_attr(feature = "schema", derive(schemars::JsonSchema))]
 #[serde(rename_all = "snake_case")]
 pub enum AliasStatus {
-    /// Every required relation was proven and no unknown accesses were seen.
+    /// Every required relation was statically proven and no unknown accesses.
     Passed,
+    /// Required relations are met only via declared caller preconditions
+    /// (and/or mixed with static proofs); no unknowns / contradictions.
+    PassedUnderPreconditions,
     /// Required relation unproven and/or unknown memory accesses present.
     Incomplete,
     /// Observed relation contradicts a required one.
@@ -26,8 +32,44 @@ impl AliasStatus {
     pub const fn as_str(self) -> &'static str {
         match self {
             Self::Passed => "passed",
+            Self::PassedUnderPreconditions => "passed_under_preconditions",
             Self::Incomplete => "incomplete",
             Self::Failed => "failed",
+        }
+    }
+}
+
+/// Why a relation observation is believed (ADR 0010).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default)]
+#[cfg_attr(feature = "schema", derive(schemars::JsonSchema))]
+#[serde(rename_all = "snake_case")]
+pub enum RelationEvidenceBasis {
+    /// Static affine/identity reasoning over the candidate.
+    ProvenStatic,
+    /// Explicit contract precondition; caller obligation remains.
+    DeclaredPrecondition,
+    /// Reserved: runtime observation.
+    ObservedRuntime,
+    /// Reserved: behavioral oracle / test vector.
+    BehavioralTest,
+    /// Reserved: environment assumption.
+    AssumedEnvironment,
+    /// No usable basis.
+    #[default]
+    Unknown,
+}
+
+impl RelationEvidenceBasis {
+    /// Stable snake_case label.
+    #[must_use]
+    pub const fn as_str(self) -> &'static str {
+        match self {
+            Self::ProvenStatic => "proven_static",
+            Self::DeclaredPrecondition => "declared_precondition",
+            Self::ObservedRuntime => "observed_runtime",
+            Self::BehavioralTest => "behavioral_test",
+            Self::AssumedEnvironment => "assumed_environment",
+            Self::Unknown => "unknown",
         }
     }
 }
@@ -37,7 +79,7 @@ impl AliasStatus {
 #[cfg_attr(feature = "schema", derive(schemars::JsonSchema))]
 #[serde(rename_all = "snake_case")]
 pub enum RelationObserved {
-    /// Distinct pointer-parameter identities.
+    /// Same-base constant affine spans do not overlap (static).
     ProvenDisjoint,
     /// Identical base (and matching const affine span when comparable).
     ProvenEqual,
@@ -45,7 +87,7 @@ pub enum RelationObserved {
     ProvenContains,
     /// Constant affine partial overlap.
     ProvenPartialOverlap,
-    /// Possible overlap; not proven either way.
+    /// Possible overlap; not proven either way (includes distinct param names).
     MayOverlap,
     /// Region declaration could not be interpreted.
     InvalidRegion,
@@ -68,7 +110,7 @@ impl RelationObserved {
         }
     }
 
-    /// Whether this observation is a positive proof of a relation fact.
+    /// Whether this observation is a positive static proof of a relation fact.
     #[must_use]
     pub const fn is_proven(self) -> bool {
         matches!(
@@ -136,6 +178,9 @@ pub struct AliasRelationEvidence {
     pub required: String,
     /// Observed relation status.
     pub observed: RelationObserved,
+    /// Typed evidence basis (ADR 0010).
+    #[serde(default)]
+    pub evidence_basis: RelationEvidenceBasis,
     /// Short proof basis or reason string.
     pub basis: String,
 }
@@ -159,7 +204,8 @@ pub struct AliasAnalysisReport {
 /// Model string embedded in reports.
 pub const REGION_AFFINE_V1: &str = "region-affine-v1";
 
-const ASSUMPTION_DISTINCT: &str = "param_pointers_are_distinct_identities_when_named_differently";
+const ASSUMPTION_DISTINCT_NOT_PROOF: &str =
+    "distinct_param_names_do_not_prove_runtime_disjointness";
 
 /// Evaluate Region/Alias Evidence v1 for a checked memory block.
 #[must_use]
@@ -176,11 +222,23 @@ pub fn evaluate_alias(
     for rel in &memory.relations {
         let left = memory.regions.iter().find(|r| r.name == rel.left);
         let right = memory.regions.iter().find(|r| r.name == rel.right);
-        let (observed, basis) = match (left, right) {
-            (Some(l), Some(r)) => observe_pair(l, r),
+        let (observed, detail, evidence_basis) = match (left, right) {
+            (Some(l), Some(r)) => {
+                let (obs, detail, mut basis) = observe_pair(l, r);
+                // Explicit contract precondition only applies when static proof
+                // did not already decide the required fact.
+                if matches!(rel.basis, Some(RelationBasisDecl::Precondition))
+                    && !relation_satisfies(rel.require, obs)
+                    && !contradicts(rel.require, obs)
+                {
+                    basis = RelationEvidenceBasis::DeclaredPrecondition;
+                }
+                (obs, detail, basis)
+            }
             _ => (
                 RelationObserved::InvalidRegion,
                 "relation endpoint missing from regions".to_string(),
+                RelationEvidenceBasis::Unknown,
             ),
         };
 
@@ -189,16 +247,24 @@ pub fn evaluate_alias(
             right: rel.right.clone(),
             required: rel.require.as_str().to_string(),
             observed,
-            basis,
+            evidence_basis,
+            basis: detail,
         });
     }
 
     let mut any_failed = false;
     let mut any_unproven = false;
+    let mut any_caller_obligation = false;
     for (rel, row) in memory.relations.iter().zip(relations.iter()) {
         if contradicts(rel.require, row.observed) {
             any_failed = true;
-        } else if !relation_satisfies(rel.require, row.observed) {
+        } else if relation_satisfies(rel.require, row.observed) {
+            // statically proven
+        } else if row.evidence_basis == RelationEvidenceBasis::DeclaredPrecondition
+            && matches!(rel.basis, Some(RelationBasisDecl::Precondition))
+        {
+            any_caller_obligation = true;
+        } else {
             any_unproven = true;
         }
     }
@@ -207,6 +273,8 @@ pub fn evaluate_alias(
         AliasStatus::Failed
     } else if any_unproven || unknown_memory_accesses > 0 {
         AliasStatus::Incomplete
+    } else if any_caller_obligation {
+        AliasStatus::PassedUnderPreconditions
     } else {
         AliasStatus::Passed
     };
@@ -216,7 +284,7 @@ pub fn evaluate_alias(
         status,
         relations,
         unknown_memory_accesses,
-        assumptions: vec![ASSUMPTION_DISTINCT.to_string()],
+        assumptions: vec![ASSUMPTION_DISTINCT_NOT_PROOF.to_string()],
     }
 }
 
@@ -247,14 +315,19 @@ fn contradicts(required: RelationRequire, observed: RelationObserved) -> bool {
     }
 }
 
-fn observe_pair(left: &CheckedRegion, right: &CheckedRegion) -> (RelationObserved, String) {
+fn observe_pair(
+    left: &CheckedRegion,
+    right: &CheckedRegion,
+) -> (RelationObserved, String, RelationEvidenceBasis) {
     if left.base_param != right.base_param {
+        // ADR 0010: different parameter names are not a static disjoint proof.
         return (
-            RelationObserved::ProvenDisjoint,
+            RelationObserved::MayOverlap,
             format!(
-                "distinct_param_identity:{}!={}",
+                "distinct_param_names_not_proof:{}!={}",
                 left.base_param, right.base_param
             ),
+            RelationEvidenceBasis::Unknown,
         );
     }
 
@@ -263,6 +336,7 @@ fn observe_pair(left: &CheckedRegion, right: &CheckedRegion) -> (RelationObserve
         return (
             RelationObserved::MayOverlap,
             "same_base_missing_offset".to_string(),
+            RelationEvidenceBasis::Unknown,
         );
     };
 
@@ -276,12 +350,14 @@ fn observe_pair(left: &CheckedRegion, right: &CheckedRegion) -> (RelationObserve
                 return (
                     RelationObserved::ProvenEqual,
                     format!("same_base_equal_span:[{l0},{l1})"),
+                    RelationEvidenceBasis::ProvenStatic,
                 );
             }
             if l0 <= r0 && l1 >= r1 {
                 return (
                     RelationObserved::ProvenContains,
                     format!("left_contains_right:[{l0},{l1})>=[{r0},{r1})"),
+                    RelationEvidenceBasis::ProvenStatic,
                 );
             }
             if r0 <= l0 && r1 >= l1 {
@@ -290,17 +366,20 @@ fn observe_pair(left: &CheckedRegion, right: &CheckedRegion) -> (RelationObserve
                 return (
                     RelationObserved::ProvenPartialOverlap,
                     format!("right_contains_left:[{r0},{r1})>=[{l0},{l1})"),
+                    RelationEvidenceBasis::ProvenStatic,
                 );
             }
             if l1 <= r0 || r1 <= l0 {
                 return (
                     RelationObserved::ProvenDisjoint,
                     format!("same_base_const_disjoint:[{l0},{l1})|[{r0},{r1})"),
+                    RelationEvidenceBasis::ProvenStatic,
                 );
             }
             (
                 RelationObserved::ProvenPartialOverlap,
                 format!("same_base_partial_overlap:[{l0},{l1})~[{r0},{r1})"),
+                RelationEvidenceBasis::ProvenStatic,
             )
         }
         _ => {
@@ -310,11 +389,13 @@ fn observe_pair(left: &CheckedRegion, right: &CheckedRegion) -> (RelationObserve
                 (
                     RelationObserved::ProvenEqual,
                     "same_base_same_offset_same_length_param".to_string(),
+                    RelationEvidenceBasis::ProvenStatic,
                 )
             } else {
                 (
                     RelationObserved::MayOverlap,
                     "same_base_symbolic_length".to_string(),
+                    RelationEvidenceBasis::Unknown,
                 )
             }
         }
@@ -354,7 +435,7 @@ mod tests {
     }
 
     #[test]
-    fn distinct_params_prove_disjoint() {
+    fn different_pointer_names_are_not_proven_disjoint() {
         let memory = CheckedMemory {
             regions: vec![
                 region(
@@ -376,15 +457,100 @@ mod tests {
                 left: "src".into(),
                 right: "dst".into(),
                 require: RelationRequire::Disjoint,
+                basis: None,
+            }],
+        };
+        let report = evaluate_alias(&memory, &[]);
+        assert_eq!(report.status, AliasStatus::Incomplete);
+        assert_eq!(report.relations[0].observed, RelationObserved::MayOverlap);
+        assert_eq!(
+            report.relations[0].evidence_basis,
+            RelationEvidenceBasis::Unknown
+        );
+        assert_eq!(report.model, REGION_AFFINE_V1);
+    }
+
+    #[test]
+    fn explicit_disjoint_precondition_is_caller_obligation() {
+        let memory = CheckedMemory {
+            regions: vec![
+                region(
+                    "src",
+                    "src",
+                    0,
+                    LengthSpec::Param("length".into()),
+                    RegionAccess::Read,
+                ),
+                region(
+                    "dst",
+                    "dst",
+                    0,
+                    LengthSpec::Param("length".into()),
+                    RegionAccess::Write,
+                ),
+            ],
+            relations: vec![CheckedRelation {
+                left: "src".into(),
+                right: "dst".into(),
+                require: RelationRequire::Disjoint,
+                basis: Some(RelationBasisDecl::Precondition),
+            }],
+        };
+        let report = evaluate_alias(&memory, &[]);
+        assert_eq!(report.status, AliasStatus::PassedUnderPreconditions);
+        assert_eq!(report.relations[0].observed, RelationObserved::MayOverlap);
+        assert_eq!(
+            report.relations[0].evidence_basis,
+            RelationEvidenceBasis::DeclaredPrecondition
+        );
+    }
+
+    #[test]
+    fn same_pointer_is_proven_equal() {
+        let memory = CheckedMemory {
+            regions: vec![region(
+                "buf",
+                "buffer",
+                0,
+                LengthSpec::Param("length".into()),
+                RegionAccess::ReadWrite,
+            )],
+            relations: vec![CheckedRelation {
+                left: "buf".into(),
+                right: "buf".into(),
+                require: RelationRequire::Equal,
+                basis: None,
             }],
         };
         let report = evaluate_alias(&memory, &[]);
         assert_eq!(report.status, AliasStatus::Passed);
+        assert_eq!(report.relations[0].observed, RelationObserved::ProvenEqual);
+        assert_eq!(
+            report.relations[0].evidence_basis,
+            RelationEvidenceBasis::ProvenStatic
+        );
+    }
+
+    #[test]
+    fn same_base_overlapping_offsets_are_partial_overlap() {
+        let memory = CheckedMemory {
+            regions: vec![
+                region("a", "buf", 0, LengthSpec::Literal(8), RegionAccess::Read),
+                region("b", "buf", 4, LengthSpec::Literal(8), RegionAccess::Write),
+            ],
+            relations: vec![CheckedRelation {
+                left: "a".into(),
+                right: "b".into(),
+                require: RelationRequire::Disjoint,
+                basis: None,
+            }],
+        };
+        let report = evaluate_alias(&memory, &[]);
+        assert_eq!(report.status, AliasStatus::Failed);
         assert_eq!(
             report.relations[0].observed,
-            RelationObserved::ProvenDisjoint
+            RelationObserved::ProvenPartialOverlap
         );
-        assert_eq!(report.model, REGION_AFFINE_V1);
     }
 
     #[test]
@@ -398,32 +564,12 @@ mod tests {
                 left: "a".into(),
                 right: "b".into(),
                 require: RelationRequire::Disjoint,
+                basis: None,
             }],
         };
         let report = evaluate_alias(&memory, &[]);
         assert_eq!(report.status, AliasStatus::Failed);
         assert_eq!(report.relations[0].observed, RelationObserved::ProvenEqual);
-    }
-
-    #[test]
-    fn partial_overlap_conflicts_with_disjoint() {
-        let memory = CheckedMemory {
-            regions: vec![
-                region("a", "buf", 0, LengthSpec::Literal(8), RegionAccess::Read),
-                region("b", "buf", 4, LengthSpec::Literal(8), RegionAccess::Write),
-            ],
-            relations: vec![CheckedRelation {
-                left: "a".into(),
-                right: "b".into(),
-                require: RelationRequire::Disjoint,
-            }],
-        };
-        let report = evaluate_alias(&memory, &[]);
-        assert_eq!(report.status, AliasStatus::Failed);
-        assert_eq!(
-            report.relations[0].observed,
-            RelationObserved::ProvenPartialOverlap
-        );
     }
 
     #[test]
@@ -449,6 +595,7 @@ mod tests {
                 left: "src".into(),
                 right: "dst".into(),
                 require: RelationRequire::Disjoint,
+                basis: Some(RelationBasisDecl::Precondition),
             }],
         };
         let accesses = vec![ObservedMemoryAccess {
@@ -460,26 +607,5 @@ mod tests {
         let report = evaluate_alias(&memory, &accesses);
         assert_eq!(report.status, AliasStatus::Incomplete);
         assert_eq!(report.unknown_memory_accesses, 1);
-    }
-
-    #[test]
-    fn self_equal_single_region() {
-        let memory = CheckedMemory {
-            regions: vec![region(
-                "buf",
-                "buffer",
-                0,
-                LengthSpec::Param("length".into()),
-                RegionAccess::ReadWrite,
-            )],
-            relations: vec![CheckedRelation {
-                left: "buf".into(),
-                right: "buf".into(),
-                require: RelationRequire::Equal,
-            }],
-        };
-        let report = evaluate_alias(&memory, &[]);
-        assert_eq!(report.status, AliasStatus::Passed);
-        assert_eq!(report.relations[0].observed, RelationObserved::ProvenEqual);
     }
 }

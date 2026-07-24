@@ -320,12 +320,18 @@ fn agent_verify_memcpy_aarch64_allow_execution_is_verified() {
     let value: serde_json::Value = serde_json::from_str(&stdout).unwrap_or_else(|error| {
         panic!("expected VerificationReport JSON ({error}): {stdout}\nstderr={stderr}")
     });
-    assert_eq!(value["status"], "verified");
+    assert_eq!(value["status"], "verified_under_preconditions");
     assert_eq!(value["behavior_oracle"]["id"], "builtin.buffer.memcpy");
     assert_eq!(value["alias_analysis"]["model"], "region-affine-v1");
-    assert_eq!(value["alias_analysis"]["status"], "passed");
+    assert_eq!(
+        value["alias_analysis"]["status"],
+        "passed_under_preconditions"
+    );
     assert_eq!(value["contract_expressions"]["model"], "contract-expr-v1");
-    assert_eq!(value["contract_expressions"]["status"], "passed");
+    assert_eq!(
+        value["contract_expressions"]["status"],
+        "passed_under_preconditions"
+    );
 }
 
 #[test]
@@ -383,12 +389,18 @@ fn agent_verify_memcpy_riscv64_allow_execution_is_verified() {
     let value: serde_json::Value = serde_json::from_str(&stdout).unwrap_or_else(|error| {
         panic!("expected VerificationReport JSON ({error}): {stdout}\nstderr={stderr}")
     });
-    assert_eq!(value["status"], "verified");
+    assert_eq!(value["status"], "verified_under_preconditions");
     assert_eq!(value["behavior_oracle"]["id"], "builtin.buffer.memcpy");
     assert_eq!(value["alias_analysis"]["model"], "region-affine-v1");
-    assert_eq!(value["alias_analysis"]["status"], "passed");
+    assert_eq!(
+        value["alias_analysis"]["status"],
+        "passed_under_preconditions"
+    );
     assert_eq!(value["contract_expressions"]["model"], "contract-expr-v1");
-    assert_eq!(value["contract_expressions"]["status"], "passed");
+    assert_eq!(
+        value["contract_expressions"]["status"],
+        "passed_under_preconditions"
+    );
 }
 
 #[test]
