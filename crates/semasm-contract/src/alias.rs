@@ -164,6 +164,9 @@ pub struct ObservedMemoryAccess {
     pub addr: AccessAddr,
     /// Original mnemonic (reporting).
     pub mnemonic: String,
+    /// Instruction offset in the candidate when known (ADR 0011).
+    #[serde(default)]
+    pub instruction_offset: u64,
 }
 
 /// Per-relation evidence row.
@@ -631,6 +634,7 @@ mod tests {
             width_bytes: 1,
             addr: AccessAddr::Unknown,
             mnemonic: "mov".into(),
+            instruction_offset: 0,
         }];
         let report = evaluate_alias(&memory, &accesses);
         assert_eq!(report.status, AliasStatus::Incomplete);

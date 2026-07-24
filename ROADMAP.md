@@ -21,7 +21,7 @@ CI-proven support.
 | Tw | A64/RV adversarial twins (write-shape / MemCmp / min) | **done** (`c0655f1`) |
 | Ff | A64/RV `find_first_byte` / `find_last_byte` packs | **done** (`3876277`) |
 | Ab | `abi_analysis` → `verified_in_ci` (primary four) | **done** (`0e35029`) |
-| Sei | Semantic Evidence Integrity (alias/obligation → VAA policy → region access) | **in progress** (ADR 0010 P0) |
+| Sei | Semantic Evidence Integrity (alias/obligation → VAA policy → region access) | **in progress** (P0 done; Ra0) |
 
 ## Declared target identities
 

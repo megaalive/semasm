@@ -12,6 +12,7 @@ pub mod alias;
 pub mod codes;
 pub mod eval;
 pub mod expr;
+pub mod region_access;
 pub mod schema;
 pub mod sem_type;
 pub mod validate;
@@ -27,6 +28,10 @@ pub use eval::{
     ExprBindings, ExprJudgement, ExprRole, CONTRACT_EXPR_V1,
 };
 pub use expr::{BinOp, Expr, UnaryOp};
+pub use region_access::{
+    evaluate_region_access, BoundsStatus, MemoryAccessEvidence, PermissionStatus,
+    RegionAccessReport, RegionAccessStatus, REGION_ACCESS_AFFINE_V1,
+};
 pub use schema::{
     ConditionSchema, ConstraintsSchema, ContractDocument, EffectSchema, FunctionSchema,
     MemoryBlockSchema, MemoryRegionSchema, MemoryRelationSchema, ParameterSchema, ReturnSchema,

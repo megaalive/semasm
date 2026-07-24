@@ -8,6 +8,10 @@ follow [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Added
 
+- **Sei Ra1** — Region Access Evidence engine (`region-access-affine-v1`):
+  affine access → region match with bounds/permission fail-closed status.
+- **Sei Ra0 / ADR 0011** — Region Access Evidence v1 plan accepted
+  (`docs/REGION_ACCESS_EVIDENCE_V1_PLAN.md`); implementation Ra1+.
 - **Sei P0 / ADR 0010** — Alias proof vs assumption vs caller obligation:
   distinct pointer names are `may_overlap` (not `proven_disjoint`); contracts
   may set `basis = "precondition"`; report statuses

@@ -70,6 +70,7 @@ fn record_accesses(
             width_bytes: width_bytes(mem.width),
             addr: classify_addr(mem, affinity),
             mnemonic: mnemonic.clone(),
+            instruction_offset: 0,
         });
     }
 }

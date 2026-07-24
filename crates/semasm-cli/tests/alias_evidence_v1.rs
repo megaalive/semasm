@@ -64,6 +64,7 @@ fn unknown_access_fixture_is_incomplete() {
         width_bytes: 1,
         addr: AccessAddr::Unknown,
         mnemonic: "mov".into(),
+        instruction_offset: 0,
     }];
     let report = evaluate_alias(memory, &accesses);
     assert_eq!(report.status, AliasStatus::Incomplete);

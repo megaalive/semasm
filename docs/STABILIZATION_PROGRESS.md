@@ -98,7 +98,7 @@ ceremony** (next landable after Da CI green at tip `a85deae`).
 | **Tw** | A64/RV adversarial twins (write-shape / MemCmp / min) | **done** (`c0655f1`) |
 | **Ff** | A64/RV `find_first_byte` / `find_last_byte` | **done** (`3876277`) |
 | **Ab** | `abi_analysis` -> `verified_in_ci` (primary four) | **done** (`0e35029`) |
-| **Sei** | Semantic Evidence Integrity (P0 alias/obligation -> P1 VAA profiles + region access) | **in progress** - ADR 0010; [SEMANTIC_EVIDENCE_INTEGRITY_PLAN.md](SEMANTIC_EVIDENCE_INTEGRITY_PLAN.md) |
+| **Sei** | Semantic Evidence Integrity (P0 alias/obligation -> P1 VAA profiles + region access) | **in progress** - P0 done; Ra0 ADR 0011; [REGION_ACCESS_EVIDENCE_V1_PLAN.md](REGION_ACCESS_EVIDENCE_V1_PLAN.md) |
 
 ### A64/RV Decode/Lower Bump (Da0?Da5) ? done
 

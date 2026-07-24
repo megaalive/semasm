@@ -20,9 +20,9 @@ without per-target corpus.
 | Step | Focus | Status |
 |---|---|---|
 | **Ra0** | ADR 0011 + this plan + progress pointers | **done** |
-| **Ra1** | Target-neutral access evidence types + engine stub (report shape) | **planned** |
-| **Ra2** | Match affine accesses to contract regions (x86 effects in) | **planned** |
-| **Ra3** | Bounds + permission status; fail-closed aggregate | **planned** |
+| **Ra1** | Target-neutral access evidence types + engine (affine match) | **done** |
+| **Ra2** | Match affine accesses to contract regions (x86 effects in) | **done** (folded into Ra1) |
+| **Ra3** | Bounds + permission status; fail-closed aggregate | **done** (folded into Ra1) |
 | **Ra4** | Wire `VerificationReport.region_access`; schema bump if needed | **planned** |
 | **Ra5** | x86-64 acceptance corpus (minimum fixtures in Sei §4) | **planned** |
 | **Ra6** | Caps/docs honesty; A64/RV observational only | **planned** |
