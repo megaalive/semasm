@@ -6,6 +6,14 @@ follow [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Fixed
+
+- **x86 memory effects** — track rbp/rsp frame spills of pointer parameters so
+  HlaX64-style reload (`mov r10, [rbp-N]` then `movzx …, byte [r10]`) keeps
+  affine buffer affinity (Incomplete unknown access → no longer force
+  `semantic_failed` on Win64 HlaX64 `count_byte`). Sample ≠ formal memory
+  safety; `region_access` Incomplete remains observational.
+
 ### Added
 
 - **Sei Ra6** — caps/docs honesty for `region-access-affine-v1` (x86 corpus

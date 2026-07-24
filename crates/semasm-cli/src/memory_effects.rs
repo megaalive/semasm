@@ -15,6 +15,12 @@ pub enum AbiConvention {
     Win64,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+enum FrameSlot {
+    Rbp(i64),
+    Rsp(i64),
+}
+
 /// Collect observed memory accesses for Region/Alias Evidence v1.
 #[must_use]
 pub fn collect_memory_effects(
@@ -23,12 +29,13 @@ pub fn collect_memory_effects(
     abi: AbiConvention,
 ) -> Vec<ObservedMemoryAccess> {
     let mut affinity: HashMap<Gp, String> = HashMap::new();
+    let mut stack_slots: HashMap<FrameSlot, String> = HashMap::new();
     seed_param_affinity(&mut affinity, contract, abi);
 
     let mut out = Vec::new();
     for instr in lowered {
         record_accesses(instr, &affinity, &mut out);
-        update_affinity(instr, &mut affinity);
+        update_affinity(instr, &mut affinity, &mut stack_slots);
     }
     out
 }
@@ -136,35 +143,74 @@ fn is_stack_frame(mem: &MemOperand) -> bool {
     }
 }
 
+fn frame_slot(mem: &MemOperand) -> Option<FrameSlot> {
+    if mem.index.is_some() {
+        return None;
+    }
+    let base = mem.base?;
+    match base.storage {
+        Storage::Gp(Gp::Rbp) => Some(FrameSlot::Rbp(mem.disp)),
+        Storage::Gp(Gp::Rsp) => Some(FrameSlot::Rsp(mem.disp)),
+        _ => None,
+    }
+}
+
 fn width_bytes(width: Width) -> u32 {
     width.bits() / 8
 }
 
-fn update_affinity(instr: &LoweredInstr, affinity: &mut HashMap<Gp, String>) {
+fn update_affinity(
+    instr: &LoweredInstr,
+    affinity: &mut HashMap<Gp, String>,
+    stack_slots: &mut HashMap<FrameSlot, String>,
+) {
     let mnemonic = instr.mnemonic.to_ascii_lowercase();
     match mnemonic.as_str() {
         "mov" | "movabs" => {
-            let Some(Operand::Reg(dst)) = instr.operands.first() else {
-                return;
-            };
-            let Storage::Gp(dst_gp) = dst.storage else {
-                return;
-            };
-            match instr.operands.get(1) {
-                Some(Operand::Reg(src)) => {
-                    if let Storage::Gp(src_gp) = src.storage {
+            match (instr.operands.first(), instr.operands.get(1)) {
+                // Spill: mov [rbp/rsp+disp], reg — keep param identity in the slot.
+                (Some(Operand::Mem(mem)), Some(Operand::Reg(src))) => {
+                    if let (Some(slot), Storage::Gp(src_gp)) = (frame_slot(mem), src.storage) {
                         if let Some(name) = affinity.get(&src_gp).cloned() {
-                            affinity.insert(dst_gp, name);
+                            stack_slots.insert(slot, name);
                         } else {
-                            affinity.remove(&dst_gp);
+                            stack_slots.remove(&slot);
                         }
-                    } else {
-                        affinity.remove(&dst_gp);
                     }
                 }
-                _ => {
-                    affinity.remove(&dst_gp);
+                // Reload / copy: mov reg, …
+                (Some(Operand::Reg(dst)), src) => {
+                    let Storage::Gp(dst_gp) = dst.storage else {
+                        return;
+                    };
+                    match src {
+                        Some(Operand::Reg(src)) => {
+                            if let Storage::Gp(src_gp) = src.storage {
+                                if let Some(name) = affinity.get(&src_gp).cloned() {
+                                    affinity.insert(dst_gp, name);
+                                } else {
+                                    affinity.remove(&dst_gp);
+                                }
+                            } else {
+                                affinity.remove(&dst_gp);
+                            }
+                        }
+                        Some(Operand::Mem(mem)) => {
+                            // Reload spilled pointer params from the frame.
+                            if let Some(slot) = frame_slot(mem) {
+                                if let Some(name) = stack_slots.get(&slot).cloned() {
+                                    affinity.insert(dst_gp, name);
+                                    return;
+                                }
+                            }
+                            affinity.remove(&dst_gp);
+                        }
+                        _ => {
+                            affinity.remove(&dst_gp);
+                        }
+                    }
                 }
+                _ => {}
             }
         }
         "lea" => {
@@ -213,6 +259,35 @@ mod tests {
             groups: vec![],
             detail_available: false,
         }
+    }
+
+    fn count_byte_contract() -> CheckedContract {
+        semasm_contract::check_str(
+            r#"
+contract_version = "0.1"
+[function]
+name = "count_byte"
+[[function.parameters]]
+name = "buffer"
+type = "ptr<const u8>"
+[[function.parameters]]
+name = "length"
+type = "usize"
+[[function.parameters]]
+name = "needle"
+type = "u8"
+[[function.returns]]
+name = "count"
+type = "usize"
+[[function.memory.regions]]
+name = "buffer"
+base = "buffer"
+length = "length"
+access = "read"
+"#,
+        )
+        .contract
+        .expect("contract")
     }
 
     #[test]
@@ -278,6 +353,49 @@ require = "disjoint"
             .filter(|e| matches!(e.addr, AccessAddr::Unknown))
             .count();
         assert_eq!(unknowns, 0, "{effects:?}");
+    }
+
+    #[test]
+    fn win64_frame_spill_reload_keeps_buffer_affine() {
+        // HlaX64-style prologue: spill rcx (buffer) to [rbp-8], reload into r10,
+        // then byte-load through r10. Without slot tracking this becomes Unknown.
+        let contract = count_byte_contract();
+        let instrs = [
+            phys("push", &["rbp"]),
+            phys("mov", &["rbp", "rsp"]),
+            phys("sub", &["rsp", "0x20"]),
+            phys("mov", &["qword ptr [rbp - 8]", "rcx"]),
+            phys("mov", &["qword ptr [rbp - 0x10]", "rdx"]),
+            phys("mov", &["qword ptr [rbp - 0x18]", "r8"]),
+            phys("mov", &["r8", "0"]),
+            phys("mov", &["r9", "0"]),
+            phys("mov", &["r10", "qword ptr [rbp - 8]"]),
+            phys("movzx", &["r11", "byte ptr [r10]"]),
+            phys("add", &["r10", "1"]),
+            phys("ret", &[]),
+        ];
+        let lowered: Vec<_> = instrs
+            .iter()
+            .filter_map(|p| match lower(p) {
+                semasm_x86::lower::Lowering::Lowered(l) => Some(l),
+                semasm_x86::lower::Lowering::Unsupported { .. } => None,
+            })
+            .collect();
+        let effects = collect_memory_effects(&lowered, &contract, AbiConvention::Win64);
+        let unknowns = effects
+            .iter()
+            .filter(|e| matches!(e.addr, AccessAddr::Unknown))
+            .count();
+        assert_eq!(unknowns, 0, "{effects:?}");
+        assert!(
+            effects.iter().any(|e| {
+                matches!(
+                    &e.addr,
+                    AccessAddr::Affine { base_param, .. } if base_param == "buffer"
+                ) && e.width_bytes == 1
+            }),
+            "expected affine byte load through reloaded buffer pointer: {effects:?}"
+        );
     }
 
     #[test]
