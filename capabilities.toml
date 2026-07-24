@@ -41,6 +41,11 @@
 #   `semasm-cli` `alias_evidence_v1` + x86 `agent_verify_*` e2e. **Not**
 #   general alias analysis / formal memory safety. `unknown`/`may_overlap`/
 #   `not_evaluated` ≠ passed.
+# - Contract Expression Semantics v1 (`contract-expr-v1`, ADR 0007): documented
+#   subset of requires/ensures (see docs/CONTRACT_EXPR_V1_SUBSET.md), including
+#   `regions.disjoint|equal|contains` against living alias evidence. Owner:
+#   `semasm-contract` eval unit tests + `semasm-cli` `contract_expr_v1`.
+#   **Not** full ensures proof / SMT. `not_evaluated`/`incomplete` ≠ passed.
 # - Ownership map: docs/STABILIZATION_PROGRESS.md (maturity follow-up M0/M1).
 # - Dx bump (owner sign-off): x86-64 `decode`/`lower` flipped to
 #   `verified_in_ci` below; checklist + readiness table in

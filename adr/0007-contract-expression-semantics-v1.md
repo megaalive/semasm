@@ -2,7 +2,7 @@
 
 ## Status
 
-Accepted (scope lock; implementation follows `docs/CONTRACT_EXPR_V1_PLAN.md`)
+Accepted (implemented: Ce0–Ce5; see `docs/CONTRACT_EXPR_V1_PLAN.md`)
 
 ## Context
 

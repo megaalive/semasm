@@ -41,6 +41,17 @@
       "description": "SHA-256 digest of the contract file bytes (`sha256:` + hex).",
       "type": "string"
     },
+    "contract_expressions": {
+      "description": "Contract Expression Semantics v1 (ADR 0007). Absent when no subset\nexpression was attempted (all `not_evaluated`).",
+      "anyOf": [
+        {
+          "$ref": "#/$defs/ContractExprReport"
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
     "executable": {
       "description": "Post-link executable gate result.",
       "$ref": "#/$defs/ExecutableGate"
@@ -259,6 +270,88 @@
         "evidence_hash"
       ]
     },
+    "ContractExprEvidence": {
+      "description": "One evaluated (or skipped) expression row.",
+      "type": "object",
+      "properties": {
+        "basis": {
+          "description": "Short basis string.",
+          "type": "string"
+        },
+        "judgement": {
+          "description": "Judgement.",
+          "$ref": "#/$defs/ExprJudgement"
+        },
+        "role": {
+          "description": "requires / ensures.",
+          "$ref": "#/$defs/ExprRole"
+        },
+        "source": {
+          "description": "Original source text.",
+          "type": "string"
+        }
+      },
+      "required": [
+        "role",
+        "source",
+        "judgement",
+        "basis"
+      ]
+    },
+    "ContractExprReport": {
+      "description": "Full contract-expression block for VerificationReport.",
+      "type": "object",
+      "properties": {
+        "assumptions": {
+          "description": "Explicit honesty assumptions.",
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "expressions": {
+          "description": "Per-expression rows (including not_evaluated).",
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/ContractExprEvidence"
+          }
+        },
+        "model": {
+          "description": "Evidence model id.",
+          "type": "string"
+        },
+        "status": {
+          "description": "Aggregate slice status.",
+          "$ref": "#/$defs/ContractExprStatus"
+        }
+      },
+      "required": [
+        "model",
+        "status",
+        "expressions",
+        "assumptions"
+      ]
+    },
+    "ContractExprStatus": {
+      "description": "Aggregate status for the contract-expression slice.",
+      "oneOf": [
+        {
+          "description": "Every attempted expression was proven true.",
+          "type": "string",
+          "const": "passed"
+        },
+        {
+          "description": "At least one attempted expression could not be decided.",
+          "type": "string",
+          "const": "incomplete"
+        },
+        {
+          "description": "At least one attempted expression was proven false.",
+          "type": "string",
+          "const": "failed"
+        }
+      ]
+    },
     "Coverage": {
       "description": "Instruction-level coverage counts (unknown ≠ verified).\n\nDecode and lowering gates always use instruction counts here. Byte-level\ndetail belongs in error messages, not in these fields.",
       "type": "object",
@@ -318,6 +411,46 @@
           "description": "Ran directly on the build host (no emulator wrapper).",
           "type": "string",
           "const": "native_host"
+        }
+      ]
+    },
+    "ExprJudgement": {
+      "description": "Per-expression judgement.",
+      "oneOf": [
+        {
+          "description": "Expression evaluated to true under the subset rules.",
+          "type": "string",
+          "const": "proven_true"
+        },
+        {
+          "description": "Expression evaluated to false under the subset rules.",
+          "type": "string",
+          "const": "proven_false"
+        },
+        {
+          "description": "Subset rules apply but a fact was missing / unknown op.",
+          "type": "string",
+          "const": "incomplete"
+        },
+        {
+          "description": "Out of static subset scope (e.g. unbound postcondition).",
+          "type": "string",
+          "const": "not_evaluated"
+        }
+      ]
+    },
+    "ExprRole": {
+      "description": "Where the expression appeared in the contract.",
+      "oneOf": [
+        {
+          "description": "`[[function.requires]]`",
+          "type": "string",
+          "const": "requires"
+        },
+        {
+          "description": "`[[function.ensures]]`",
+          "type": "string",
+          "const": "ensures"
         }
       ]
     },

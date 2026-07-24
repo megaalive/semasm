@@ -353,6 +353,10 @@ pub struct VerificationReport {
     /// `[function.memory]` block or the target cannot collect effects.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub alias_analysis: Option<semasm_contract::AliasAnalysisReport>,
+    /// Contract Expression Semantics v1 (ADR 0007). Absent when no subset
+    /// expression was attempted (all `not_evaluated`).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub contract_expressions: Option<semasm_contract::ContractExprReport>,
 }
 
 /// Named deterministic behavioral oracle attached to a verification report.
@@ -462,6 +466,7 @@ impl VerificationReport {
             behavior,
             behavior_oracle: None,
             alias_analysis: None,
+            contract_expressions: None,
         }
     }
 
@@ -494,6 +499,22 @@ impl VerificationReport {
             self.status = VerificationStatus::SemanticFailed;
         }
         self.alias_analysis = Some(alias_analysis);
+        self
+    }
+
+    /// Attach Contract Expression Semantics v1 (fluent builder).
+    ///
+    /// Non-[`semasm_contract::ContractExprStatus::Passed`] →
+    /// [`VerificationStatus::SemanticFailed`].
+    #[must_use]
+    pub fn with_contract_expressions(
+        mut self,
+        contract_expressions: semasm_contract::ContractExprReport,
+    ) -> Self {
+        if contract_expressions.status != semasm_contract::ContractExprStatus::Passed {
+            self.status = VerificationStatus::SemanticFailed;
+        }
+        self.contract_expressions = Some(contract_expressions);
         self
     }
 }

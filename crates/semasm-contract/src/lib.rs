@@ -10,6 +10,7 @@
 
 pub mod alias;
 pub mod codes;
+pub mod eval;
 pub mod expr;
 pub mod schema;
 pub mod sem_type;
@@ -20,6 +21,10 @@ pub use alias::{
     AliasStatus, ObservedMemoryAccess, RelationObserved, REGION_AFFINE_V1,
 };
 pub use codes::ContractCode;
+pub use eval::{
+    evaluate_contract_expressions, ContractExprEvidence, ContractExprReport, ContractExprStatus,
+    ExprBindings, ExprJudgement, ExprRole, CONTRACT_EXPR_V1,
+};
 pub use expr::{BinOp, Expr, UnaryOp};
 pub use schema::{
     ConditionSchema, ConstraintsSchema, ContractDocument, EffectSchema, FunctionSchema,

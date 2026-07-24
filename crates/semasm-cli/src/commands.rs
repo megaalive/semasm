@@ -21,8 +21,8 @@ use semasm_build::exec;
 use semasm_build::report::{self, CommandRecordJson, ExecutionInfo};
 use semasm_build::{BuildError, Pipeline};
 use semasm_contract::{
-    check_file, evaluate_alias, explain_code, format_diagnostics_terminal, AliasAnalysisReport,
-    CheckReportJson, ContractCode,
+    check_file, evaluate_alias, evaluate_contract_expressions, explain_code,
+    format_diagnostics_terminal, AliasAnalysisReport, CheckReportJson, ContractCode, ExprBindings,
 };
 use semasm_obj::{ContainerKind, ObjectError};
 use semasm_target::{tools, TargetIdentity};
@@ -460,8 +460,13 @@ fn run_agent_verify_core(
             )),
             None => report,
         };
+        let expr_report =
+            evaluate_contract_expressions(&checked, alias.as_ref(), &ExprBindings::default());
         if let Some(alias) = alias {
             report = report.with_alias_analysis(alias);
+        }
+        if let Some(exprs) = expr_report {
+            report = report.with_contract_expressions(exprs);
         }
         report.with_digests(contract_digest.clone(), source_digest.clone())
     };
@@ -706,7 +711,16 @@ fn run_agent_verify_core(
         report = report.with_behavior_oracle(oracle);
     }
     if let Some(alias) = alias_analysis {
-        report = report.with_alias_analysis(alias);
+        report = report.with_alias_analysis(alias.clone());
+        if let Some(exprs) =
+            evaluate_contract_expressions(&checked, Some(&alias), &ExprBindings::default())
+        {
+            report = report.with_contract_expressions(exprs);
+        }
+    } else if let Some(exprs) =
+        evaluate_contract_expressions(&checked, None, &ExprBindings::default())
+    {
+        report = report.with_contract_expressions(exprs);
     }
 
     let exit = match report.status {
@@ -778,6 +792,14 @@ fn print_verification_terminal(report: &VerificationReport) {
             alias.status.as_str(),
             alias.unknown_memory_accesses,
             alias.relations.len()
+        );
+    }
+    if let Some(exprs) = &report.contract_expressions {
+        println!(
+            "Contract expressions: model={} status={} rows={}",
+            exprs.model,
+            exprs.status.as_str(),
+            exprs.expressions.len()
         );
     }
 

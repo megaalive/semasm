@@ -24,6 +24,10 @@ name = "status"
 type = "usize"
 
 [[function.requires]]
+expression = "regions.disjoint(src, dst)"
+reason = "Region/Alias + contract-expr-v1: src and dst must be disjoint."
+
+[[function.requires]]
 expression = "length <= 4096"
 reason = "Arbitrary safety limit for this fixture."
 

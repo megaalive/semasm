@@ -77,10 +77,9 @@ Forbidden: *SemASM formally proves memory safety* / *complete alias analysis*.
 
 ### Roadmap after v1 (locked deferred)
 
-1. Contract expression semantics v1 — **unlocked** as ADR 0007 +
-   `docs/CONTRACT_EXPR_V1_PLAN.md` (implementation Ce1–Ce5 pending).
-2. A64/RV memory-effect parity (decode enough for Region/Alias facts) — after
-   G2 Ce5 unless effects-only exception.
+1. Contract expression semantics v1 — **landed** (ADR 0007; Ce0–Ce5).
+2. A64/RV memory-effect parity (decode enough for Region/Alias facts) —
+   **unlocked for planning** after G2 Ce5.
 3. Isolation ops proof (VAA; escalate if public untrusted execution).
 4. Trust root nyata (last; authenticity ≠ semantic truth).
 

@@ -254,6 +254,11 @@ jobs:
           cargo test -p semasm-cli --all-features --test alias_evidence_v1 -- --nocapture
           cargo test -p semasm-contract --lib alias:: -- --nocapture
 
+      - name: Contract Expression Semantics v1 corpus
+        run: |
+          cargo test -p semasm-cli --all-features --test contract_expr_v1 -- --nocapture
+          cargo test -p semasm-contract --lib eval:: -- --nocapture
+
       - name: Agent semantic-gate and verify integration tests
         run: |
           cargo test -p semasm-cli --all-features \

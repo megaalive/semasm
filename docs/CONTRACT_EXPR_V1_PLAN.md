@@ -21,12 +21,12 @@ proof.
 
 | Step | Focus | Status |
 |---|---|---|
-| **Ce0** | ADR 0007 Accepted + this plan + progress pointers | **landed** (this commit) |
-| **Ce1** | Document allowed AST subset + region/relation atoms | pending |
-| **Ce2** | Fail-closed evaluator (unit tests; unknown ops → incomplete) | pending |
-| **Ce3** | Wire `agent verify` report field + terminal summary | pending |
-| **Ce4** | ± fixtures + CI filters (reuse memcpy/memset memory blocks) | pending |
-| **Ce5** | Caps / README / CHANGELOG honesty; unlock G3 criteria check | pending |
+| **Ce0** | ADR 0007 Accepted + this plan + progress pointers | **done** |
+| **Ce1** | Document allowed AST subset + region/relation atoms | **done** |
+| **Ce2** | Fail-closed evaluator (unit tests; unknown ops → incomplete) | **done** |
+| **Ce3** | Wire `agent verify` report field + terminal summary | **done** |
+| **Ce4** | ± fixtures + CI filters (reuse memcpy/memset memory blocks) | **done** |
+| **Ce5** | Caps / README / CHANGELOG honesty; unlock G3 criteria check | **done** |
 
 ### Ce1 — Subset document
 
@@ -86,6 +86,8 @@ Owner CI: unit tests in `semasm-contract` + `semasm-cli` filters on
 - Caps: name **contract-expr-v1** subset, not “full ensures proof”.
 - Update ADR 0006 “roadmap after v1” row 1 → landed when Ce5 done.
 - **Unlock G3** only after Ce5: A64/RV memory-effect parity plan/ADR separate.
+
+Subset surface: [CONTRACT_EXPR_V1_SUBSET.md](CONTRACT_EXPR_V1_SUBSET.md).
 
 ## Non-goals (carry from ADR 0007)
 

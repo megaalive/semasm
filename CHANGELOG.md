@@ -31,12 +31,16 @@ capabilities, behavioral oracles, and `VerificationReport` evidence. It is
 - **ADRs** — 0003 write-shape; 0004 region-precise memory honesty; 0005
   multi-ISA MemCmp/write-shape honesty; **0006 Region/Alias Evidence v1**
   (`region-affine-v1`: selected affine relations; not general alias analysis);
-  **0007 Contract expression semantics v1** (scope lock +
-  `docs/CONTRACT_EXPR_V1_PLAN.md`; Ce0 docs only — evaluator pending).
+  **0007 Contract expression semantics v1** (`contract-expr-v1` subset eval +
+  `VerificationReport.contract_expressions`; see
+  `docs/CONTRACT_EXPR_V1_SUBSET.md`).
 - **Region/Alias Evidence v1** — `function.memory.regions` /
   `relations` schema (CTR008), x86 effect collection, fail-closed relation
   engine, `VerificationReport.alias_analysis`, ± corpus fixtures (no
   `memmove`).
+- **Contract Expression Semantics v1** — fail-closed subset evaluator for
+  `regions.disjoint|equal|contains` (and closed comparisons with bindings);
+  unknown predicates → incomplete; contradicting atoms → failed.
 - **Dx adversarial deepen** — unknown-insn classes (`vzeroupper` / `cpuid` /
   `rdtsc`), trailing-bytes on multiple leaves, W+X (incl. patched Win64
   COFF), indirect branch; `agent verify` can stage prebuilt `.obj`/`.o`.

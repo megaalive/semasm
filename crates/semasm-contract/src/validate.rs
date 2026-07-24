@@ -377,18 +377,32 @@ fn validate_document(doc: &ContractDocument, diagnostics: &mut Diagnostics) -> C
     }
 
     let mut requires = Vec::new();
+    let mut expr_names = names.clone();
+    // Reserved receiver for contract-expr-v1 region atoms (ADR 0007).
+    expr_names.insert("regions".to_string());
+    if let Some(mem) = &f.memory {
+        for region in &mem.regions {
+            expr_names.insert(region.name.clone());
+        }
+    }
     for c in &f.requires {
-        if let Some(cond) =
-            check_condition(c.expression.as_str(), c.reason.clone(), &names, diagnostics)
-        {
+        if let Some(cond) = check_condition(
+            c.expression.as_str(),
+            c.reason.clone(),
+            &expr_names,
+            diagnostics,
+        ) {
             requires.push(cond);
         }
     }
     let mut ensures = Vec::new();
     for c in &f.ensures {
-        if let Some(cond) =
-            check_condition(c.expression.as_str(), c.reason.clone(), &names, diagnostics)
-        {
+        if let Some(cond) = check_condition(
+            c.expression.as_str(),
+            c.reason.clone(),
+            &expr_names,
+            diagnostics,
+        ) {
             ensures.push(cond);
         }
     }

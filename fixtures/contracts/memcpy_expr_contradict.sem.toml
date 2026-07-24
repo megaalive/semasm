@@ -1,0 +1,46 @@
+contract_version = "0.1"
+
+[function]
+name = "memcpy"
+summary = "regions.equal while alias proves disjoint → contract-expr failed"
+
+[[function.parameters]]
+name = "dst"
+type = "ptr<u8>"
+
+[[function.parameters]]
+name = "src"
+type = "ptr<const u8>"
+
+[[function.parameters]]
+name = "length"
+type = "usize"
+
+[[function.returns]]
+name = "status"
+type = "usize"
+
+[[function.requires]]
+expression = "regions.equal(src, dst)"
+
+[function.memory]
+
+[[function.memory.regions]]
+name = "src"
+base = "src"
+length = "length"
+access = "read"
+
+[[function.memory.regions]]
+name = "dst"
+base = "dst"
+length = "length"
+access = "write"
+
+[[function.memory.relations]]
+left = "src"
+right = "dst"
+require = "disjoint"
+
+[function.constraints]
+no_heap = true
