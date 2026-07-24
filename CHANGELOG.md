@@ -6,10 +6,11 @@ follow [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
-`main` is **materially past** the `v0.1.0` tag. This section summarizes the
-architectural leap for the **next** release notes — not a shipped tag.
-Incomplete ≠ Verified; oracle vectors ≠ formal `ensures`; SoftHSM/search/
-HlaX64 non-claims live on the VAA side of the stack.
+## [0.2.0] - 2026-07-24
+
+Pre-1.0 developer release past `v0.1.0`. Incomplete ≠ Verified; oracle vectors ≠
+formal `ensures`; SoftHSM/search/HlaX64 non-claims live on the VAA side of the
+stack.
 
 ### Stack role
 
@@ -41,7 +42,8 @@ capabilities, behavioral oracles, and `VerificationReport` evidence. It is
   VAA isolation ops → VAA trust ops (**ops proof Done**; production trust root
   / hardware HSM / operated remote log remain locked).
 - **Da A64/RV decode/lower** — adversarial corpus (unknown insn, trailing,
-  W+X, privilege) + caps flip; CI-verified ≠ formal full-ISA proof.
+  W+X via `.semasm_wx`, privilege) + caps flip; CI-verified ≠ formal full-ISA
+  proof.
 - **Region/Alias Evidence v1** — `function.memory.regions` /
   `relations` schema (CTR008), x86 + AArch64 + RISC-V effect collection,
   fail-closed relation engine, `VerificationReport.alias_analysis`, ± corpus
@@ -65,7 +67,7 @@ capabilities, behavioral oracles, and `VerificationReport` evidence. It is
 - x86 assemble/link/execute/`pipeline_verify` already `verified_in_ci` (M1);
   `agent_verify` remains a separate claim from pipeline evidence.
 - Caps / README / STABILIZATION honesty synced with multi-ISA write-shape
-  and Dx bump.
+  and Dx/Da bumps.
 
 ### Honesty / non-goals (unchanged)
 
@@ -168,5 +170,6 @@ capabilities, behavioral oracles, and `VerificationReport` evidence. It is
   AArch64/RV64 `decode`/`lower` remain `partial`. See `semasm status` and
   `capabilities.toml`.
 
-[Unreleased]: https://github.com/megaalive/semasm/compare/v0.1.0...HEAD
+[Unreleased]: https://github.com/megaalive/semasm/compare/v0.2.0...HEAD
+[0.2.0]: https://github.com/megaalive/semasm/releases/tag/v0.2.0
 [0.1.0]: https://github.com/megaalive/semasm/releases/tag/v0.1.0

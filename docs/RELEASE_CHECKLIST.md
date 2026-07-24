@@ -1,4 +1,4 @@
-# SemASM 0.1 release checklist
+# SemASM 0.2 release checklist
 
 Run from a clean checkout of the candidate tag. A failed or skipped required
 gate blocks release.

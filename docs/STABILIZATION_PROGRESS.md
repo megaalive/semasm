@@ -103,7 +103,7 @@ ceremony** (next landable after Da CI green at tip `a85deae`).
 
 | Wave | Focus | Unlock when |
 |---|---|---|
-| **Rel-0.2** | Annotated tag + GitHub Release (post-`v0.1.0` Unreleased) | Owner sign-off on version + `docs/RELEASE_CHECKLIST.md` |
+| **Rel-0.2** | Annotated tag + GitHub Release `v0.2.0` | **in progress** — version bumped; awaiting verify-release + tag |
 
 ### A64/RV Decode/Lower Bump (Da0–Da5) — done
 
