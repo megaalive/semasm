@@ -31,9 +31,11 @@ Stabilization through Rel-0.2.1 is closed on `main`. Tip tag: **`v0.2.1`**
 (A64/RV `control`), Mm (A64/RV read-only `memory`), and VAA Gate pin (Vd) are
 **done**. Sample CI coverage != full-ISA / CFG/CFI / region-precise store proof.
 
-**In progress:** _(none)_. Horizon remains locked: formal `ensures`, symbolic
+**In progress:** _(none)_. **Next (Sei):** Semantic Evidence Integrity:
+[SEMANTIC_EVIDENCE_INTEGRITY_PLAN.md](SEMANTIC_EVIDENCE_INTEGRITY_PLAN.md)
+(planned; not started). Horizon remains locked: formal `ensures`, symbolic
 alias, CryptOpt, hardware HSM, live-model Gate. Tw `c0655f1`; Ff `3876277`;
-Ab `0e35029` (`abi_analysis` ? `verified_in_ci` on primary four).
+Ab `0e35029` (`abi_analysis` -> `verified_in_ci` on primary four).
 
 ### Region/Alias Evidence v1 (Ra0?Ra6) ? **done**
 
@@ -97,6 +99,7 @@ ceremony** (next landable after Da CI green at tip `a85deae`).
 | **Tw** | A64/RV adversarial twins (write-shape / MemCmp / min) | **done** (`c0655f1`) |
 | **Ff** | A64/RV `find_first_byte` / `find_last_byte` | **done** (`3876277`) |
 | **Ab** | `abi_analysis` -> `verified_in_ci` (primary four) | **done** (`0e35029`) |
+| **Sei** | Semantic Evidence Integrity (P0 alias/obligation ? P1 VAA profiles + region access) | **planned** ? [SEMANTIC_EVIDENCE_INTEGRITY_PLAN.md](SEMANTIC_EVIDENCE_INTEGRITY_PLAN.md) |
 
 ### A64/RV Decode/Lower Bump (Da0?Da5) ? done
 

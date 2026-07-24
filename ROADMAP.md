@@ -21,6 +21,7 @@ CI-proven support.
 | Tw | A64/RV adversarial twins (write-shape / MemCmp / min) | **done** (`c0655f1`) |
 | Ff | A64/RV `find_first_byte` / `find_last_byte` packs | **done** (`3876277`) |
 | Ab | `abi_analysis` → `verified_in_ci` (primary four) | **done** (`0e35029`) |
+| Sei | Semantic Evidence Integrity (alias/obligation → VAA policy → region access) | **planned** |
 
 ## Declared target identities
 
@@ -46,6 +47,9 @@ conformance evidence are proven.
 - Prefer fail-closed adversarial fixtures over broader mnemonic coverage.
 - Do **not** add new ISAs until landed paths stay deep and honest.
 - **In progress:** _(none — Horizon cliffs stay locked)_
+- **Next (Sei):** Semantic Evidence Integrity — freeze new ISA/leaf/bridge while
+  fixing proof vs assumption vocabulary; plan
+  [`docs/SEMANTIC_EVIDENCE_INTEGRITY_PLAN.md`](docs/SEMANTIC_EVIDENCE_INTEGRITY_PLAN.md).
 - **Done (Tw):** A64/RV adversarial twins — `docs/A64_RV_ADVERSARIAL_TWINS_PLAN.md`
   (`c0655f1`).
 - **Done (Ff):** A64/RV find-index packs at `3876277`.
