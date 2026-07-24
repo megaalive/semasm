@@ -355,11 +355,18 @@ fn classify(ins: &PhysicalInstruction) -> BlockEnd {
                 None => BlockEnd::Indirect,
             };
         }
-        // Conditional jump (x86 jcc; A64 b.cond; RV beq/bne/…).
+        // Conditional jump (x86 jcc; A64 b.cond / cbz; RV beq/bne/…).
+        // Relocatable objects may omit a numeric target — treat known
+        // conditional mnemonics as ConditionalBranch(taken=0) rather than
+        // Indirect (register-only), so leaf policy can accept PC-rel reloc.
         return match direct {
             Some(addr) => BlockEnd::ConditionalBranch {
                 taken: None,
                 taken_address: addr,
+            },
+            None if is_conditional_branch_mnemonic(&mnemonic) => BlockEnd::ConditionalBranch {
+                taken: None,
+                taken_address: 0,
             },
             None => BlockEnd::Indirect,
         };
@@ -421,6 +428,48 @@ fn parse_imm_operand(op: &str) -> Option<u64> {
         }
     }
     None
+}
+
+/// True for known direct conditional-branch mnemonics (not register `br`/`jr`).
+fn is_conditional_branch_mnemonic(mnemonic: &str) -> bool {
+    matches!(
+        mnemonic,
+        "beq"
+            | "bne"
+            | "blt"
+            | "bge"
+            | "bltu"
+            | "bgeu"
+            | "beqz"
+            | "bnez"
+            | "cbz"
+            | "cbnz"
+            | "tbz"
+            | "tbnz"
+    ) || mnemonic.starts_with("b.")
+        || (mnemonic.starts_with('j')
+            && matches!(
+                mnemonic,
+                "je" | "jne"
+                    | "jz"
+                    | "jnz"
+                    | "ja"
+                    | "jae"
+                    | "jb"
+                    | "jbe"
+                    | "jg"
+                    | "jge"
+                    | "jl"
+                    | "jle"
+                    | "jo"
+                    | "jno"
+                    | "js"
+                    | "jns"
+                    | "jp"
+                    | "jnp"
+                    | "jecxz"
+                    | "jrcxz"
+            ))
 }
 
 /// Builder-side block before indices are finalised.
@@ -770,6 +819,27 @@ mod tests {
             classify_instruction(&cbz),
             BlockEnd::ConditionalBranch {
                 taken_address: 0x1010,
+                ..
+            }
+        ));
+    }
+
+    #[test]
+    fn riscv_bnez_regs_only_is_conditional_not_indirect() {
+        let bnez = PhysicalInstruction {
+            address: 0x28,
+            bytes: vec![0x63, 0x10, 0x03, 0x00],
+            mnemonic: "bnez".into(),
+            operands: vec!["t1".into()],
+            read_regs: vec!["t1".into()],
+            write_regs: vec![],
+            groups: vec!["jump".into(), "branch_relative".into()],
+            detail_available: true,
+        };
+        assert!(matches!(
+            classify_instruction(&bnez),
+            BlockEnd::ConditionalBranch {
+                taken_address: 0,
                 ..
             }
         ));
