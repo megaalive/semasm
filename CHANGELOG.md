@@ -35,7 +35,12 @@ capabilities, behavioral oracles, and `VerificationReport` evidence. It is
   `VerificationReport.contract_expressions`; see
   `docs/CONTRACT_EXPR_V1_SUBSET.md`); **0008 A64/RV memory-effect parity**
   (Me0–Me5: A64/RV collectors + `agent verify` alias/expr wire + ± fixtures;
-  A64/RV `decode`/`lower` stay `partial`).
+  A64/RV `decode`/`lower` stay `partial` until ADR 0009 / Da\*);
+  **0009 A64/RV decode/lower bump** (Dx-parity checklist; Da0 plan —
+  caps flip pending sign-off).
+- **G1–G5 program** — Region/Alias → ContractExpr → memory-effect parity →
+  VAA isolation ops → VAA trust ops (**ops proof Done**; production trust root
+  / hardware HSM / operated remote log remain locked).
 - **Region/Alias Evidence v1** — `function.memory.regions` /
   `relations` schema (CTR008), x86 + AArch64 + RISC-V effect collection,
   fail-closed relation engine, `VerificationReport.alias_analysis`, ± corpus

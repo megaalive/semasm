@@ -87,6 +87,32 @@ evidence — not SMT / full contract verification. Plan:
 | **G4** | Isolation ops proof (VAA) | **Done** — Io0–Io5 at VAA `c040828` (claim matrix + backend id + network/credential argv checklist; **not** public-untrusted ready) |
 | **G5** | Trust root ops proof (VAA) | **Done** — Tr0–Tr5 at VAA `ef748c5` (`signer_kind` labels); **production** trust root / hardware HSM / operated remote log remain Horizon-locked |
 
+**G1–G5 program closed** (Region/Alias → ContractExpr → memory-effect parity →
+isolation ops → trust ops). Tips: SemASM `ffd0b58` / VAA `ef748c5`.
+
+### Next landable (post–G-wave)
+
+| Wave | Focus | Unlock when |
+|---|---|---|
+| **Da0–Da5** | A64/RV `decode`/`lower` → `verified_in_ci` | **Unlocked** — ADR 0009 + [A64_RV_DECODE_LOWER_BUMP_PLAN.md](A64_RV_DECODE_LOWER_BUMP_PLAN.md) (Da0 landed; Da1–Da5 pending; needs owner sign-off before caps flip) |
+
+Hygiene: Unreleased CHANGELOG summarizes G1–G5; **new git tag is a separate
+ceremony** (not cut by Da0).
+
+### A64/RV Decode/Lower Bump (Da0–Da5) — in progress
+
+Dx-parity checklist for AArch64 + RISC-V decode/lower maturity. Plan:
+[A64_RV_DECODE_LOWER_BUMP_PLAN.md](A64_RV_DECODE_LOWER_BUMP_PLAN.md).
+
+| Step | Focus | Status |
+|---|---|---|
+| **Da0** | ADR 0009 + plan + progress unlock | **landed** |
+| **Da1** | Gap inventory vs Dx families | pending |
+| **Da2** | Adversarial corpus growth | pending |
+| **Da3** | CI filters | pending |
+| **Da4** | Readiness + owner sign-off | pending |
+| **Da5** | Caps flip + honesty | pending |
+
 ### A64/RV Memory-Effect Parity (Me0–Me5) — done
 
 Gelombang 3: Region/Alias v1 memory-effect facts on AArch64/RISC-V for
@@ -391,7 +417,8 @@ after H3 (sample-based guards; still ≠ formal/symbolic proof).
 - Formal `ensures result == count(...)` / general theorem proving
 - Full memory alias / symbolic / region-precise store proof
 - CryptOpt embed, live-model Gate CI, hardware HSM
-- AArch64/RV64 `decode`/`lower` → `verified_in_ci` (x86 signed; cross-ISA separate)
+- AArch64/RV64 `decode`/`lower` → `verified_in_ci` — **unlocked** under
+  ADR 0009 / Da0–Da5 (checklist + sign-off; still ≠ formal full-ISA proof)
 - C compiler `-O2` / `-Os` binary-size bake-off in CI
 - Broad mnemonic / new-ISA expansion beyond landed MemCmp + write-shape A64/RV
 

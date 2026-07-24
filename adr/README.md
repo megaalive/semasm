@@ -16,3 +16,4 @@ ADRs record durable design decisions (crate boundaries, target model, dependency
 | [0006](0006-region-alias-evidence-v1.md) | Region and Alias Evidence v1 (affine slice) | Accepted |
 | [0007](0007-contract-expression-semantics-v1.md) | Contract expression semantics v1 (subset eval) | Accepted |
 | [0008](0008-a64-rv-memory-effect-parity.md) | A64/RV memory-effect parity for Region/Alias v1 | Accepted |
+| [0009](0009-a64-rv-decode-lower-bump.md) | A64/RV decode/lower maturity bump (Dx-parity) | Accepted |
