@@ -202,94 +202,110 @@ fn judge_access(memory: &CheckedMemory, access: &ObservedMemoryAccess) -> Memory
         },
         AccessAddr::StackFrame => unreachable!("filtered"),
         AccessAddr::Affine { base_param, offset } => {
-            let address = if *offset == 0 {
-                base_param.clone()
-            } else {
-                format!("{base_param}{offset:+}")
-            };
-            let candidates: Vec<&CheckedRegion> = memory
-                .regions
-                .iter()
-                .filter(|r| r.base_param == *base_param)
-                .collect();
-            if candidates.is_empty() {
-                return MemoryAccessEvidence {
-                    instruction_offset: access.instruction_offset,
-                    operation: access.mode,
-                    width: access.width_bytes,
-                    address,
-                    region: None,
-                    bounds: BoundsStatus::Unknown,
-                    permission: PermissionStatus::Unknown,
-                    evidence_basis: RelationEvidenceBasis::Unknown,
-                };
+            judge_affine_access(memory, access, base_param, *offset)
+        }
+    }
+}
+
+fn judge_affine_access(
+    memory: &CheckedMemory,
+    access: &ObservedMemoryAccess,
+    base_param: &str,
+    offset: i64,
+) -> MemoryAccessEvidence {
+    let address = if offset == 0 {
+        base_param.to_string()
+    } else {
+        format!("{base_param}{offset:+}")
+    };
+    let candidates: Vec<&CheckedRegion> = memory
+        .regions
+        .iter()
+        .filter(|r| r.base_param == base_param)
+        .collect();
+    if candidates.is_empty() {
+        return MemoryAccessEvidence {
+            instruction_offset: access.instruction_offset,
+            operation: access.mode,
+            width: access.width_bytes,
+            address,
+            region: None,
+            bounds: BoundsStatus::Unknown,
+            permission: PermissionStatus::Unknown,
+            evidence_basis: RelationEvidenceBasis::Unknown,
+        };
+    }
+
+    // Prefer a containing region that allows this access mode when
+    // several affine regions overlap (e.g. memcpy_possible_overlap).
+    let width = i64::from(access.width_bytes);
+    let access_lo = offset;
+    let access_hi = offset.saturating_add(width);
+
+    let mut inside: Vec<&CheckedRegion> = Vec::new();
+    let mut any_may = false;
+    let mut all_outside = true;
+
+    for region in &candidates {
+        match classify_vs_region(region, access_lo, access_hi) {
+            RegionClass::Inside => {
+                all_outside = false;
+                inside.push(region);
             }
-
-            // Prefer a unique containing region when lengths are literal.
-            let width = i64::from(access.width_bytes);
-            let access_lo = *offset;
-            let access_hi = offset.saturating_add(width);
-
-            let mut inside: Option<&CheckedRegion> = None;
-            let mut any_may = false;
-            let mut all_outside = true;
-
-            for region in &candidates {
-                match classify_vs_region(region, access_lo, access_hi) {
-                    RegionClass::Inside => {
-                        all_outside = false;
-                        inside = Some(region);
-                    }
-                    RegionClass::Outside => {}
-                    RegionClass::MayEscape => {
-                        all_outside = false;
-                        any_may = true;
-                    }
-                }
-            }
-
-            if let Some(region) = inside {
-                let permission = if access_allowed(region.access, access.mode) {
-                    PermissionStatus::Allowed
-                } else {
-                    PermissionStatus::Denied
-                };
-                return MemoryAccessEvidence {
-                    instruction_offset: access.instruction_offset,
-                    operation: access.mode,
-                    width: access.width_bytes,
-                    address,
-                    region: Some(region.name.clone()),
-                    bounds: BoundsStatus::ProvenInside,
-                    permission,
-                    evidence_basis: RelationEvidenceBasis::ProvenStatic,
-                };
-            }
-
-            if all_outside && !any_may {
-                return MemoryAccessEvidence {
-                    instruction_offset: access.instruction_offset,
-                    operation: access.mode,
-                    width: access.width_bytes,
-                    address,
-                    region: None,
-                    bounds: BoundsStatus::ProvenOutside,
-                    permission: PermissionStatus::Unknown,
-                    evidence_basis: RelationEvidenceBasis::ProvenStatic,
-                };
-            }
-
-            MemoryAccessEvidence {
-                instruction_offset: access.instruction_offset,
-                operation: access.mode,
-                width: access.width_bytes,
-                address,
-                region: candidates.first().map(|r| r.name.clone()),
-                bounds: BoundsStatus::MayEscape,
-                permission: PermissionStatus::Unknown,
-                evidence_basis: RelationEvidenceBasis::Unknown,
+            RegionClass::Outside => {}
+            RegionClass::MayEscape => {
+                all_outside = false;
+                any_may = true;
             }
         }
+    }
+
+    if !inside.is_empty() {
+        let region = inside
+            .iter()
+            .copied()
+            .find(|r| access_allowed(r.access, access.mode))
+            .or_else(|| inside.first().copied())
+            .expect("inside non-empty");
+        let permission = if access_allowed(region.access, access.mode) {
+            PermissionStatus::Allowed
+        } else {
+            PermissionStatus::Denied
+        };
+        return MemoryAccessEvidence {
+            instruction_offset: access.instruction_offset,
+            operation: access.mode,
+            width: access.width_bytes,
+            address,
+            region: Some(region.name.clone()),
+            bounds: BoundsStatus::ProvenInside,
+            permission,
+            evidence_basis: RelationEvidenceBasis::ProvenStatic,
+        };
+    }
+
+    if all_outside && !any_may {
+        return MemoryAccessEvidence {
+            instruction_offset: access.instruction_offset,
+            operation: access.mode,
+            width: access.width_bytes,
+            address,
+            region: None,
+            bounds: BoundsStatus::ProvenOutside,
+            permission: PermissionStatus::Unknown,
+            evidence_basis: RelationEvidenceBasis::ProvenStatic,
+        };
+    }
+
+    MemoryAccessEvidence {
+        instruction_offset: access.instruction_offset,
+        operation: access.mode,
+        width: access.width_bytes,
+        address,
+        region: candidates.first().map(|r| r.name.clone()),
+        bounds: BoundsStatus::MayEscape,
+        permission: PermissionStatus::Unknown,
+        evidence_basis: RelationEvidenceBasis::Unknown,
     }
 }
 

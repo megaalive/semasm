@@ -8,6 +8,9 @@ follow [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Added
 
+- **Sei Ra5** — x86 Region Access acceptance corpus
+  (`semasm-cli` `region_access_evidence_v1`; overlapping regions prefer
+  permission-allowed match).
 - **Sei Ra4** — `VerificationReport.region_access` wired; `Failed` demotes
   verify; `Incomplete` observational until Ra5/Ra6 gate.
 - **Sei Ra1** — Region Access Evidence engine (`region-access-affine-v1`):
