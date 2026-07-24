@@ -66,7 +66,8 @@ conformance evidence are proven.
 - **Done (Mm):** A64/RV `memory` leaf — `docs/A64_RV_MEMORY_LEAF_PLAN.md`
   (CI green at `e991182`; sample ≠ region-precise proof).
 - **Done (Rel-0.2.1):** tag `v0.2.1` @ `22d1543` — Co+Mm patch.
-- **Done (hygiene):** Dependabot `actions/checkout@v7` merged.
+- **Done (hygiene):** `actions/checkout@v7` on workflows; Dependabot disabled
+  (removed `.github/dependabot.yml` — no auto dependency PRs).
 
 Consumer pin / Gate smoke: see VAA `docs/progress.md`. Shared progress:
 `docs/STABILIZATION_PROGRESS.md`.
