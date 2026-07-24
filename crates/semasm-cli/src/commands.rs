@@ -1742,7 +1742,7 @@ mod semantic_gate_tests {
         );
         let target = TargetIdentity::parse_known("x86_64-unknown-linux-gnu").unwrap();
         let contract = load_count_byte_contract(&workspace);
-        let (gates, _alias) =
+        let (gates, _alias, _region_access) =
             verify_candidate_semantics(&object, &target, "count_byte", &contract).unwrap();
         assert!(gates.all_passed());
         assert_eq!(gates.lowering.unknown, 0);
@@ -1777,7 +1777,7 @@ mod semantic_gate_tests {
         );
         let target = TargetIdentity::parse_known("x86_64-pc-windows-msvc").unwrap();
         let contract = load_count_byte_contract(&workspace);
-        let (gates, _alias) =
+        let (gates, _alias, _region_access) =
             verify_candidate_semantics(&object, &target, "count_byte", &contract).unwrap();
         assert!(gates.all_passed());
         assert_eq!(gates.lowering.unknown, 0);
@@ -1992,7 +1992,7 @@ mod semantic_gate_tests {
         );
         let target = TargetIdentity::parse_known("aarch64-unknown-linux-gnu").unwrap();
         let contract = load_count_byte_contract(&workspace);
-        let (gates, _alias) =
+        let (gates, _alias, _region_access) =
             verify_candidate_semantics(&object, &target, "count_byte", &contract).unwrap();
         assert!(gates.all_passed());
         assert_eq!(gates.abi, GateStatus::Passed);
@@ -2032,7 +2032,7 @@ mod semantic_gate_tests {
         );
         let target = TargetIdentity::parse_known("riscv64gc-unknown-linux-gnu").unwrap();
         let contract = load_count_byte_contract(&workspace);
-        let (gates, _alias) =
+        let (gates, _alias, _region_access) =
             verify_candidate_semantics(&object, &target, "count_byte", &contract).unwrap();
         assert!(gates.all_passed());
         assert_eq!(gates.abi, GateStatus::Passed);
