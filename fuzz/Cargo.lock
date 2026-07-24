@@ -205,7 +205,7 @@ checksum = "f8dcc9c7d52a811697d2151c701e0d08956f92b0e24136cf4cf27b57a6a0d9bf"
 
 [[package]]
 name = "semasm-aarch64"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "semasm-asir",
  "semasm-decode",
@@ -214,14 +214,14 @@ dependencies = [
 
 [[package]]
 name = "semasm-asir"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "semasm-core",
 ]
 
 [[package]]
 name = "semasm-build"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "semasm-core",
  "semasm-obj",
@@ -234,7 +234,7 @@ dependencies = [
 
 [[package]]
 name = "semasm-cfg"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "semasm-decode",
  "serde",
@@ -244,7 +244,7 @@ dependencies = [
 
 [[package]]
 name = "semasm-contract"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "semasm-core",
  "semasm-target",
@@ -255,7 +255,7 @@ dependencies = [
 
 [[package]]
 name = "semasm-core"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "serde",
  "thiserror 2.0.18",
@@ -263,7 +263,7 @@ dependencies = [
 
 [[package]]
 name = "semasm-decode"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "capstone",
  "semasm-core",
@@ -291,7 +291,7 @@ dependencies = [
 
 [[package]]
 name = "semasm-obj"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "object",
  "semasm-core",
@@ -303,7 +303,7 @@ dependencies = [
 
 [[package]]
 name = "semasm-riscv"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "semasm-asir",
  "semasm-decode",
@@ -312,7 +312,7 @@ dependencies = [
 
 [[package]]
 name = "semasm-target"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "semasm-core",
  "serde",
@@ -322,7 +322,7 @@ dependencies = [
 
 [[package]]
 name = "semasm-x86"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "semasm-asir",
  "semasm-decode",
