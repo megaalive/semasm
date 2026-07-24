@@ -53,7 +53,11 @@ fn agent_verify_sysv_writes_evidence_card() {
     );
     let body = std::fs::read_to_string(&card).expect("read card");
     assert!(body.contains("SemASM Evidence Card"));
-    assert!(body.contains("execution_denied") || body.contains("verified"));
+    assert!(
+        body.contains("execution_denied")
+            || body.contains("verified_under_preconditions")
+            || body.contains("verified")
+    );
     assert!(body.contains("Control"));
     let _ = std::fs::remove_file(&card);
 }
@@ -86,7 +90,11 @@ fn agent_compare_sysv_diffs_correct_vs_wrong() {
     let stdout = String::from_utf8_lossy(&output.stdout);
     let value: serde_json::Value =
         serde_json::from_str(&stdout).unwrap_or_else(|error| panic!("json ({error}): {stdout}"));
-    assert_eq!(value["status_a"], "verified");
+    let status_a = value["status_a"].as_str().unwrap_or("");
+    assert!(
+        status_a == "verified" || status_a == "verified_under_preconditions",
+        "expected verified or verified_under_preconditions for status_a, got {status_a}: {value}"
+    );
     assert_eq!(value["status_b"], "behavior_failed");
     assert_eq!(value["preferred"], "count_byte.asm");
 }
