@@ -8,6 +8,9 @@ follow [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Added
 
+- **Ab `abi_analysis` → `verified_in_ci`** — callee-saved + stack-imbalance
+  twins on A64/RV; A64 3-op `sub sp` tracking fix; four primary targets (not
+  RV32). Sample ≠ formal ABI proof. See `docs/ABI_ANALYSIS_CI_BUMP_PLAN.md`.
 - **Ff A64/RV `find_first_byte` / `find_last_byte`** — golden + wrong fixtures
   and cross-target e2e; BufferScan harness reuse. Sample ≠ formal ensures.
 - **Tw A64/RV adversarial twins** — `*_wrong` / `memcmp_*_write` fixtures for

@@ -392,6 +392,80 @@ fn agent_verify_stack_imbalance_win64_is_semantic_failed() {
 }
 
 #[test]
+#[ignore = "requires aarch64-linux-gnu-as/ld on PATH"]
+fn agent_verify_stack_imbalance_aarch64_is_semantic_failed() {
+    let source = workspace_root().join("fixtures/asm/count_byte_stack_imbalance_aarch64.S");
+    let contract = workspace_root().join("fixtures/contracts/count_byte.sem.toml");
+    let output = run_agent_verify(&source, &contract, Some("aarch64-unknown-linux-gnu"), false);
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    if skip_if_incomplete(&stderr) {
+        return;
+    }
+    assert_status(&output, "semantic_failed");
+    let value: serde_json::Value =
+        serde_json::from_str(&String::from_utf8_lossy(&output.stdout)).expect("json");
+    assert_eq!(value["semantic"]["abi"], "failed");
+}
+
+#[test]
+#[ignore = "requires riscv64-linux-gnu-as/ld on PATH"]
+fn agent_verify_stack_imbalance_riscv64_is_semantic_failed() {
+    let source = workspace_root().join("fixtures/asm/count_byte_stack_imbalance_riscv64.S");
+    let contract = workspace_root().join("fixtures/contracts/count_byte.sem.toml");
+    let output = run_agent_verify(
+        &source,
+        &contract,
+        Some("riscv64gc-unknown-linux-gnu"),
+        false,
+    );
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    if skip_if_incomplete(&stderr) {
+        return;
+    }
+    assert_status(&output, "semantic_failed");
+    let value: serde_json::Value =
+        serde_json::from_str(&String::from_utf8_lossy(&output.stdout)).expect("json");
+    assert_eq!(value["semantic"]["abi"], "failed");
+}
+
+#[test]
+#[ignore = "requires aarch64-linux-gnu-as/ld on PATH"]
+fn agent_verify_callee_saved_aarch64_is_semantic_failed() {
+    let source = workspace_root().join("fixtures/asm/count_byte_callee_saved_aarch64.S");
+    let contract = workspace_root().join("fixtures/contracts/count_byte.sem.toml");
+    let output = run_agent_verify(&source, &contract, Some("aarch64-unknown-linux-gnu"), false);
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    if skip_if_incomplete(&stderr) {
+        return;
+    }
+    assert_status(&output, "semantic_failed");
+    let value: serde_json::Value =
+        serde_json::from_str(&String::from_utf8_lossy(&output.stdout)).expect("json");
+    assert_eq!(value["semantic"]["abi"], "failed");
+}
+
+#[test]
+#[ignore = "requires riscv64-linux-gnu-as/ld on PATH"]
+fn agent_verify_callee_saved_riscv64_is_semantic_failed() {
+    let source = workspace_root().join("fixtures/asm/count_byte_callee_saved_riscv64.S");
+    let contract = workspace_root().join("fixtures/contracts/count_byte.sem.toml");
+    let output = run_agent_verify(
+        &source,
+        &contract,
+        Some("riscv64gc-unknown-linux-gnu"),
+        false,
+    );
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    if skip_if_incomplete(&stderr) {
+        return;
+    }
+    assert_status(&output, "semantic_failed");
+    let value: serde_json::Value =
+        serde_json::from_str(&String::from_utf8_lossy(&output.stdout)).expect("json");
+    assert_eq!(value["semantic"]["abi"], "failed");
+}
+
+#[test]
 #[ignore = "requires nasm, ld, objdump, and qemu-user on PATH"]
 fn agent_verify_callee_saved_sysv_is_semantic_failed() {
     let source = workspace_root().join("fixtures/asm/count_byte_callee_saved.asm");

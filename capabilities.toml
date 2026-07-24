@@ -27,6 +27,9 @@
 #   A64/RV `control` + read-only `memory` leaves are evaluated (Co/Mm; sample ≠
 #   CFG/CFI or region-precise store proof). Write-shape contracts still skip the
 #   static memory leaf (ADR 0003/0004).
+# - `abi_analysis` = `verified_in_ci` on the four primary targets after Ab
+#   (callee-saved + stack-imbalance adversarial e2e; A64 3-op `sub sp` fix).
+#   Sample coverage ≠ formal ABI proof. RV32 stays unit-tested only.
 # - AArch64/RV64 **pipeline** evidence remains strong; do not read x86 decode
 #   bump as an A64/RV decode bump without the Da checklist.
 # - MemCmp agent harness: x86 (SysV + Win64) **and** AArch64/RISC-V (H3).
@@ -88,7 +91,7 @@ description = "x86-64 Linux, System V ABI, ELF"
 declared = "verified_in_unit_tests"
 decode = "verified_in_ci"
 lower = "verified_in_ci"
-abi_analysis = "verified_in_unit_tests"
+abi_analysis = "verified_in_ci"
 assemble = "verified_in_ci"
 link = "verified_in_ci"
 execute = "verified_in_ci"
@@ -158,7 +161,7 @@ description = "x86-64 Windows, Microsoft x64 ABI, PE/COFF"
 declared = "verified_in_unit_tests"
 decode = "verified_in_ci"
 lower = "verified_in_ci"
-abi_analysis = "verified_in_unit_tests"
+abi_analysis = "verified_in_ci"
 assemble = "verified_in_ci"
 link = "verified_in_ci"
 execute = "verified_in_ci"
@@ -230,7 +233,7 @@ description = "AArch64 Linux, AAPCS64 ABI, ELF"
 declared = "verified_in_ci"
 decode = "verified_in_ci"
 lower = "verified_in_ci"
-abi_analysis = "verified_in_unit_tests"
+abi_analysis = "verified_in_ci"
 assemble = "verified_in_ci"
 link = "verified_in_ci"
 execute = "verified_in_ci"
@@ -251,6 +254,8 @@ fixtures = [
     "fixtures/asm/count_byte_wx_aarch64.S",
     "fixtures/asm/count_byte_indirect_aarch64.S",
     "fixtures/asm/count_byte_write_aarch64.S",
+    "fixtures/asm/count_byte_callee_saved_aarch64.S",
+    "fixtures/asm/count_byte_stack_imbalance_aarch64.S",
     "fixtures/asm/min_usize_aarch64.S",
     "fixtures/asm/min_usize_wrong_aarch64.S",
     "fixtures/asm/memcmp_aarch64.S",
@@ -277,7 +282,7 @@ description = "RV64 Linux, RISC-V psABI, ELF"
 declared = "verified_in_ci"
 decode = "verified_in_ci"
 lower = "verified_in_ci"
-abi_analysis = "verified_in_unit_tests"
+abi_analysis = "verified_in_ci"
 assemble = "verified_in_ci"
 link = "verified_in_ci"
 execute = "verified_in_ci"
@@ -298,6 +303,8 @@ fixtures = [
     "fixtures/asm/count_byte_wx_riscv64.S",
     "fixtures/asm/count_byte_indirect_riscv64.S",
     "fixtures/asm/count_byte_write_riscv64.S",
+    "fixtures/asm/count_byte_callee_saved_riscv64.S",
+    "fixtures/asm/count_byte_stack_imbalance_riscv64.S",
     "fixtures/asm/min_usize_riscv64.S",
     "fixtures/asm/min_usize_wrong_riscv64.S",
     "fixtures/asm/memcmp_riscv64.S",

@@ -317,11 +317,16 @@ fn step(ins: &LoweredInstr) -> Step {
             }
         }
         "add" | "sub" => {
-            if let (Some(Operand::Reg(r)), Some(Operand::Imm(n))) =
-                (ins.operands.first(), ins.operands.get(1))
-            {
+            // A64 forms: `sub sp, sp, #16` (3 ops) or synthetic `sub sp, #16` (2 ops).
+            let dest = ins.operands.first();
+            let imm = match (ins.operands.get(1), ins.operands.get(2)) {
+                (Some(Operand::Imm(n)), _) => Some(*n),
+                (Some(Operand::Reg(_)), Some(Operand::Imm(n))) => Some(*n),
+                _ => None,
+            };
+            if let (Some(Operand::Reg(r)), Some(n)) = (dest, imm) {
                 if is_sp(*r) {
-                    s.sp_change += if ins.mnemonic == "sub" { *n } else { -*n };
+                    s.sp_change += if ins.mnemonic == "sub" { n } else { -n };
                 }
             }
         }
@@ -562,6 +567,26 @@ mod tests {
             .find(|f| f.code == "STACK_BALANCE_RET")
             .expect("expected STACK_BALANCE_RET");
         assert_eq!(f.severity, Severity::Error);
+        assert_eq!(r.final_sp_delta, 16);
+    }
+
+    #[test]
+    fn unbalanced_stack_three_operand_sub_sp_is_error() {
+        // Capstone/gas form: `sub sp, sp, #16`.
+        let body = vec![
+            ins(
+                "sub",
+                Kind::Binary,
+                vec![reg_sp(), reg_sp(), imm(16)],
+            ),
+            ins("ret", Kind::Return, vec![]),
+        ];
+        let r = analyze(&body);
+        assert!(
+            r.findings.iter().any(|f| f.code == "STACK_BALANCE_RET"),
+            "expected STACK_BALANCE_RET for 3-op sub: {:?}",
+            r.findings
+        );
         assert_eq!(r.final_sp_delta, 16);
     }
 
