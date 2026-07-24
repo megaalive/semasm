@@ -26,7 +26,7 @@ Honesty: `unknown ≠ disjoint`; missing effects → incomplete; no silent pass.
 | **Me2** | RISC-V memory-effect collector (affinity + unknown) | **done** |
 | **Me3** | Wire `agent verify` alias (+ expr) on A64/RV paths | **done** |
 | **Me4** | ± fixtures + CI filters (memcpy/memset-style; no memmove) | **done** |
-| **Me5** | Caps / README / CHANGELOG honesty; G4 stays locked | **done** |
+| **Me5** | Caps / README / CHANGELOG honesty; G4 stays locked | **done** (G4 later landed on VAA) |
 
 ### Me1 — AArch64 effects
 
@@ -74,7 +74,8 @@ filters (existing A64/RV `agent_verify_memcpy_*` should surface
 
 - Caps: region-affine-v1 on A64/RV for supported leaves; **do not** flip
   `decode`/`lower` maturity.
-- Progress: mark Me0–Me5 done; G4/G5 remain locked.
+- Progress: mark Me0–Me5 done; G4 (isolation ops) landed separately on VAA;
+  G5 trust root remains locked.
 
 ## Non-goals
 

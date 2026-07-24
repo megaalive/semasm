@@ -84,8 +84,8 @@ evidence — not SMT / full contract verification. Plan:
 | Wave | Focus | Unlock when |
 |---|---|---|
 | **G3** | A64/RV memory-effect parity | **Done** — Me0–Me5 (ADR 0008; collectors + verify wire + ± fixtures; `decode`/`lower` stay `partial`) |
-| **G4** | Isolation ops proof (VAA) | Public untrusted execution / network+credential bar |
-| **G5** | Trust root nyata (VAA) | After evidence semantics stable (Ra6 + G2 Ce5) |
+| **G4** | Isolation ops proof (VAA) | **Done** — Io0–Io5 at VAA `c040828` (claim matrix + backend id + network/credential argv checklist; **not** public-untrusted ready) |
+| **G5** | Trust root nyata (VAA) | After evidence semantics stable (Ra6 + G2 Ce5) — planning unlocked; “nyata” implementation stays last |
 
 ### A64/RV Memory-Effect Parity (Me0–Me5) — done
 

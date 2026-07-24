@@ -61,6 +61,6 @@ Ordered steps **Me0–Me5** in `docs/A64_RV_MEMORY_EFFECT_PARITY_PLAN.md`.
 
 - ADR 0005/0006/0007 remain; harness multi-ISA and alias-slice multi-ISA for
   Region/Alias v1 supported leaves (Me5 done).
-- G4/G5 stay deferred.
+- G4 isolation ops proof landed on VAA (Io0–Io5); G5 trust root stays deferred.
 - A separate future ADR is required before any A64/RV `decode`/`lower`
   maturity flip.

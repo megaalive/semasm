@@ -80,7 +80,8 @@ Forbidden: *SemASM formally proves memory safety* / *complete alias analysis*.
 1. Contract expression semantics v1 — **landed** (ADR 0007; Ce0–Ce5).
 2. A64/RV memory-effect parity (decode enough for Region/Alias facts) —
    **done** (ADR 0008; Me0–Me5). **Not** a decode/lower maturity flip.
-3. Isolation ops proof (VAA; escalate if public untrusted execution).
+3. Isolation ops proof (VAA; escalate if public untrusted execution) —
+   **done** (G4 Io0–Io5; ops checklist ≠ public-untrusted ready).
 4. Trust root nyata (last; authenticity ≠ semantic truth).
 
 ## Consequences
