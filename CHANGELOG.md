@@ -30,7 +30,9 @@ capabilities, behavioral oracles, and `VerificationReport` evidence. It is
   twins.
 - **ADRs** — 0003 write-shape; 0004 region-precise memory honesty; 0005
   multi-ISA MemCmp/write-shape honesty; **0006 Region/Alias Evidence v1**
-  (`region-affine-v1`: selected affine relations; not general alias analysis).
+  (`region-affine-v1`: selected affine relations; not general alias analysis);
+  **0007 Contract expression semantics v1** (scope lock +
+  `docs/CONTRACT_EXPR_V1_PLAN.md`; Ce0 docs only — evaluator pending).
 - **Region/Alias Evidence v1** — `function.memory.regions` /
   `relations` schema (CTR008), x86 effect collection, fail-closed relation
   engine, `VerificationReport.alias_analysis`, ± corpus fixtures (no

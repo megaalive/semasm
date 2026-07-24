@@ -67,10 +67,25 @@ memory-effect parity → isolation ops → trust root.
 
 | Wave | Focus | Unlock when |
 |---|---|---|
-| **G2** | Contract expression semantics v1 | Ra6 green; expressions that reference living regions only |
-| **G3** | A64/RV memory-effect parity | After G2, or minimally after Ra6 if effects-only |
+| **G2** | Contract expression semantics v1 | **Unlocked** — ADR 0007 + [CONTRACT_EXPR_V1_PLAN.md](CONTRACT_EXPR_V1_PLAN.md) (Ce0 landed; Ce1–Ce5 pending) |
+| **G3** | A64/RV memory-effect parity | After G2 Ce5, or minimally after Ra6 if effects-only (explicit exception) |
 | **G4** | Isolation ops proof (VAA) | Public untrusted execution / network+credential bar |
-| **G5** | Trust root nyata (VAA) | After evidence semantics stable (Ra6 + ideally G2) |
+| **G5** | Trust root nyata (VAA) | After evidence semantics stable (Ra6 + ideally G2 Ce5) |
+
+### Contract Expression Semantics v1 (Ce0–Ce5) — in progress
+
+Gelombang 2 toward formal contract semantics (ADR 0007). Evaluates a
+**documented subset** of `requires`/`ensures` against living region/relation
+evidence — not SMT / full contract verification. Plan:
+[CONTRACT_EXPR_V1_PLAN.md](CONTRACT_EXPR_V1_PLAN.md).
+
+| Step | Focus | Status |
+|---|---|---|
+| **Ce0** | ADR 0007 + plan + progress pointers | **landed** |
+| **Ce1** | Document allowed AST subset + region atoms | pending |
+| **Ce2** | Fail-closed evaluator | pending |
+| **Ce3–Ce4** | report field + ± CI fixtures | pending |
+| **Ce5** | caps/docs honesty; unlock G3 | pending |
 
 ### Next waves (X4 + H4 + Y) — closed
 
