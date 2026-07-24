@@ -141,12 +141,25 @@ pub fn evaluate_contract_expressions(
     alias: Option<&AliasAnalysisReport>,
     bindings: &ExprBindings,
 ) -> Option<ContractExprReport> {
+    let integer_params = integer_param_names(contract);
     let mut expressions = Vec::new();
     for cond in &contract.requires {
-        expressions.push(eval_condition(ExprRole::Requires, cond, alias, bindings));
+        expressions.push(eval_condition(
+            ExprRole::Requires,
+            cond,
+            alias,
+            bindings,
+            &integer_params,
+        ));
     }
     for cond in &contract.ensures {
-        expressions.push(eval_condition(ExprRole::Ensures, cond, alias, bindings));
+        expressions.push(eval_condition(
+            ExprRole::Ensures,
+            cond,
+            alias,
+            bindings,
+            &integer_params,
+        ));
     }
 
     if expressions
@@ -193,8 +206,24 @@ pub fn evaluate_contract_expressions(
         assumptions: vec![
             "subset_documented_in_CONTRACT_EXPR_V1_SUBSET".to_string(),
             "regions_atoms_require_alias_evidence_when_present".to_string(),
+            "requires_int_param_literal_cmp_is_caller_bound_obligation".to_string(),
         ],
     })
+}
+
+fn integer_param_names(contract: &CheckedContract) -> BTreeMap<String, ()> {
+    use crate::sem_type::SemType;
+    contract
+        .parameters
+        .iter()
+        .filter(|p| {
+            matches!(
+                p.ty,
+                SemType::UInt { .. } | SemType::Int { .. } | SemType::Usize | SemType::Isize
+            )
+        })
+        .map(|p| (p.name.clone(), ()))
+        .collect()
 }
 
 fn eval_condition(
@@ -202,7 +231,22 @@ fn eval_condition(
     cond: &CheckedCondition,
     alias: Option<&AliasAnalysisReport>,
     bindings: &ExprBindings,
+    integer_params: &BTreeMap<String, ()>,
 ) -> ContractExprEvidence {
+    // Fb1 (ADR 0012): requires param↔literal int comparisons are declared
+    // caller bound obligations — not proven_true, not silent omission.
+    if role == ExprRole::Requires {
+        if let Some((judgement, basis)) =
+            try_caller_bound_obligation(&cond.expr, bindings, integer_params)
+        {
+            return ContractExprEvidence {
+                role,
+                source: cond.source.clone(),
+                judgement,
+                basis,
+            };
+        }
+    }
     let (judgement, basis) = eval_expr(&cond.expr, alias, bindings, false);
     ContractExprEvidence {
         role,
@@ -210,6 +254,61 @@ fn eval_condition(
         judgement,
         basis,
     }
+}
+
+/// `param OP lit` / `lit OP param` on a declared integer parameter (requires).
+fn try_caller_bound_obligation(
+    expr: &Expr,
+    bindings: &ExprBindings,
+    integer_params: &BTreeMap<String, ()>,
+) -> Option<(ExprJudgement, String)> {
+    let Expr::Binary {
+        op, left, right, ..
+    } = expr
+    else {
+        return None;
+    };
+    if !matches!(
+        op,
+        BinOp::Eq | BinOp::Ne | BinOp::Lt | BinOp::Le | BinOp::Gt | BinOp::Ge
+    ) {
+        return None;
+    }
+    // Concrete bindings still take the proven path via eval_cmp.
+    let left_bound = int_value(left, bindings).is_some();
+    let right_bound = int_value(right, bindings).is_some();
+    if left_bound && right_bound {
+        return None;
+    }
+    let param_lit = match (left.as_ref(), right.as_ref()) {
+        (Expr::Ident { name, .. }, Expr::Int { value, .. })
+            if integer_params.contains_key(name) =>
+        {
+            Some((name.as_str(), *op, *value, true))
+        }
+        (Expr::Int { value, .. }, Expr::Ident { name, .. })
+            if integer_params.contains_key(name) =>
+        {
+            Some((name.as_str(), *op, *value, false))
+        }
+        _ => None,
+    }?;
+    let (name, op, lit, param_on_left) = param_lit;
+    let op_s = match op {
+        BinOp::Eq => "==",
+        BinOp::Ne => "!=",
+        BinOp::Lt => "<",
+        BinOp::Le => "<=",
+        BinOp::Gt => ">",
+        BinOp::Ge => ">=",
+        _ => return None,
+    };
+    let basis = if param_on_left {
+        format!("caller_bound_obligation:{name}{op_s}{lit}")
+    } else {
+        format!("caller_bound_obligation:{lit}{op_s}{name}")
+    };
+    Some((ExprJudgement::TrueUnderPrecondition, basis))
 }
 
 /// `force_attempt` is true when a parent already saw a region atom.
@@ -782,7 +881,8 @@ basis = "precondition"
             .iter()
             .find(|e| e.source.contains("length"))
             .unwrap();
-        assert_eq!(length_row.judgement, ExprJudgement::NotEvaluated);
+        assert_eq!(length_row.judgement, ExprJudgement::TrueUnderPrecondition);
+        assert!(length_row.basis.starts_with("caller_bound_obligation:"));
     }
 
     #[test]
@@ -896,7 +996,29 @@ require = "disjoint"
     }
 
     #[test]
-    fn no_subset_atoms_omits_report() {
+    fn ensures_only_unbound_omits_report() {
+        let contract = check_str(
+            r#"
+contract_version = "0.1"
+[function]
+name = "f"
+[[function.parameters]]
+name = "length"
+type = "usize"
+[[function.returns]]
+name = "status"
+type = "usize"
+[[function.ensures]]
+expression = "status == 0"
+"#,
+        )
+        .contract
+        .unwrap();
+        assert!(evaluate_contract_expressions(&contract, None, &ExprBindings::default()).is_none());
+    }
+
+    #[test]
+    fn length_bound_requires_is_caller_obligation() {
         let contract = check_str(
             r#"
 contract_version = "0.1"
@@ -916,7 +1038,22 @@ expression = "status == 0"
         )
         .contract
         .unwrap();
-        assert!(evaluate_contract_expressions(&contract, None, &ExprBindings::default()).is_none());
+        let report =
+            evaluate_contract_expressions(&contract, None, &ExprBindings::default()).unwrap();
+        assert_eq!(report.status, ContractExprStatus::PassedUnderPreconditions);
+        let req = report
+            .expressions
+            .iter()
+            .find(|e| e.role == ExprRole::Requires)
+            .unwrap();
+        assert_eq!(req.judgement, ExprJudgement::TrueUnderPrecondition);
+        assert!(req.basis.starts_with("caller_bound_obligation:"));
+        let ens = report
+            .expressions
+            .iter()
+            .find(|e| e.role == ExprRole::Ensures)
+            .unwrap();
+        assert_eq!(ens.judgement, ExprJudgement::NotEvaluated);
     }
 
     #[test]

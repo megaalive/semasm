@@ -42,6 +42,26 @@ regions.disjoint(src, dst) and true
 regions.disjoint(src, dst) implies regions.disjoint(src, dst)
 ```
 
+### Caller bound obligations (ADR 0012 / Fb1)
+
+For **`requires` only**, a comparison of the form:
+
+```text
+integer_param OP integer_literal
+integer_literal OP integer_param
+```
+
+where `integer_param` is a declared parameter of integer / `usize` / `isize`
+type, evaluates to **`true_under_precondition`** with basis
+`caller_bound_obligation:…`.
+
+This records the bound as a **declared caller obligation**, not a static proof
+that every concrete caller value satisfies it. Concrete `ExprBindings` still
+take the closed `proven_true` / `proven_false` path.
+
+**`ensures`** involving unbound names (e.g. `result <= length`, `status == 0`)
+remain **`not_evaluated`**.
+
 ## Out (incomplete if attempted as the sole meaning)
 
 - `valid_for_read` / other heap or pointer-validity predicates

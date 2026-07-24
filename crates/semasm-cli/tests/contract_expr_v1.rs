@@ -50,7 +50,16 @@ fn contradicting_equal_atom_fails() {
 }
 
 #[test]
-fn without_alias_slice_region_atoms_omit_report() {
+fn without_alias_slice_still_records_length_bound_obligation() {
     let checked = load("memcpy.sem.toml");
-    assert!(evaluate_contract_expressions(&checked, None, &ExprBindings::default()).is_none());
+    let report =
+        evaluate_contract_expressions(&checked, None, &ExprBindings::default()).unwrap();
+    assert_eq!(report.status, ContractExprStatus::PassedUnderPreconditions);
+    assert!(report.expressions.iter().any(|e| {
+        e.source.contains("length") && e.judgement == ExprJudgement::TrueUnderPrecondition
+    }));
+    // Region atoms without alias remain not_evaluated / do not fail the slice alone.
+    assert!(report.expressions.iter().any(|e| {
+        e.source.contains("regions.disjoint") && e.judgement == ExprJudgement::NotEvaluated
+    }));
 }
