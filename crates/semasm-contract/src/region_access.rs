@@ -167,8 +167,7 @@ pub fn evaluate_region_access(
     for row in &rows {
         if row.bounds == BoundsStatus::ProvenOutside || row.permission == PermissionStatus::Denied {
             any_failed = true;
-        } else if row.bounds == BoundsStatus::Unknown
-            || row.permission == PermissionStatus::Unknown
+        } else if row.bounds == BoundsStatus::Unknown || row.permission == PermissionStatus::Unknown
         {
             any_incomplete = true;
         } else if row.bounds == BoundsStatus::MayEscape {
@@ -282,27 +281,7 @@ fn judge_affine_access(
     }
 
     if !inside.is_empty() {
-        let region = inside
-            .iter()
-            .copied()
-            .find(|r| access_allowed(r.access, access.mode))
-            .or_else(|| inside.first().copied())
-            .expect("inside non-empty");
-        let permission = if access_allowed(region.access, access.mode) {
-            PermissionStatus::Allowed
-        } else {
-            PermissionStatus::Denied
-        };
-        return MemoryAccessEvidence {
-            instruction_offset: access.instruction_offset,
-            operation: access.mode,
-            width: access.width_bytes,
-            address,
-            region: Some(region.name.clone()),
-            bounds: BoundsStatus::ProvenInside,
-            permission,
-            evidence_basis: RelationEvidenceBasis::ProvenStatic,
-        };
+        return evidence_proven_inside(access, address, &inside);
     }
 
     if all_outside && !any_may {
@@ -318,6 +297,42 @@ fn judge_affine_access(
         };
     }
 
+    evidence_may_escape(access, address, &candidates)
+}
+
+fn evidence_proven_inside(
+    access: &ObservedMemoryAccess,
+    address: String,
+    inside: &[&CheckedRegion],
+) -> MemoryAccessEvidence {
+    let region = inside
+        .iter()
+        .copied()
+        .find(|r| access_allowed(r.access, access.mode))
+        .or_else(|| inside.first().copied())
+        .expect("inside non-empty");
+    let permission = if access_allowed(region.access, access.mode) {
+        PermissionStatus::Allowed
+    } else {
+        PermissionStatus::Denied
+    };
+    MemoryAccessEvidence {
+        instruction_offset: access.instruction_offset,
+        operation: access.mode,
+        width: access.width_bytes,
+        address,
+        region: Some(region.name.clone()),
+        bounds: BoundsStatus::ProvenInside,
+        permission,
+        evidence_basis: RelationEvidenceBasis::ProvenStatic,
+    }
+}
+
+fn evidence_may_escape(
+    access: &ObservedMemoryAccess,
+    address: String,
+    candidates: &[&CheckedRegion],
+) -> MemoryAccessEvidence {
     let region = candidates
         .iter()
         .copied()

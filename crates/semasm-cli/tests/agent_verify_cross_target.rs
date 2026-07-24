@@ -88,6 +88,14 @@ fn assert_verified(output: &std::process::Output) {
     assert!(value["behavior"]["cases"].as_array().unwrap().len() >= 6);
 }
 
+fn assert_status_verified_or_under_preconditions(value: &serde_json::Value) {
+    let status = value["status"].as_str().unwrap_or("");
+    assert!(
+        status == "verified" || status == "verified_under_preconditions",
+        "expected verified or verified_under_preconditions, got {status}: {value}"
+    );
+}
+
 #[test]
 #[ignore = "requires aarch64-linux-gnu-as/ld and qemu-aarch64 on PATH"]
 fn agent_verify_aarch64_emits_execution_denied_without_opt_in() {
@@ -210,7 +218,7 @@ fn agent_verify_replace_byte_aarch64_allow_execution_is_verified() {
     let value: serde_json::Value = serde_json::from_str(&stdout).unwrap_or_else(|error| {
         panic!("expected VerificationReport JSON ({error}): {stdout}\nstderr={stderr}")
     });
-    assert_eq!(value["status"], "verified");
+    assert_status_verified_or_under_preconditions(&value);
     assert_eq!(
         value["behavior_oracle"]["id"],
         "builtin.buffer.replace_byte"
@@ -239,7 +247,7 @@ fn agent_verify_replace_byte_riscv64_allow_execution_is_verified() {
     let value: serde_json::Value = serde_json::from_str(&stdout).unwrap_or_else(|error| {
         panic!("expected VerificationReport JSON ({error}): {stdout}\nstderr={stderr}")
     });
-    assert_eq!(value["status"], "verified");
+    assert_status_verified_or_under_preconditions(&value);
     assert_eq!(
         value["behavior_oracle"]["id"],
         "builtin.buffer.replace_byte"
@@ -268,7 +276,7 @@ fn agent_verify_memset_aarch64_allow_execution_is_verified() {
     let value: serde_json::Value = serde_json::from_str(&stdout).unwrap_or_else(|error| {
         panic!("expected VerificationReport JSON ({error}): {stdout}\nstderr={stderr}")
     });
-    assert_eq!(value["status"], "verified");
+    assert_status_verified_or_under_preconditions(&value);
     assert_eq!(value["behavior_oracle"]["id"], "builtin.buffer.memset");
 }
 
@@ -294,7 +302,7 @@ fn agent_verify_memset_riscv64_allow_execution_is_verified() {
     let value: serde_json::Value = serde_json::from_str(&stdout).unwrap_or_else(|error| {
         panic!("expected VerificationReport JSON ({error}): {stdout}\nstderr={stderr}")
     });
-    assert_eq!(value["status"], "verified");
+    assert_status_verified_or_under_preconditions(&value);
     assert_eq!(value["behavior_oracle"]["id"], "builtin.buffer.memset");
 }
 

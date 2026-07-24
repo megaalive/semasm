@@ -543,7 +543,8 @@ impl VerificationReport {
         region_access: semasm_contract::RegionAccessReport,
     ) -> Self {
         match region_access.status {
-            semasm_contract::RegionAccessStatus::Passed => {}
+            semasm_contract::RegionAccessStatus::Passed
+            | semasm_contract::RegionAccessStatus::Incomplete => {}
             semasm_contract::RegionAccessStatus::PassedUnderPreconditions => {
                 if self.status == VerificationStatus::Verified {
                     self.status = VerificationStatus::VerifiedUnderPreconditions;
@@ -552,7 +553,6 @@ impl VerificationReport {
             semasm_contract::RegionAccessStatus::Failed => {
                 self.status = VerificationStatus::SemanticFailed;
             }
-            semasm_contract::RegionAccessStatus::Incomplete => {}
         }
         self.region_access = Some(region_access);
         self

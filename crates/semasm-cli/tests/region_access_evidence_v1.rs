@@ -207,10 +207,7 @@ fn known_base_symbolic_length_under_preconditions() {
     let memory = load_memory("memcpy.sem.toml");
     let report =
         evaluate_region_access(&memory, &[access(AccessMode::Load, 1, affine("src", 0), 0)]);
-    assert_eq!(
-        report.status,
-        RegionAccessStatus::PassedUnderPreconditions
-    );
+    assert_eq!(report.status, RegionAccessStatus::PassedUnderPreconditions);
     assert_eq!(report.accesses[0].bounds, BoundsStatus::MayEscape);
     assert_eq!(report.accesses[0].permission, PermissionStatus::Allowed);
     assert_eq!(report.accesses_unknown, 0);

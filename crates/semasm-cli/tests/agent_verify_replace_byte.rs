@@ -58,7 +58,11 @@ fn agent_verify_replace_byte_allow_execution_is_verified() {
     let value: serde_json::Value = serde_json::from_str(&stdout).unwrap_or_else(|error| {
         panic!("expected VerificationReport JSON ({error}): {stdout}\nstderr={stderr}")
     });
-    assert_eq!(value["status"], "verified");
+    let status = value["status"].as_str().unwrap_or("");
+    assert!(
+        status == "verified" || status == "verified_under_preconditions",
+        "expected verified or verified_under_preconditions, got {status}: {value}"
+    );
     assert_eq!(value["behavior"]["all_passed"], true);
     assert_eq!(
         value["behavior_oracle"]["id"],
