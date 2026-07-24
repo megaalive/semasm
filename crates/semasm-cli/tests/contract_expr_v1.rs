@@ -52,8 +52,7 @@ fn contradicting_equal_atom_fails() {
 #[test]
 fn without_alias_slice_still_records_length_bound_obligation() {
     let checked = load("memcpy.sem.toml");
-    let report =
-        evaluate_contract_expressions(&checked, None, &ExprBindings::default()).unwrap();
+    let report = evaluate_contract_expressions(&checked, None, &ExprBindings::default()).unwrap();
     assert_eq!(report.status, ContractExprStatus::PassedUnderPreconditions);
     assert!(report.expressions.iter().any(|e| {
         e.source.contains("length") && e.judgement == ExprJudgement::TrueUnderPrecondition

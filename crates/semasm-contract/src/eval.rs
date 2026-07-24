@@ -2,7 +2,7 @@
 //!
 //! See `docs/CONTRACT_EXPR_V1_SUBSET.md`. Not a theorem prover / SMT.
 
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, BTreeSet};
 
 use serde::{Deserialize, Serialize};
 
