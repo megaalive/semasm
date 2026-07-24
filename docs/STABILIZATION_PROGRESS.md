@@ -103,7 +103,7 @@ ceremony** (next landable after Da CI green at tip `a85deae`).
 
 | Wave | Focus | Unlock when |
 |---|---|---|
-| **Rel-0.2** | Annotated tag + GitHub Release `v0.2.0` | **in progress** — version bumped; awaiting verify-release + tag |
+| **Rel-0.2** | Annotated tag + GitHub Release `v0.2.0` | **done** � tip `c5d8458`; [GitHub Release](https://github.com/megaalive/semasm/releases/tag/v0.2.0) |
 
 ### A64/RV Decode/Lower Bump (Da0–Da5) — done
 
