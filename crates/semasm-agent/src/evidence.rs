@@ -307,12 +307,8 @@ pub fn compare_reports(
     }
 
     let preferred = match (report_a.status, report_b.status) {
-        (VerificationStatus::Verified, other) if other != VerificationStatus::Verified => {
-            Some(label_a.to_string())
-        }
-        (other, VerificationStatus::Verified) if other != VerificationStatus::Verified => {
-            Some(label_b.to_string())
-        }
+        (a, b) if verification_rank(a) > verification_rank(b) => Some(label_a.to_string()),
+        (a, b) if verification_rank(b) > verification_rank(a) => Some(label_b.to_string()),
         _ => None,
     };
 
@@ -324,6 +320,16 @@ pub fn compare_reports(
         gate_diffs,
         vector_diffs,
         preferred,
+    }
+}
+
+/// Rank for candidate preference: higher is better. Verified beats
+/// VerifiedUnderPreconditions; both beat non-success outcomes.
+fn verification_rank(status: VerificationStatus) -> u8 {
+    match status {
+        VerificationStatus::Verified => 3,
+        VerificationStatus::VerifiedUnderPreconditions => 2,
+        _ => 0,
     }
 }
 
