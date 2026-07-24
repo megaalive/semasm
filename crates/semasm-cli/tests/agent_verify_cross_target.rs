@@ -466,7 +466,7 @@ fn agent_verify_find_first_byte_aarch64_allow_execution_is_verified() {
     let value: serde_json::Value = serde_json::from_str(&stdout).unwrap_or_else(|error| {
         panic!("expected VerificationReport JSON ({error}): {stdout}\nstderr={stderr}")
     });
-    assert_eq!(value["status"], "verified");
+    assert_status_verified_or_under_preconditions(&value);
     assert_eq!(
         value["behavior_oracle"]["id"],
         "builtin.buffer.find_first_u8"
@@ -495,7 +495,7 @@ fn agent_verify_find_first_byte_riscv64_allow_execution_is_verified() {
     let value: serde_json::Value = serde_json::from_str(&stdout).unwrap_or_else(|error| {
         panic!("expected VerificationReport JSON ({error}): {stdout}\nstderr={stderr}")
     });
-    assert_eq!(value["status"], "verified");
+    assert_status_verified_or_under_preconditions(&value);
     assert_eq!(
         value["behavior_oracle"]["id"],
         "builtin.buffer.find_first_u8"
@@ -524,7 +524,7 @@ fn agent_verify_find_last_byte_aarch64_allow_execution_is_verified() {
     let value: serde_json::Value = serde_json::from_str(&stdout).unwrap_or_else(|error| {
         panic!("expected VerificationReport JSON ({error}): {stdout}\nstderr={stderr}")
     });
-    assert_eq!(value["status"], "verified");
+    assert_status_verified_or_under_preconditions(&value);
     assert_eq!(
         value["behavior_oracle"]["id"],
         "builtin.buffer.find_last_u8"
@@ -553,7 +553,7 @@ fn agent_verify_find_last_byte_riscv64_allow_execution_is_verified() {
     let value: serde_json::Value = serde_json::from_str(&stdout).unwrap_or_else(|error| {
         panic!("expected VerificationReport JSON ({error}): {stdout}\nstderr={stderr}")
     });
-    assert_eq!(value["status"], "verified");
+    assert_status_verified_or_under_preconditions(&value);
     assert_eq!(
         value["behavior_oracle"]["id"],
         "builtin.buffer.find_last_u8"

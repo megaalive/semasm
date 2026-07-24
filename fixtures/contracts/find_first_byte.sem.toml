@@ -24,6 +24,10 @@ name = "result"
 type = "usize"
 
 [[function.requires]]
+expression = "regions.equal(buf, buf)"
+reason = "Contract-expr-v1: single-buffer identity (same region)."
+
+[[function.requires]]
 expression = "length <= 4096"
 reason = "Arbitrary safety limit for this fixture."
 
@@ -33,6 +37,19 @@ expression = "result <= length"
 [[function.effects]]
 kind = "memory_read"
 region = "buffer[0..length]"
+
+[function.memory]
+
+[[function.memory.regions]]
+name = "buf"
+base = "buffer"
+length = "length"
+access = "read"
+
+[[function.memory.relations]]
+left = "buf"
+right = "buf"
+require = "equal"
 
 [function.constraints]
 no_heap = true
