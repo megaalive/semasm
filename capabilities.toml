@@ -55,6 +55,13 @@
 #   `not_evaluated` ≠ passed. A64/RV memory-effect parity for this slice is
 #   ADR 0008 (Me0–Me5); A64/RV `decode`/`lower` = `verified_in_ci` after
 #   ADR 0009 / Da (same sample-coverage honesty as Dx).
+# - Region Access Evidence v1 (`region-access-affine-v1`, ADR 0011): affine
+#   access → contract region match with bounds/permission statuses. **x86
+#   acceptance corpus:** `semasm-cli` `region_access_evidence_v1` (Ra5).
+#   AArch64/RV64 collectors attach observational `region_access` reports;
+#   Incomplete does **not** yet demote verify (Failed does). **Not** general
+#   memory safety / multi-ISA “supported”. See
+#   docs/REGION_ACCESS_EVIDENCE_V1_PLAN.md.
 # - Contract Expression Semantics v1 (`contract-expr-v1`, ADR 0007 + 0010):
 #   documented subset of requires/ensures (see docs/CONTRACT_EXPR_V1_SUBSET.md),
 #   including `regions.disjoint|equal|contains` against living alias evidence.

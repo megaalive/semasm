@@ -8,7 +8,8 @@ minimal target programs **without shipping a high-level language runtime**.
 > **Status:** pre-1.0 developer tooling (0.1 line). Thirteen workspace crates,
 > multi-target agent verify (SysV / Win64 / AArch64 / RV64), structured
 > `VerificationReport` evidence (including optional Region/Alias Evidence v1
-> `region-affine-v1` and Contract Expression Semantics v1 `contract-expr-v1` —
+> `region-affine-v1`, Region Access Evidence v1 `region-access-affine-v1`, and
+> Contract Expression Semantics v1 `contract-expr-v1` —
 > selected affine relations + documented expression subset, **not** general
 > alias analysis or full contract verification), and named CI owner jobs are in tree.
 > Capability maturity is defined only by `capabilities.toml` — code present ≠

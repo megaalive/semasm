@@ -25,7 +25,7 @@ without per-target corpus.
 | **Ra3** | Bounds + permission status; fail-closed aggregate | **done** (folded into Ra1) |
 | **Ra4** | Wire `VerificationReport.region_access`; Failed demotes (Incomplete observational until Ra5/Ra6) | **done** |
 | **Ra5** | x86-64 acceptance corpus (minimum fixtures in Sei §4) | **done** (`region_access_evidence_v1`) |
-| **Ra6** | Caps/docs honesty; A64/RV observational only | **planned** |
+| **Ra6** | Caps/docs honesty; A64/RV observational only | **done** |
 | **Ra7** | AArch64 parity corpus (separate) | **locked** |
 | **Ra8** | RV64 parity corpus (separate) | **locked** |
 

@@ -21,7 +21,7 @@ CI-proven support.
 | Tw | A64/RV adversarial twins (write-shape / MemCmp / min) | **done** (`c0655f1`) |
 | Ff | A64/RV `find_first_byte` / `find_last_byte` packs | **done** (`3876277`) |
 | Ab | `abi_analysis` → `verified_in_ci` (primary four) | **done** (`0e35029`) |
-| Sei | Semantic Evidence Integrity (alias/obligation → VAA policy → region access) | **in progress** (P0 done; Ra0) |
+| Sei | Semantic Evidence Integrity (alias/obligation → VAA policy → region access) | **in progress** (P0 + Ra0–Ra6 done; VAA P1 next) |
 
 ## Declared target identities
 
@@ -46,9 +46,11 @@ conformance evidence are proven.
 - Keep CI owner jobs green with `SEMASM_REQUIRE_TOOLCHAIN=1`.
 - Prefer fail-closed adversarial fixtures over broader mnemonic coverage.
 - Do **not** add new ISAs until landed paths stay deep and honest.
-- **In progress:** **Sei Ra** — Region Access Evidence v1 after P0
-  (`docs/REGION_ACCESS_EVIDENCE_V1_PLAN.md`; ADR 0011). Horizon cliffs stay
-  locked.
+- **In progress:** **Sei** — VAA Evidence Requirement Profiles next (SemASM
+  Region Access Ra0–Ra6 done). Horizon cliffs stay locked.
+- **Done (Sei Ra):** Region Access Evidence v1 — ADR 0011; x86 corpus
+  `region_access_evidence_v1`; A64/RV observational
+  (`docs/REGION_ACCESS_EVIDENCE_V1_PLAN.md`).
 - **Done (Sei P0):** ADR 0010 alias proof vs caller obligation (`680f88a` /
   `26c89e6`).
 - **Done (Tw):** A64/RV adversarial twins — `docs/A64_RV_ADVERSARIAL_TWINS_PLAN.md`

@@ -71,6 +71,11 @@ JSON document type is `VerificationReport` from `semasm-agent::verify`:
   `contract_ensures` (raw contract postconditions, often weaker) and
   `proof_basis: oracle_and_vectors` — equality is not proven by the contract
   alone.
+- `alias_analysis` / `region_access` / `contract_expressions` — optional
+  semantic evidence slices when `[function.memory]` is present (models
+  `region-affine-v1`, `region-access-affine-v1`, `contract-expr-v1`).
+  `region_access` Failed demotes verify; Incomplete is observational on A64/RV
+  and for symbolic-length leaves until VAA policy requires completeness.
 
 Controller consumers (for example VAA) must parse **stdout only** and map
 statuses per [`CONTROLLER_PROTOCOL.md`](CONTROLLER_PROTOCOL.md).

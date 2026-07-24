@@ -8,6 +8,8 @@ follow [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Added
 
+- **Sei Ra6** — caps/docs honesty for `region-access-affine-v1` (x86 corpus
+  named; A64/RV observational; Incomplete ≠ demote).
 - **Sei Ra5** — x86 Region Access acceptance corpus
   (`semasm-cli` `region_access_evidence_v1`; overlapping regions prefer
   permission-allowed match).
