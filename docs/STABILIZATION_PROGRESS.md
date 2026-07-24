@@ -85,7 +85,7 @@ evidence — not SMT / full contract verification. Plan:
 |---|---|---|
 | **G3** | A64/RV memory-effect parity | **Done** — Me0–Me5 (ADR 0008; collectors + verify wire + ± fixtures; `decode`/`lower` stay `partial`) |
 | **G4** | Isolation ops proof (VAA) | **Done** — Io0–Io5 at VAA `c040828` (claim matrix + backend id + network/credential argv checklist; **not** public-untrusted ready) |
-| **G5** | Trust root nyata (VAA) | After evidence semantics stable (Ra6 + G2 Ce5) — planning unlocked; “nyata” implementation stays last |
+| **G5** | Trust root ops proof (VAA) | **Done** — Tr0–Tr5 at VAA `ef748c5` (`signer_kind` labels); **production** trust root / hardware HSM / operated remote log remain Horizon-locked |
 
 ### A64/RV Memory-Effect Parity (Me0–Me5) — done
 

@@ -82,7 +82,9 @@ Forbidden: *SemASM formally proves memory safety* / *complete alias analysis*.
    **done** (ADR 0008; Me0–Me5). **Not** a decode/lower maturity flip.
 3. Isolation ops proof (VAA; escalate if public untrusted execution) —
    **done** (G4 Io0–Io5; ops checklist ≠ public-untrusted ready).
-4. Trust root nyata (last; authenticity ≠ semantic truth).
+4. Trust root ops proof (VAA; authenticity ≠ semantic truth) — **done** as
+   ops labels (G5 Tr0–Tr5). **Production** trust root / hardware HSM /
+   operated remote log as Gate default remain Horizon-locked.
 
 ## Consequences
 
