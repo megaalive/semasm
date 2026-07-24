@@ -25,7 +25,7 @@ Forbidden: claiming complete CFG / PAC / landing-pad verification.
 | **Co2** | Wire `check_cfg_leaf` on A64/RV; `control=Passed`; memory stays Skipped | **done** |
 | **Co3** | Fixtures `count_byte_indirect_{aarch64,riscv64}.S` + adversarial e2e | **done** |
 | **Co4** | Caps/docs honesty + readiness | **done** |
-| **Co5** | CI green on owner A64/RV jobs | queued |
+| **Co5** | CI green on owner A64/RV jobs | **done** (`200799e`) |
 
 ## Non-goals
 
