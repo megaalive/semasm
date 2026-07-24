@@ -13,6 +13,8 @@ CI-proven support.
 | VS-02–VS-08 | Build/report, agents, object/decode/CFG, and architecture experiments | **implemented** |
 | Stabilization | Fail-closed execution, honest claims, adversarial corpus, isolation truth | **bulletproof P0–P5 done** |
 | X86 Golden Depth | SysV+Win64 e2e symmetry, ABI/decode/W+X adversarial CI, golden demo | **done** |
+| G1–G5 + Da | Region/Alias, ContractExpr, Me parity, VAA Io/Tr ops, A64/RV decode bump | **done** |
+| Rel-0.2 | Annotated tag + GitHub Release `v0.2.0` | **done** |
 
 ## Declared target identities
 
@@ -32,21 +34,20 @@ x86-32, ARMv7, Windows ARM64, UEFI, WebAssembly, AVR, many MCU boards,
 kernel modules, eBPF, and GPU ISAs are deferred until target-kit contracts and
 conformance evidence are proven.
 
-## Near-term criteria (after X86 Golden Depth + T0–T6)
+## Near-term criteria (post-`v0.2.0`)
 
 - Keep CI owner jobs green with `SEMASM_REQUIRE_TOOLCHAIN=1`.
 - Prefer fail-closed adversarial fixtures over broader mnemonic coverage.
-- Do **not** add new ISAs until the x86 golden path stays deep and honest.
-- Done in W/T waves (not queued): CFG/indirect leaf in `agent verify`;
-  read-only buffer memory leaf; contract/harness mismatch fail-closed;
-  A64/RV `control`/`memory` reported as `skipped` until ported.
-- Still deferred: full memory alias / symbolic proof; formal `ensures`;
-  optional offline C size comparison (not a CI gate).
-- **Done:** GitHub Release tag `v0.1.0` (checklist-gated; CLI archives only).
+- Do **not** add new ISAs until landed paths stay deep and honest.
+- **Next depth (queued):** A64/RV `control` gate (indirect CFG leaf; today
+  x86-only / A64/RV `skipped`) + VAA controller/Gate smoke on tip `v0.2.0`.
+- Still deferred (Horizon-locked): full memory alias / symbolic proof; formal
+  `ensures`; CryptOpt; hardware HSM; live-model Gate; optional offline C size
+  comparison (not a CI gate).
+- **Done:** GitHub Release tags `v0.1.0` and `v0.2.0` (checklist-gated; CLI
+  archives only; no crates.io).
 
-Consumer pin / framed smoke / capability claim bind: see VAA `docs/progress.md`
-(waves through Tranche P / `find_first_byte` Gate Done). Next shared work is
-VAA controller loop depth or further x86 adversarial — see
+Consumer pin / Gate smoke: see VAA `docs/progress.md`. Shared progress:
 `docs/STABILIZATION_PROGRESS.md`.
 
 See `semasm-complete-project-plan.md` for the original ordered vertical slices

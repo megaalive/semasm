@@ -24,7 +24,10 @@ The product boundary in the project plan applies:
 
 ## Releases
 
-Release process, versioning, and crate publication policy will be documented when the first usable vertical slice ships. Until then, crate versions remain `0.1.0` and APIs are unstable.
+Pre-1.0 developer releases ship as annotated GitHub tags with CLI archives
+(`docs/RELEASE_CHECKLIST.md`). Latest: **`v0.2.0`**. Crate versions track the
+workspace (`0.2.x`); APIs remain unstable until 1.0. crates.io publish is
+deferred.
 
 ## Code of conduct
 
