@@ -185,6 +185,20 @@ pub struct AliasRelationEvidence {
     pub basis: String,
 }
 
+/// One unresolved verification obligation (typically a caller precondition).
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "schema", derive(schemars::JsonSchema))]
+pub struct VerificationObligation {
+    /// Obligation kind (`regions_disjoint`, `regions_equal`, `regions_contains`).
+    pub kind: String,
+    /// Left region name.
+    pub left: String,
+    /// Right region name.
+    pub right: String,
+    /// Who must discharge the obligation (`caller`).
+    pub owner: String,
+}
+
 /// Full alias-analysis block for [`crate` consumers / VerificationReport].
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[cfg_attr(feature = "schema", derive(schemars::JsonSchema))]
@@ -199,6 +213,9 @@ pub struct AliasAnalysisReport {
     pub unknown_memory_accesses: usize,
     /// Explicit honesty assumptions.
     pub assumptions: Vec<String>,
+    /// Caller obligations not discharged by static proof (ADR 0010).
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub unresolved_obligations: Vec<VerificationObligation>,
 }
 
 /// Model string embedded in reports.
@@ -255,6 +272,7 @@ pub fn evaluate_alias(
     let mut any_failed = false;
     let mut any_unproven = false;
     let mut any_caller_obligation = false;
+    let mut unresolved_obligations = Vec::new();
     for (rel, row) in memory.relations.iter().zip(relations.iter()) {
         if contradicts(rel.require, row.observed) {
             any_failed = true;
@@ -264,6 +282,12 @@ pub fn evaluate_alias(
             && matches!(rel.basis, Some(RelationBasisDecl::Precondition))
         {
             any_caller_obligation = true;
+            unresolved_obligations.push(VerificationObligation {
+                kind: format!("regions_{}", rel.require.as_str()),
+                left: rel.left.clone(),
+                right: rel.right.clone(),
+                owner: "caller".to_string(),
+            });
         } else {
             any_unproven = true;
         }
@@ -285,6 +309,7 @@ pub fn evaluate_alias(
         relations,
         unknown_memory_accesses,
         assumptions: vec![ASSUMPTION_DISTINCT_NOT_PROOF.to_string()],
+        unresolved_obligations,
     }
 }
 
@@ -503,6 +528,9 @@ mod tests {
             report.relations[0].evidence_basis,
             RelationEvidenceBasis::DeclaredPrecondition
         );
+        assert_eq!(report.unresolved_obligations.len(), 1);
+        assert_eq!(report.unresolved_obligations[0].kind, "regions_disjoint");
+        assert_eq!(report.unresolved_obligations[0].owner, "caller");
     }
 
     #[test]

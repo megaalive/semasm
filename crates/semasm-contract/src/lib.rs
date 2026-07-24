@@ -18,7 +18,8 @@ pub mod validate;
 
 pub use alias::{
     evaluate_alias, AccessAddr, AccessMode, AliasAnalysisReport, AliasRelationEvidence,
-    AliasStatus, ObservedMemoryAccess, RelationEvidenceBasis, RelationObserved, REGION_AFFINE_V1,
+    AliasStatus, ObservedMemoryAccess, RelationEvidenceBasis, RelationObserved,
+    VerificationObligation, REGION_AFFINE_V1,
 };
 pub use codes::ContractCode;
 pub use eval::{

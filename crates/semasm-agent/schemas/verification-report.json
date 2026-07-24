@@ -133,6 +133,13 @@
           "type": "integer",
           "format": "uint",
           "minimum": 0
+        },
+        "unresolved_obligations": {
+          "description": "Caller obligations not discharged by static proof (ADR 0010).",
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/VerificationObligation"
+          }
         }
       },
       "required": [
@@ -676,6 +683,34 @@
         "passed",
         "expected",
         "observed"
+      ]
+    },
+    "VerificationObligation": {
+      "description": "One unresolved verification obligation (typically a caller precondition).",
+      "type": "object",
+      "properties": {
+        "kind": {
+          "description": "Obligation kind (`regions_disjoint`, `regions_equal`, `regions_contains`).",
+          "type": "string"
+        },
+        "left": {
+          "description": "Left region name.",
+          "type": "string"
+        },
+        "owner": {
+          "description": "Who must discharge the obligation (`caller`).",
+          "type": "string"
+        },
+        "right": {
+          "description": "Right region name.",
+          "type": "string"
+        }
+      },
+      "required": [
+        "kind",
+        "left",
+        "right",
+        "owner"
       ]
     },
     "VerificationStatus": {

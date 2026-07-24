@@ -12,7 +12,8 @@ follow [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   distinct pointer names are `may_overlap` (not `proven_disjoint`); contracts
   may set `basis = "precondition"`; report statuses
   `passed_under_preconditions` / `verified_under_preconditions` and judgement
-  `true_under_precondition`. Verification report schema `0.5`. See
+  `true_under_precondition`; `alias_analysis.unresolved_obligations` lists
+  open caller obligations. Verification report schema `0.5`. See
   `docs/SEMANTIC_EVIDENCE_INTEGRITY_PLAN.md`.
 - **Ab `abi_analysis` → `verified_in_ci`** — callee-saved + stack-imbalance
   twins on A64/RV; A64 3-op `sub sp` tracking fix; four primary targets (not
