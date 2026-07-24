@@ -1,8 +1,8 @@
 # CLI and JSON compatibility
 
-SemASM 0.1 is a pre-1.0 developer release. Command names and documented exit
-classes are supported for the 0.1 line, while JSON shapes evolve only through
-their declared schema policies.
+SemASM 0.2.x is a pre-1.0 developer line (latest tag: see `CHANGELOG.md` /
+GitHub Releases). Command names and documented exit classes remain supported
+while JSON shapes evolve only through their declared schema policies.
 
 ## Exit codes
 

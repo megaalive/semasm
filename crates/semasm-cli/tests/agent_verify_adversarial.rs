@@ -901,6 +901,198 @@ fn agent_verify_write_riscv64_is_semantic_failed() {
 }
 
 #[test]
+#[ignore = "requires aarch64-linux-gnu-as/ld and qemu-aarch64 on PATH"]
+fn agent_verify_replace_byte_wrong_aarch64_is_behavior_failed() {
+    let source = workspace_root().join("fixtures/asm/replace_byte_wrong_aarch64.S");
+    let contract = workspace_root().join("fixtures/contracts/replace_byte.sem.toml");
+    let output = run_agent_verify(&source, &contract, Some("aarch64-unknown-linux-gnu"), true);
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    if skip_if_incomplete(&stderr) {
+        return;
+    }
+    assert_status(&output, "behavior_failed");
+}
+
+#[test]
+#[ignore = "requires riscv64-linux-gnu-as/ld and qemu-riscv64 on PATH"]
+fn agent_verify_replace_byte_wrong_riscv64_is_behavior_failed() {
+    let source = workspace_root().join("fixtures/asm/replace_byte_wrong_riscv64.S");
+    let contract = workspace_root().join("fixtures/contracts/replace_byte.sem.toml");
+    let output = run_agent_verify(
+        &source,
+        &contract,
+        Some("riscv64gc-unknown-linux-gnu"),
+        true,
+    );
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    if skip_if_incomplete(&stderr) {
+        return;
+    }
+    assert_status(&output, "behavior_failed");
+}
+
+#[test]
+#[ignore = "requires aarch64-linux-gnu-as/ld and qemu-aarch64 on PATH"]
+fn agent_verify_memset_wrong_aarch64_is_behavior_failed() {
+    let source = workspace_root().join("fixtures/asm/memset_wrong_aarch64.S");
+    let contract = workspace_root().join("fixtures/contracts/memset.sem.toml");
+    let output = run_agent_verify(&source, &contract, Some("aarch64-unknown-linux-gnu"), true);
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    if skip_if_incomplete(&stderr) {
+        return;
+    }
+    assert_status(&output, "behavior_failed");
+}
+
+#[test]
+#[ignore = "requires riscv64-linux-gnu-as/ld and qemu-riscv64 on PATH"]
+fn agent_verify_memset_wrong_riscv64_is_behavior_failed() {
+    let source = workspace_root().join("fixtures/asm/memset_wrong_riscv64.S");
+    let contract = workspace_root().join("fixtures/contracts/memset.sem.toml");
+    let output = run_agent_verify(
+        &source,
+        &contract,
+        Some("riscv64gc-unknown-linux-gnu"),
+        true,
+    );
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    if skip_if_incomplete(&stderr) {
+        return;
+    }
+    assert_status(&output, "behavior_failed");
+}
+
+#[test]
+#[ignore = "requires aarch64-linux-gnu-as/ld and qemu-aarch64 on PATH"]
+fn agent_verify_memcpy_wrong_aarch64_is_behavior_failed() {
+    let source = workspace_root().join("fixtures/asm/memcpy_wrong_aarch64.S");
+    let contract = workspace_root().join("fixtures/contracts/memcpy.sem.toml");
+    let output = run_agent_verify(&source, &contract, Some("aarch64-unknown-linux-gnu"), true);
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    if skip_if_incomplete(&stderr) {
+        return;
+    }
+    assert_status(&output, "behavior_failed");
+}
+
+#[test]
+#[ignore = "requires riscv64-linux-gnu-as/ld and qemu-riscv64 on PATH"]
+fn agent_verify_memcpy_wrong_riscv64_is_behavior_failed() {
+    let source = workspace_root().join("fixtures/asm/memcpy_wrong_riscv64.S");
+    let contract = workspace_root().join("fixtures/contracts/memcpy.sem.toml");
+    let output = run_agent_verify(
+        &source,
+        &contract,
+        Some("riscv64gc-unknown-linux-gnu"),
+        true,
+    );
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    if skip_if_incomplete(&stderr) {
+        return;
+    }
+    assert_status(&output, "behavior_failed");
+}
+
+#[test]
+#[ignore = "requires aarch64-linux-gnu-as/ld and qemu-aarch64 on PATH"]
+fn agent_verify_memcmp_wrong_aarch64_is_behavior_failed() {
+    let source = workspace_root().join("fixtures/asm/memcmp_wrong_aarch64.S");
+    let contract = workspace_root().join("fixtures/contracts/memcmp.sem.toml");
+    let output = run_agent_verify(&source, &contract, Some("aarch64-unknown-linux-gnu"), true);
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    if skip_if_incomplete(&stderr) {
+        return;
+    }
+    assert_status(&output, "behavior_failed");
+}
+
+#[test]
+#[ignore = "requires riscv64-linux-gnu-as/ld and qemu-riscv64 on PATH"]
+fn agent_verify_memcmp_wrong_riscv64_is_behavior_failed() {
+    let source = workspace_root().join("fixtures/asm/memcmp_wrong_riscv64.S");
+    let contract = workspace_root().join("fixtures/contracts/memcmp.sem.toml");
+    let output = run_agent_verify(
+        &source,
+        &contract,
+        Some("riscv64gc-unknown-linux-gnu"),
+        true,
+    );
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    if skip_if_incomplete(&stderr) {
+        return;
+    }
+    assert_status(&output, "behavior_failed");
+}
+
+#[test]
+#[ignore = "requires aarch64-linux-gnu-as/ld on PATH"]
+fn agent_verify_memcmp_write_aarch64_is_semantic_failed() {
+    let source = workspace_root().join("fixtures/asm/memcmp_write_aarch64.S");
+    let contract = workspace_root().join("fixtures/contracts/memcmp.sem.toml");
+    let output = run_agent_verify(&source, &contract, Some("aarch64-unknown-linux-gnu"), false);
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    if skip_if_incomplete(&stderr) {
+        return;
+    }
+    assert_status(&output, "semantic_failed");
+    let value: serde_json::Value =
+        serde_json::from_str(&String::from_utf8_lossy(&output.stdout)).expect("json");
+    assert_eq!(value["semantic"]["memory"], "failed");
+}
+
+#[test]
+#[ignore = "requires riscv64-linux-gnu-as/ld on PATH"]
+fn agent_verify_memcmp_write_riscv64_is_semantic_failed() {
+    let source = workspace_root().join("fixtures/asm/memcmp_write_riscv64.S");
+    let contract = workspace_root().join("fixtures/contracts/memcmp.sem.toml");
+    let output = run_agent_verify(
+        &source,
+        &contract,
+        Some("riscv64gc-unknown-linux-gnu"),
+        false,
+    );
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    if skip_if_incomplete(&stderr) {
+        return;
+    }
+    assert_status(&output, "semantic_failed");
+    let value: serde_json::Value =
+        serde_json::from_str(&String::from_utf8_lossy(&output.stdout)).expect("json");
+    assert_eq!(value["semantic"]["memory"], "failed");
+}
+
+#[test]
+#[ignore = "requires aarch64-linux-gnu-as/ld and qemu-aarch64 on PATH"]
+fn agent_verify_min_usize_wrong_aarch64_is_behavior_failed() {
+    let source = workspace_root().join("fixtures/asm/min_usize_wrong_aarch64.S");
+    let contract = workspace_root().join("fixtures/contracts/min_usize.sem.toml");
+    let output = run_agent_verify(&source, &contract, Some("aarch64-unknown-linux-gnu"), true);
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    if skip_if_incomplete(&stderr) {
+        return;
+    }
+    assert_status(&output, "behavior_failed");
+}
+
+#[test]
+#[ignore = "requires riscv64-linux-gnu-as/ld and qemu-riscv64 on PATH"]
+fn agent_verify_min_usize_wrong_riscv64_is_behavior_failed() {
+    let source = workspace_root().join("fixtures/asm/min_usize_wrong_riscv64.S");
+    let contract = workspace_root().join("fixtures/contracts/min_usize.sem.toml");
+    let output = run_agent_verify(
+        &source,
+        &contract,
+        Some("riscv64gc-unknown-linux-gnu"),
+        true,
+    );
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    if skip_if_incomplete(&stderr) {
+        return;
+    }
+    assert_status(&output, "behavior_failed");
+}
+
+#[test]
 #[ignore = "requires nasm, ld, objdump, and qemu-user on PATH"]
 fn agent_verify_write_sysv_is_semantic_failed() {
     let source = workspace_root().join("fixtures/asm/count_byte_write.asm");

@@ -5,69 +5,56 @@ technical review. A checked item means its acceptance scope is implemented,
 tested across the workspace, committed, and pushed. CI evidence must be green
 before work advances past a failed item.
 
-- [x] PR-01 — Baseline and scope freeze
-- [x] PR-02 — Fix false-clean ABI paths
-- [x] PR-03 — Fix x86 analysis soundness
-- [x] PR-04 — Strict pipeline command outcomes
-- [x] PR-05 — Explicit execution state
-- [x] PR-06 — Runner stdin and environment hardening
-- [x] PR-07 — Bounded output capture
-- [x] PR-08 — Process-tree termination
-- [x] PR-09 — Dedicated Linux and Windows end-to-end CI
-- [x] PR-10 — Capability manifest and generated status
-- [x] PR-11 — Documentation synchronization
-- [x] PR-12 — Structured object verification
-- [x] PR-13 — Cross-target executable evidence
-- [x] PR-14 — CLI modularization
-- [x] PR-15 — Schema and deterministic report versioning
-- [x] PR-16 — Crate-boundary ADR and targeted consolidation
-- [x] PR-17 — Negative corpus and fuzz entry points
-- [x] PR-18 — 0.1 release preparation
+- [x] PR-01 ? Baseline and scope freeze
+- [x] PR-02 ? Fix false-clean ABI paths
+- [x] PR-03 ? Fix x86 analysis soundness
+- [x] PR-04 ? Strict pipeline command outcomes
+- [x] PR-05 ? Explicit execution state
+- [x] PR-06 ? Runner stdin and environment hardening
+- [x] PR-07 ? Bounded output capture
+- [x] PR-08 ? Process-tree termination
+- [x] PR-09 ? Dedicated Linux and Windows end-to-end CI
+- [x] PR-10 ? Capability manifest and generated status
+- [x] PR-11 ? Documentation synchronization
+- [x] PR-12 ? Structured object verification
+- [x] PR-13 ? Cross-target executable evidence
+- [x] PR-14 ? CLI modularization
+- [x] PR-15 ? Schema and deterministic report versioning
+- [x] PR-16 ? Crate-boundary ADR and targeted consolidation
+- [x] PR-17 ? Negative corpus and fuzz entry points
+- [x] PR-18 ? 0.1 release preparation
 
 ## Current focus
 
-Stabilization PR-01…18, Bulletproof P0–P5, X86 Golden Path Depth, Evidence
-W1–W5, controller handshake, shared `count_byte` / `sum_i64` / `min_usize` slices
-(VAA Gate-1/2), hardening T0–T6, runner JSON R0–R2, and Tranche M are complete on
-`main`. GitHub Release **`v0.1.0`**, Tranche N–Q, X0/X1 object-policy depth, and
-Tranche R (search→ingest Gate loop) are complete. **X2 + S + T** through
-**X5 + H5 + Z** are closed (leaf/Gate/bridge treadmill saturated).
+Stabilization through Rel-0.2.1 is closed on `main`. Tip tag: **`v0.2.1`**
+(`22d1543`). G1-G5, Da (A64/RV `decode`/`lower` -> `verified_in_ci`), Co
+(A64/RV `control`), Mm (A64/RV read-only `memory`), and VAA Gate pin (Vd) are
+**done**. Sample CI coverage != full-ISA / CFG/CFI / region-precise store proof.
 
-**Leaf treadmill paused** for thin HlaX64 bridges; **write-shape W0–W3** opened
-`replace_byte` (ADR 0003 Accepted), **Wm** landed `memset`, and **Wc** lands
-`memcpy` as the second dual-buffer write-shape follow-on (harness shape
-resolved from the contract oracle, not vector layout, so `memcpy` can safely
-reuse the `MemCmp` wire layout). Overlap stays fail-closed per ADR 0003: every
-synthesized `dst`/`src` pair is a distinct, non-aliasing fixture buffer; the
-harness checks the post-call `dst` buffer only, never `src`. **Rmem** (ADR
-0004, region-precise memory gate honesty) has landed — docs-only, no
-analyzer. Next up: **W4** HlaX64 `replace_byte` bridge. Gate-2
-`ExecutionSandbox` (I2) landed on VAA (`execution_isolation` +
-`--execution-sandbox`); this SemASM wave does not retouch that path.
-decode/lower on x86-64 Linux/Windows are `verified_in_ci` after **Dx owner
-sign-off** (adversarial corpus; ≠ full-ISA formal proof). AArch64/RV64
-`decode`/`lower` stay `partial`.
+**In progress:** tip honesty sync + A64/RV adversarial twins for write-shape /
+MemCmp / `min_usize` (fail-closed depth). Horizon remains locked: formal
+`ensures`, symbolic alias, CryptOpt, hardware HSM, live-model Gate.
 
-### Region/Alias Evidence v1 (Ra0–Ra6) — **done**
+### Region/Alias Evidence v1 (Ra0?Ra6) ? **done**
 
 Vertical slice toward formal contract semantics (ADR 0006). **Not** general
 alias analysis / SMT / theorem prover. Claim: selected affine memory-region
-relations for supported leaf patterns. Locked next: ContractExpr v1 → A64/RV
-memory-effect parity → isolation ops → trust root.
+relations for supported leaf patterns. Locked next: ContractExpr v1 ? A64/RV
+memory-effect parity ? isolation ops ? trust root.
 
 | Step | Focus | Status |
 |---|---|---|
 | **Ra0** | ADR 0006 Accepted + progress pointers | **done** |
 | **Ra1** | `memory.regions` / `relations` schema | **done** |
-| **Ra2–Ra3** | x86 effects + fail-closed engine | **done** |
-| **Ra4–Ra5** | report field + x86 corpus CI | **done** |
+| **Ra2?Ra3** | x86 effects + fail-closed engine | **done** |
+| **Ra4?Ra5** | report field + x86 corpus CI | **done** |
 | **Ra6** | caps/docs honesty | **done** |
 
-### Contract Expression Semantics v1 (Ce0–Ce5) — **done**
+### Contract Expression Semantics v1 (Ce0?Ce5) ? **done**
 
 Gelombang 2 toward formal contract semantics (ADR 0007). Evaluates a
 **documented subset** of `requires`/`ensures` against living region/relation
-evidence — not SMT / full contract verification. Plan:
+evidence ? not SMT / full contract verification. Plan:
 [CONTRACT_EXPR_V1_PLAN.md](CONTRACT_EXPR_V1_PLAN.md); subset:
 [CONTRACT_EXPR_V1_SUBSET.md](CONTRACT_EXPR_V1_SUBSET.md).
 
@@ -76,36 +63,40 @@ evidence — not SMT / full contract verification. Plan:
 | **Ce0** | ADR 0007 + plan + progress pointers | **done** |
 | **Ce1** | Document allowed AST subset + region atoms | **done** |
 | **Ce2** | Fail-closed evaluator | **done** |
-| **Ce3–Ce4** | report field + ± CI fixtures | **done** |
+| **Ce3?Ce4** | report field + ? CI fixtures | **done** |
 | **Ce5** | caps/docs honesty; unlock G3 | **done** |
 
 ### Locked deferred waves (after G2)
 
 | Wave | Focus | Unlock when |
 |---|---|---|
-| **G3** | A64/RV memory-effect parity | **Done** — Me0–Me5 (ADR 0008; collectors + verify wire + ± fixtures; Da later flipped `decode`/`lower` → `verified_in_ci`) |
-| **G4** | Isolation ops proof (VAA) | **Done** — Io0–Io5 at VAA `c040828` (claim matrix + backend id + network/credential argv checklist; **not** public-untrusted ready) |
-| **G5** | Trust root ops proof (VAA) | **Done** — Tr0–Tr5 at VAA `ef748c5` (`signer_kind` labels); **production** trust root / hardware HSM / operated remote log remain Horizon-locked |
+| **G3** | A64/RV memory-effect parity | **Done** ? Me0?Me5 (ADR 0008; collectors + verify wire + ? fixtures; Da later flipped `decode`/`lower` ? `verified_in_ci`) |
+| **G4** | Isolation ops proof (VAA) | **Done** ? Io0?Io5 at VAA `c040828` (claim matrix + backend id + network/credential argv checklist; **not** public-untrusted ready) |
+| **G5** | Trust root ops proof (VAA) | **Done** ? Tr0?Tr5 at VAA `ef748c5` (`signer_kind` labels); **production** trust root / hardware HSM / operated remote log remain Horizon-locked |
 
-**G1–G5 program closed** (Region/Alias → ContractExpr → memory-effect parity →
-isolation ops → trust ops). Tips: SemASM `ffd0b58` / VAA `ef748c5`.
+**G1?G5 program closed** (Region/Alias ? ContractExpr ? memory-effect parity ?
+isolation ops ? trust ops). Tips: SemASM `ffd0b58` / VAA `ef748c5`.
 
-### Next landable (post–G-wave)
+### Next landable (post?G-wave)
 
 | Wave | Focus | Unlock when |
 |---|---|---|
-| **Da0–Da5** | A64/RV `decode`/`lower` → `verified_in_ci` | **Done** — ADR 0009; adversarial corpus + caps flip (sample coverage ≠ full-ISA proof; `control` still x86-only) |
+| **Da0?Da5** | A64/RV `decode`/`lower` ? `verified_in_ci` | **Done** ? ADR 0009; adversarial corpus + caps flip (sample coverage ? full-ISA proof; Co later ports `control`) |
 
-Hygiene: Unreleased CHANGELOG summarizes G1–G5 + Da; **new git tag is a separate
+Hygiene: Unreleased CHANGELOG summarizes G1?G5 + Da; **new git tag is a separate
 ceremony** (next landable after Da CI green at tip `a85deae`).
 
-### Next landable (post–Da)
+### Next landable (post?Da)
 
 | Wave | Focus | Unlock when |
 |---|---|---|
-| **Rel-0.2** | Annotated tag + GitHub Release `v0.2.0` | **done** � tip `c5d8458`; [GitHub Release](https://github.com/megaalive/semasm/releases/tag/v0.2.0) |
+| **Rel-0.2** | Annotated tag + GitHub Release `v0.2.0` | **done** - tip `c5d8458`; [GitHub Release](https://github.com/megaalive/semasm/releases/tag/v0.2.0) |
+| **Co** | A64/RV `control` leaf | **done** - `docs/A64_RV_CONTROL_GATE_PLAN.md` |
+| **Mm** | A64/RV read-only `memory` leaf | **done** - `docs/A64_RV_MEMORY_LEAF_PLAN.md` |
+| **Rel-0.2.1** | Patch tag `v0.2.1` (Co+Mm) | **done** - tip `22d1543`; [Release](https://github.com/megaalive/semasm/releases/tag/v0.2.1) |
+| **Tw** | A64/RV adversarial twins (write-shape / MemCmp / min) | **in progress** |
 
-### A64/RV Decode/Lower Bump (Da0–Da5) — done
+### A64/RV Decode/Lower Bump (Da0?Da5) ? done
 
 Dx-parity checklist for AArch64 + RISC-V decode/lower maturity. Plan:
 [A64_RV_DECODE_LOWER_BUMP_PLAN.md](A64_RV_DECODE_LOWER_BUMP_PLAN.md).
@@ -116,26 +107,26 @@ Dx-parity checklist for AArch64 + RISC-V decode/lower maturity. Plan:
 | **Da1** | Gap inventory vs Dx families | **done** |
 | **Da2** | Adversarial corpus growth | **done** |
 | **Da3** | CI filters | **done** (`_aarch64_` / `_riscv64_`) |
-| **Da4** | Readiness + owner sign-off | **done** (“kerjakan eksekusi”) |
+| **Da4** | Readiness + owner sign-off | **done** (?kerjakan eksekusi?) |
 | **Da5** | Caps flip + honesty | **done** |
 
 #### Da bump readiness (sign-off recorded)
 
 | Criterion | Status | Evidence |
 |---|---|---|
-| 1 Owner CI jobs | **met** | `e2e (AArch64 Linux)` / `e2e (RV64 Linux)` → `_aarch64_` / `_riscv64_` adversarial |
+| 1 Owner CI jobs | **met** | `e2e (AArch64 Linux)` / `e2e (RV64 Linux)` ? `_aarch64_` / `_riscv64_` adversarial |
 | 2 Coverage corpus | **met** | privilege svc/ecall; unknown fmov/mrs/fence/mulh; trailing; W+X; wrong-behavior |
 | 3 Fail-closed asserts | **met** | tests assert `semantic_failed`; `#[ignore]` only for missing toolchain |
-| 4 Owner sign-off | **signed** | “kerjakan eksekusi” authorizing Da5 |
+| 4 Owner sign-off | **signed** | ?kerjakan eksekusi? authorizing Da5 |
 | 5 Caps comment sync | **met** | honesty block + TOML flip same change |
 
 Claim scope: **AArch64 Linux + RV64 Linux**. Indirect CFG remains x86-only.
-CI-verified ≠ formal full-ISA decode proof.
+CI-verified ? formal full-ISA decode proof.
 
-### A64/RV Memory-Effect Parity (Me0–Me5) — done
+### A64/RV Memory-Effect Parity (Me0?Me5) ? done
 
 Gelombang 3: Region/Alias v1 memory-effect facts on AArch64/RISC-V for
-supported leaves — **not** a `decode`/`lower` → `verified_in_ci` bump.
+supported leaves ? **not** a `decode`/`lower` ? `verified_in_ci` bump.
 Plan: [A64_RV_MEMORY_EFFECT_PARITY_PLAN.md](A64_RV_MEMORY_EFFECT_PARITY_PLAN.md).
 
 | Step | Focus | Status |
@@ -143,31 +134,31 @@ Plan: [A64_RV_MEMORY_EFFECT_PARITY_PLAN.md](A64_RV_MEMORY_EFFECT_PARITY_PLAN.md)
 | **Me0** | ADR 0008 + plan + progress pointers | **done** |
 | **Me1** | AArch64 effect collector | **done** |
 | **Me2** | RISC-V effect collector | **done** |
-| **Me3–Me4** | wire verify + ± CI fixtures | **done** |
+| **Me3?Me4** | wire verify + ? CI fixtures | **done** |
 | **Me5** | caps/docs honesty | **done** |
 
-### Next waves (X4 + H4 + Y) — closed
+### Next waves (X4 + H4 + Y) ? closed
 
 | Wave | Focus | Owner | Status |
 |---|---|---|---|
 | **X4** | MemCmp harness fail-closed on AArch64/RISC-V + caps honesty | SemASM | **done** (`0c12bf7`) |
-| **H4** | HlaX64 → VAA bridge for `find_last_byte` | HlaX64+VAA | **done** (`3641428` / `e105ea0`) |
-| **Y0–Y2** | Pin tips + `memcmp` search `--ingest` Gate parity | VAA | **done** (`1c43236`) |
+| **H4** | HlaX64 ? VAA bridge for `find_last_byte` | HlaX64+VAA | **done** (`3641428` / `e105ea0`) |
+| **Y0?Y2** | Pin tips + `memcmp` search `--ingest` Gate parity | VAA | **done** (`1c43236`) |
 
-### Next waves (X5 + H5 + Z) — closed
+### Next waves (X5 + H5 + Z) ? closed
 
 | Wave | Focus | Owner | Status |
 |---|---|---|---|
 | **X5** | Caps SysV write/indirect + A64/RV evidence sync | SemASM | **done** (`0305846`) |
-| **H5** | HlaX64 → VAA bridge for `memcmp` | HlaX64+VAA | **done** (`eeac3ba` / `d807e21`) |
-| **Z0–Z2** | Pin tips + `find_first_byte` search `--ingest` Gate parity | VAA | **done** (`9c2203e`) |
+| **H5** | HlaX64 ? VAA bridge for `memcmp` | HlaX64+VAA | **done** (`eeac3ba` / `d807e21`) |
+| **Z0?Z2** | Pin tips + `find_first_byte` search `--ingest` Gate parity | VAA | **done** (`9c2203e`) |
 
 A64/RV MemCmp harness remains fail-closed (X4); X5 does not implement it.
 
 Tranche X5 + H5 + Z closed: SemASM tip `0305846`; HlaX64 `eeac3ba`;
 VAA Gate handoff `9c2203e` (pin SemASM `0305846`, HlaX64 `eeac3ba`).
 
-### Maturity inflection (D0–D2) — design only
+### Maturity inflection (D0?D2) ? design only
 
 | Wave | Focus | Owner | Status |
 |---|---|---|---|
@@ -175,8 +166,8 @@ VAA Gate handoff `9c2203e` (pin SemASM `0305846`, HlaX64 `eeac3ba`).
 | **D1** | ADR write-shape buffer leaves | SemASM | **done** (`adr/0003-write-shape-buffer-leaves.md`) |
 | **D2** | Pipeline maturity + Gate-2 isolation criteria | SemASM+VAA | **done** (notes below + VAA) |
 
-**Honesty:** Incomplete ≠ Verified. SoftHSM / Fulcio / practice seals ≠ Verified.
-HlaX64 `-Wverify` ≠ SemASM Verified. Search ≠ CryptOpt. D* did **not** bump
+**Honesty:** Incomplete ? Verified. SoftHSM / Fulcio / practice seals ? Verified.
+HlaX64 `-Wverify` ? SemASM Verified. Search ? CryptOpt. D* did **not** bump
 pipeline; **M1** did bump x86 assemble/link/execute/pipeline_verify with owner
 e2e jobs bound in `capabilities.toml`.
 
@@ -188,42 +179,42 @@ e2e jobs bound in `capabilities.toml`.
 | `find_first_byte` | yes | yes | yes (Z) | yes (VAA Thin Th2) |
 | `find_last_byte` | yes | yes | yes | yes (H4) |
 | `memcmp` | yes (x86; A64/RV fail-closed) | yes | yes (Y) | yes (H5) |
-| `sum_i64` | yes | yes | — | yes (H1) |
-| `min_usize` / `max_usize` | yes | yes | — | yes (VAA Thin Th8) |
+| `sum_i64` | yes | yes | ? | yes (H1) |
+| `min_usize` / `max_usize` | yes | yes | ? | yes (VAA Thin Th8) |
 | `replace_byte` | yes (x86; A64/RV fail-closed) | W3 | yes (VAA Th3) | yes (W4) |
 | `memset` | yes (x86; A64/RV fail-closed) | Wm3 (VAA) | yes (VAA Th4) | yes (VAA Th5) |
 | `memcpy` | yes (x86; A64/RV fail-closed) | Wc (VAA) | yes (VAA Th6) | yes (VAA Th7) |
 
 **Not all buffer leaves are read-only:** `replace_byte`/`memset`/`memcpy`
 declare `memory_write`. Region-precise store proof remains deferred (ADR
-0003; honesty locked in **ADR 0004** — heuristic/dynamic harness evidence
+0003; honesty locked in **ADR 0004** ? heuristic/dynamic harness evidence
 only, not proof; see CI criteria checklist there before this line changes).
 
 **Intentionally not continued** in the same wave as write-shape: A64/RV
 MemCmp / replace harness, CryptOpt embed, formal `ensures` / full alias.
 (`min_usize`/`max_usize` HlaX64 bridges landed on VAA's side as Thin
-**Th8** — see VAA `docs/progress.md`; this row is HlaX64/VAA-owned, not a
-SemASM analyzer or Gate change.) Thin Th1–Th7 closed on VAA (HlaX64 bridges
+**Th8** ? see VAA `docs/progress.md`; this row is HlaX64/VAA-owned, not a
+SemASM analyzer or Gate change.) Thin Th1?Th7 closed on VAA (HlaX64 bridges
 for `count_byte`/`find_first`/`memset`/`memcpy`, plus
 `replace_byte`/`memset`/`memcpy` search-ingest); **Th8** closes the residual
-pure-int bridges — **residual Thin is now closed on VAA.**
+pure-int bridges ? **residual Thin is now closed on VAA.**
 
-### Horizon Closeout Program (H0–H6) — **closed**
+### Horizon Closeout Program (H0?H6) ? **closed**
 
 Horizon is closed as a **queue** in two layers: **landable** cliffs that change
 capability without false Verified claims, and **Horizon-locked deferred** cliffs
 that need hardware, remote ops, or formal research.
 
-Honesty locked for the whole program: SoftHSM ≠ hardware HSM; search mutators ≠
-CryptOpt embed; Incomplete ≠ Verified; HlaX64 emit/`-Wverify` ≠ SemASM Verified;
-local transparency export/CI artifact ≠ operated remote append-only log;
-guard-byte / oracle vectors ≠ formal `ensures` / symbolic alias proof.
+Honesty locked for the whole program: SoftHSM ? hardware HSM; search mutators ?
+CryptOpt embed; Incomplete ? Verified; HlaX64 emit/`-Wverify` ? SemASM Verified;
+local transparency export/CI artifact ? operated remote append-only log;
+guard-byte / oracle vectors ? formal `ensures` / symbolic alias proof.
 
 | Cliff | Layer | Owner | Status |
 |---|---|---|---|
 | H0 Horizon map (this section) | docs | SemASM+VAA | **landed** |
 | H1 ADR 0005 multi-ISA MemCmp/write-shape | ADR | SemASM | **landed** (Accepted) |
-| H2 Guard-byte write-shape harness (ADR 0004 sample-based) | landable | SemASM | **landed** (sample-based; ≠ proof) |
+| H2 Guard-byte write-shape harness (ADR 0004 sample-based) | landable | SemASM | **landed** (sample-based; ? proof) |
 | H3 A64/RV `memcmp` harness | landable | SemASM | **landed** |
 | H4 Dx adversarial deepen (no maturity bump at H4) | landable | SemASM | **landed** (`rdtsc` + `find_last` trailing; bump signed later) |
 | H5 Remote-transparency honesty | ADR/docs | VAA | **landed** |
@@ -233,16 +224,16 @@ guard-byte / oracle vectors ≠ formal `ensures` / symbolic alias proof.
 | CryptOpt embed | **locked deferred** | VAA | locked |
 | Live-model Gate CI | **locked deferred** | VAA | locked |
 | Hardware HSM | **locked deferred** | VAA | locked |
-| `decode`/`lower` → `verified_in_ci` (x86-64) | landable | SemASM | **landed** (owner sign-off; A64/RV stay `partial`) |
+| `decode`/`lower` ? `verified_in_ci` (x86-64) | landable | SemASM | **landed** (owner sign-off; A64/RV stay `partial`) |
 | A64/RV write-shape harness | landable | SemASM | **landed** (follow-on after H3; sample-based guards) |
 
 #### Pipeline maturity bump checklist (D2 companion)
 
 Do **not** change x86-64 Linux/Windows `assemble` / `link` / `execute` /
-`pipeline_verify` from `experimental` → `verified_in_ci` until **all** hold:
+`pipeline_verify` from `experimental` ? `verified_in_ci` until **all** hold:
 
 1. **Owner CI job** named and green on `main` that runs golden-leaf
-   assemble→link→run end-to-end (not only `agent verify`).
+   assemble?link?run end-to-end (not only `agent verify`).
 2. Job covers both SysV and Win64 paths claimed in `capabilities.toml`.
 3. Failures are fail-closed (non-zero exit), not skip/warn-as-pass.
 4. Caps comment block (Tranche O) updated in the same change as the bump.
@@ -257,21 +248,21 @@ Do **not** change x86-64 Linux/Windows `assemble` / `link` / `execute` /
 
 Honesty locked for the bump (M1):
 
-- **`agent_verify = verified_in_ci` ≠ pipeline bump.** Win64 `agent verify` steps in the
+- **`agent_verify = verified_in_ci` ? pipeline bump.** Win64 `agent verify` steps in the
   same Windows e2e job prove agent gates/harness, not assemble/link/execute.
-- Pipeline corpus = the **build/run** fixtures above — **not** the full leaf list under
+- Pipeline corpus = the **build/run** fixtures above ? **not** the full leaf list under
   `target.evidence.fixtures` (those are agent/object evidence lists).
 - Gap before M1: Linux `ci_jobs` still lists only `decode (capstone)`; M1 must bind
   `e2e (x86-64 Linux)` / keep `e2e (x86-64 Windows)` when bumping.
 
-### Maturity follow-up (M0–M1) — closed
+### Maturity follow-up (M0?M1) ? closed
 
 | Wave | Focus | Status |
 |---|---|---|
-| **M0** | Deepen ownership map + Gate-2 I0–I2 criteria (docs) | **done** |
-| **M1** | Bind `ci_jobs` + bump x86 pipeline → `verified_in_ci` | **done** |
+| **M0** | Deepen ownership map + Gate-2 I0?I2 criteria (docs) | **done** |
+| **M1** | Bind `ci_jobs` + bump x86 pipeline ? `verified_in_ci` | **done** |
 
-### Decode/lower depth checklist + adversarial wave (Dx) — landed
+### Decode/lower depth checklist + adversarial wave (Dx) ? landed
 
 | Wave | Focus | Owner | Status |
 |---|---|---|---|
@@ -280,51 +271,51 @@ Honesty locked for the bump (M1):
 **Honesty: Dx documents bump criteria and extends the adversarial corpus.**
 Owner sign-off (this change) flips x86-64 Linux/Windows `decode`/`lower` to
 `verified_in_ci`. That claim is **CI-verified sample coverage** of the named
-adversarial families — not a certificate that every mnemonic in the ISA is
-modeled. AArch64/RV64 `decode`/`lower` stay `partial`. Incomplete ≠ Verified;
-agent ≠ pipeline.
+adversarial families ? not a certificate that every mnemonic in the ISA is
+modeled. AArch64/RV64 `decode`/`lower` stay `partial`. Incomplete ? Verified;
+agent ? pipeline.
 
 #### Decode/lower maturity bump checklist (Dx)
 
-x86-64 Linux/Windows `decode` / `lower` may move `partial` → `verified_in_ci`
-only when **all** hold (mirrors the M0/D2 pipeline ownership map above — same
+x86-64 Linux/Windows `decode` / `lower` may move `partial` ? `verified_in_ci`
+only when **all** hold (mirrors the M0/D2 pipeline ownership map above ? same
 discipline, applied to decode/lower instead of assemble/link):
 
 1. **Owner CI jobs** named and green on `main`, and running the *adversarial*
    corpus (not only golden-path fixtures):
-   - `decode (capstone)` — runs `cargo test --test agent_verify_adversarial
+   - `decode (capstone)` ? runs `cargo test --test agent_verify_adversarial
      _sysv_` (Linux/SysV adversarial twins, capstone feature enabled).
-   - `e2e (x86-64 Windows)` — runs `cargo test --test agent_verify_adversarial
+   - `e2e (x86-64 Windows)` ? runs `cargo test --test agent_verify_adversarial
      _win64_` (Win64 adversarial twins).
-   - `e2e (AArch64 Linux)` / `e2e (RV64 Linux)` — run the `_aarch64_` /
+   - `e2e (AArch64 Linux)` / `e2e (RV64 Linux)` ? run the `_aarch64_` /
      `_riscv64_` adversarial filters via `cross-target-e2e`, for parity if
      A64/RV64 decode/lower are ever proposed for the same bump.
 2. **Coverage criteria** the corpus above must keep proving, growing whenever
    a new gap is found (not just holding the current set static):
-   - **Unknown/unmodelled mnemonic classes** — `count_byte_unknown_insn*`
+   - **Unknown/unmodelled mnemonic classes** ? `count_byte_unknown_insn*`
      (AVX/SIMD-state class via `vzeroupper`), `count_byte_unknown_insn_cpuid*`
      (privileged/CPU-identification class via `cpuid`, Dx), **and**
      `count_byte_unknown_insn_rdtsc*` (timestamp/counter class via `rdtsc`, H4).
-   - **Decode-level trailing/undecodable bytes** after a valid leaf return —
+   - **Decode-level trailing/undecodable bytes** after a valid leaf return ?
      `count_byte_trailing_bytes*`, `find_first_byte_trailing_bytes*` (Dx),
      **and** `find_last_byte_trailing_bytes*` (H4: third leaf/contract shape).
    - **W+X object-policy gaps** (`count_byte_wx*`) and **indirect-branch/call
      leaf rejection** (`count_byte_indirect*`) stay fail-closed.
-   - **Win64/SysV parity** — every SysV adversarial fixture in this family has
+   - **Win64/SysV parity** ? every SysV adversarial fixture in this family has
      a Win64 twin (and vice versa) before either ABI counts as covered; Dx's
      new twins ship both sides together.
 3. **Fail-closed, not skip/warn-as-pass.** Every fixture above must assert
    `semantic_failed` (or a more specific gate) with a non-zero exit and a
-   `VerificationReport` JSON body — `#[ignore]`d for missing toolchain is
+   `VerificationReport` JSON body ? `#[ignore]`d for missing toolchain is
    fine, silently passing is not.
-4. **Explicit: agent ≠ pipeline; Incomplete ≠ Verified.** This checklist
-   existing — or the adversarial corpus being fully green — is not itself the
+4. **Explicit: agent ? pipeline; Incomplete ? Verified.** This checklist
+   existing ? or the adversarial corpus being fully green ? is not itself the
    bump. A named human/CI owner must review the corpus for completeness
    (mnemonic coverage against the real ISA, not just the fixtures on disk)
    and explicitly sign off in the PR that flips `decode`/`lower` to
    `verified_in_ci`.
 5. **Caps comment block updated in the same change as the bump** (same rule
-   as the M0/D2 pipeline checklist above) — do not bump the TOML value
+   as the M0/D2 pipeline checklist above) ? do not bump the TOML value
    without updating the honesty comments that explain what the value means.
 
 **Current status:** x86-64 Linux/Windows **and** AArch64/RV64 Linux
@@ -335,15 +326,15 @@ Indirect CFG leaf policy remains x86-only.
 
 | Criterion | Status | Evidence |
 |---|---|---|
-| 1 Owner CI jobs | **met** | `decode (capstone)` → `_sysv_`; `e2e (x86-64 Windows)` → `_win64_`; cross-target → `_aarch64_` / `_riscv64_` |
+| 1 Owner CI jobs | **met** | `decode (capstone)` ? `_sysv_`; `e2e (x86-64 Windows)` ? `_win64_`; cross-target ? `_aarch64_` / `_riscv64_` |
 | 2 Coverage corpus | **met** | unknown insn (`vzeroupper`/`cpuid`/`rdtsc`); trailing (`count`/`find_first`/`find_last`); W+X SysV+Win64; indirect SysV+Win64 |
 | 3 Fail-closed asserts | **met** | adversarial tests assert `semantic_failed` / non-zero; `#[ignore]` only for missing toolchain |
-| 4 Owner sign-off | **signed** | explicit user sign-off (“sign-off Dx bump”) authorizing the TOML flip |
-| 5 Caps comment sync | **met** | honesty block updated in the same change as `partial` → `verified_in_ci` |
+| 4 Owner sign-off | **signed** | explicit user sign-off (?sign-off Dx bump?) authorizing the TOML flip |
+| 5 Caps comment sync | **met** | honesty block updated in the same change as `partial` ? `verified_in_ci` |
 
-Claim scope: **x86-64 only**. CI-verified ≠ formal full-ISA decode proof.
+Claim scope: **x86-64 only**. CI-verified ? formal full-ISA decode proof.
 
-### Write-shape v1 (W0–W3) — `replace_byte`
+### Write-shape v1 (W0?W3) ? `replace_byte`
 
 | Wave | Focus | Status |
 |---|---|---|
@@ -366,7 +357,7 @@ deferred. See `adr/0003-write-shape-buffer-leaves.md`.
 | W5b | `CONTROLLER_PROTOCOL.md` + status map for VAA | done |
 | W5c | Golden `VerificationReport` fixture for consumers | done |
 
-### Write-shape v2 (Wm) — `memset`
+### Write-shape v2 (Wm) ? `memset`
 
 | Wave | Focus | Status |
 |---|---|---|
@@ -380,10 +371,10 @@ the recognized contract oracle instead of vector layout alone, so
 `generate_harness` / `evaluate` never collide with the read-only scan shapes.
 AArch64/RISC-V harness stays fail-closed, matching `replace_byte`/MemCmp.
 Next: **Wc** `memcpy` (dual-buffer write-shape; design-compatible follow-on
-per ADR 0003). VAA Gate/pin for `memset` is **not** part of this wave — SemASM
+per ADR 0003). VAA Gate/pin for `memset` is **not** part of this wave ? SemASM
 only.
 
-### Write-shape v3 (Wc) — `memcpy`
+### Write-shape v3 (Wc) ? `memcpy`
 
 | Wave | Focus | Status |
 |---|---|---|
@@ -397,13 +388,13 @@ covers `dst` only). `memcpy` vectors are deliberately layout-identical to
 disambiguates from the recognized contract oracle instead of vector layout
 alone, so `generate_harness` / `evaluate` never collide with the read-only
 `MemCmp` shape. **Overlap fail-closed** (ADR 0003): every synthesized vector
-uses distinct, non-aliasing `dst`/`src` fixture buffers — SemASM never
+uses distinct, non-aliasing `dst`/`src` fixture buffers ? SemASM never
 synthesizes or claims defined behavior for aliasing regions. AArch64/RISC-V
 harness stays fail-closed, matching `replace_byte`/`memset`/MemCmp.
-VAA Gate/pin for `memcpy` is **not** part of this wave — SemASM only; VAA is
+VAA Gate/pin for `memcpy` is **not** part of this wave ? SemASM only; VAA is
 untouched.
 
-### Region-precise memory gate honesty (Rmem, ADR 0004) — landed
+### Region-precise memory gate honesty (Rmem, ADR 0004) ? landed
 
 | Wave | Focus | Status |
 |---|---|---|
@@ -412,13 +403,13 @@ untouched.
 Honesty: the static `memory` gate only runs for read-only buffer scans; for
 write-shape leaves (`replace_byte`/`memset`/`memcpy`) region evidence is the
 harness comparing post-call buffer bytes (including sample-based guard
-bytes from H2) against synthesized oracle vectors — dynamic, sample-based,
+bytes from H2) against synthesized oracle vectors ? dynamic, sample-based,
 no formal alias analysis. Separately, Region/Alias Evidence v1
 (`region-affine-v1`) collects affine memory effects on x86 + AArch64 +
 RISC-V (ADR 0006/0008). See `adr/0004-region-precise-memory-gate.md`
 and Horizon H2. W4 HlaX64 `replace_byte` bridge and Thin write-shape bridges
 landed separately; A64/RV write-shape harness landed as priority follow-on
-after H3 (sample-based guards; still ≠ formal/symbolic proof).
+after H3 (sample-based guards; still ? formal/symbolic proof).
 
 ### Completed recently (not deferred)
 
@@ -428,21 +419,21 @@ after H3 (sample-based guards; still ≠ formal/symbolic proof).
 - Read-only buffer leaf rejects explicit memory stores (`memory` gate)
 - Controller handshake fields + stdout-only protocol for VAA adapters
 - `sum_i64` shape `builtin.buffer.wrapping_sum_i64` (SysV + Win64 e2e)
-- Win64 framed ABI: `mov rsp,rbp` restore + `[rbp±disp]` spill carve-out for
-  compiler-produced leaves (needs dedicated regression lock — T1)
-- Horizon Closeout H0–H6 (guard-byte Rmem, A64/RV MemCmp, Dx deepen, ADRs)
+- Win64 framed ABI: `mov rsp,rbp` restore + `[rbp?disp]` spill carve-out for
+  compiler-produced leaves (needs dedicated regression lock ? T1)
+- Horizon Closeout H0?H6 (guard-byte Rmem, A64/RV MemCmp, Dx deepen, ADRs)
 
 ### Horizon-locked deferred (out of current waves)
 
 - Formal `ensures result == count(...)` / general theorem proving
 - Full memory alias / symbolic / region-precise store proof
 - CryptOpt embed, live-model Gate CI, hardware HSM
-- AArch64/RV64 `decode`/`lower` → `verified_in_ci` — **landed** (ADR 0009 /
-  Da0–Da5; sample coverage ≠ formal full-ISA proof; `control` still x86-only)
+- AArch64/RV64 `decode`/`lower` ? `verified_in_ci` ? **landed** (ADR 0009 /
+  Da0?Da5; sample coverage ? formal full-ISA proof; `control` still x86-only)
 - C compiler `-O2` / `-Os` binary-size bake-off in CI
 - Broad mnemonic / new-ISA expansion beyond landed MemCmp + write-shape A64/RV
 
-### Shared vertical slice (SemASM + VAA) — done
+### Shared vertical slice (SemASM + VAA) ? done
 
 | Wave | Focus | Status |
 |---|---|---|
@@ -452,25 +443,25 @@ after H3 (sample-based guards; still ≠ formal/symbolic proof).
 | S3 | VAA `--allow-execution` + Gate-2 Verified | done (VAA) |
 | S4 | SemASM `sum_i64` contract/oracle/harness + VAA fixtures | done |
 
-**Honesty:** Gate-1 (`execution_denied` → VAA Incomplete) is **not** a verified
+**Honesty:** Gate-1 (`execution_denied` ? VAA Incomplete) is **not** a verified
 vertical slice. Gate-2 requires opt-in execution.
 
-### SemASM hardening (T0–T6) — closed
+### SemASM hardening (T0?T6) ? closed
 
 | Wave | Focus | Status |
 |---|---|---|
-| T0 | Sync this progress doc (S2–S4 honesty + T* table) | done |
+| T0 | Sync this progress doc (S2?S4 honesty + T* table) | done |
 | T1 | Lock framed Win64 ABI + rbp-spill exemption with tests | done |
 | T2 | `sum_i64` consumer goldens + oracle v2 | done |
 | T3 | `sum_i64` adversarial memory-write twins | done |
 | T4 | Contract/harness mismatch fail-closed | done |
-| T5 | A64/RV `control`/`memory` → `skipped` when unimplemented | done |
+| T5 | A64/RV `control`/`memory` ? `skipped` when unimplemented | done |
 | T6 | Pure-int oracle claim names `min` | done |
 
 Tranche SemASM hardening is closed on `main`. VAA pin / framed smoke waves
-**N0–N4** and stack integrity **P0–P2** are done (see VAA `docs/progress.md`).
+**N0?N4** and stack integrity **P0?P2** are done (see VAA `docs/progress.md`).
 
-### Runner + SemASM JSON (R0–R2) — closed
+### Runner + SemASM JSON (R0?R2) ? closed
 
 | Wave | Focus | Owner | Status |
 |---|---|---|---|
@@ -479,9 +470,9 @@ Tranche SemASM hardening is closed on `main`. VAA pin / framed smoke waves
 | R2 | SemASM `version`/`status --format json` | SemASM | done |
 
 VAA post-alpha trust depth (**P7** / **P8**) is Done on the consumer side
-(practice seals, SoftHSM smoke, Fulcio opt-in ≠ SemASM Verified).
+(practice seals, SoftHSM smoke, Fulcio opt-in ? SemASM Verified).
 
-### Tranche M (M0–M4) — closed
+### Tranche M (M0?M4) ? closed
 
 | Wave | Focus | Owner | Status |
 |---|---|---|---|
@@ -491,12 +482,12 @@ VAA post-alpha trust depth (**P7** / **P8**) is Done on the consumer side
 | **M3** | One x86 adversarial twin wave around golden path | SemASM | **done** |
 | **M4** | VAA pin tip + `min_usize` Gate-1/2 fixtures/smoke | VAA | **done** |
 
-### Release tip `v0.1.0` — done
+### Release tip `v0.1.0` ? done
 
 Annotated tag + GitHub Release archives (`SHA256SUMS`) after
 `docs/RELEASE_CHECKLIST.md` gates. No crates.io publish in this ceremony.
 
-### Next waves (N0–N2 — Tranche N, post-`v0.1.0`)
+### Next waves (N0?N2 ? Tranche N, post-`v0.1.0`)
 
 | Wave | Focus | Owner | Status |
 |---|---|---|---|
@@ -504,7 +495,7 @@ Annotated tag + GitHub Release archives (`SHA256SUMS`) after
 | **N1** | `max_usize` asm/e2e/goldens/adversarial + capabilities evidence | SemASM | **done** |
 | **N2** | VAA pin tip + `max_usize` Gate-1/2 fixtures/smoke | VAA | **done** |
 
-**Honesty:** Gate-1 Incomplete ≠ Verified. SoftHSM / Fulcio / practice seals ≠
+**Honesty:** Gate-1 Incomplete ? Verified. SoftHSM / Fulcio / practice seals ?
 SemASM Verified. Pipeline assemble/link/execute on x86 remains `experimental`.
 
 Demo: `scripts/golden-demo.sh` (Linux SysV) or `scripts/golden-demo.ps1`
@@ -512,43 +503,43 @@ Demo: `scripts/golden-demo.sh` (Linux SysV) or `scripts/golden-demo.ps1`
 
 Tranche N is closed on tip `623d22c` (SemASM) with VAA handoff `5a5c6d9`.
 
-### Next waves (O0–O1 — Tranche O, x86 depth)
+### Next waves (O0?O1 ? Tranche O, x86 depth)
 
 | Wave | Focus | Owner | Status |
 |---|---|---|---|
-| **O0** | Caps/docs honesty: x86 pipeline stays experimental; next = O→P | SemASM | **done** |
+| **O0** | Caps/docs honesty: x86 pipeline stays experimental; next = O?P | SemASM | **done** |
 | **O1** | One adversarial family around `sum_i64` / Win64 decode-gap parity | SemASM | **done** |
 
-### After O — Tranche P (`find_first_byte` Gate)
+### After O ? Tranche P (`find_first_byte` Gate)
 
 | Wave | Focus | Owner | Status |
 |---|---|---|---|
-| **P0** | Oracle/contract/vectors (absent → length) | SemASM | **done** |
+| **P0** | Oracle/contract/vectors (absent ? length) | SemASM | **done** |
 | **P1** | Asm/e2e/goldens/adversarial + capabilities | SemASM | **done** |
 | **P2** | VAA pin tip + Gate-1/2 smoke | VAA | **done** |
 
-Buffer index-of shape (not another pure-int leaf). Pattern N0→N2 / M2→M4.
+Buffer index-of shape (not another pure-int leaf). Pattern N0?N2 / M2?M4.
 
 Tranche P is closed on tip `511bb45` (SemASM) with VAA handoff `5961c1b`.
 
-### Next waves (Q0… + X0 — VAA loop + further x86 depth)
+### Next waves (Q0? + X0 ? VAA loop + further x86 depth)
 
 | Wave | Focus | Owner | Status |
 |---|---|---|---|
 | **Q0** | Caps/docs honesty: next = VAA repair/search loop + x86 depth | SemASM+VAA | **done** |
-| **Q1** | `find_first_byte` multi-candidate `vaa run` wrong→repair Gate smoke | VAA | **done** |
-| **Q2** | `vaa search` nop-slide staging Gate smoke (offline; ≠ CryptOpt/Verified) | VAA | **done** |
+| **Q1** | `find_first_byte` multi-candidate `vaa run` wrong?repair Gate smoke | VAA | **done** |
+| **Q2** | `vaa search` nop-slide staging Gate smoke (offline; ? CryptOpt/Verified) | VAA | **done** |
 | **X0** | Win64 W+X object-policy (patched COFF; NASM cannot emit W+X code) | SemASM | **done** |
 
 Tranche Q + X0 closed on tip `7fa6e18` (SemASM) with VAA handoff `80f848b`.
 
-### Next waves (R0–R1 + X1 — search→ingest + object-policy depth)
+### Next waves (R0?R1 + X1 ? search?ingest + object-policy depth)
 
 | Wave | Focus | Owner | Status |
 |---|---|---|---|
-| **R0** | Caps/docs honesty: next = search→ingest + Win64 import/noexport | SemASM+VAA | **done** |
+| **R0** | Caps/docs honesty: next = search?ingest + Win64 import/noexport | SemASM+VAA | **done** |
 | **X1** | Win64 import + noexport object-policy twins (parity SysV) | SemASM | **done** |
-| **R1** | `vaa search` staging → `vaa ingest` Gate smoke + verify-chain | VAA | **done** |
+| **R1** | `vaa search` staging ? `vaa ingest` Gate smoke + verify-chain | VAA | **done** |
 
 Tranche R + X1 closed on tip `c8f2047` (SemASM) with VAA handoff `171b553`.
 
@@ -558,10 +549,10 @@ Tranche R + X1 closed on tip `c8f2047` (SemASM) with VAA handoff `171b553`.
 |---|---|---|---|
 | **X2a** | Win64 syscall + stack_imbalance object/capability twins | SemASM | **done** (asm encoding fix) |
 | **X2b** | VAA mutator `nop-before-ret` | VAA | **done** (`9a490d3`) |
-| **S0** | `find_last_byte` oracle/contract/vectors (absent→length) | SemASM | **done** |
+| **S0** | `find_last_byte` oracle/contract/vectors (absent?length) | SemASM | **done** |
 | **S1** | `find_last_byte` asm/e2e/goldens/adversarial + CI | SemASM | **done** (`b6d3395`) |
-| **S2** | VAA pin + Gate-1/2 (+ run wrong→repair) | VAA | **done** (`dcbc536`) |
-| **T0–T2** | `vaa search --ingest` skip Violated → Incomplete | VAA | **done** (`dcbc536`) |
+| **S2** | VAA pin + Gate-1/2 (+ run wrong?repair) | VAA | **done** (`dcbc536`) |
+| **T0?T2** | `vaa search --ingest` skip Violated ? Incomplete | VAA | **done** (`dcbc536`) |
 
 Tranche X2 + S + T closed: SemASM tip `1d57e8d` / functional S1 `b6d3395`;
 VAA handoff `1ad5d0e` (S2+T content `dcbc536`).
@@ -573,7 +564,7 @@ VAA handoff `1ad5d0e` (S2+T content `dcbc536`).
 | **X3** | Win64 `count_byte` callee_saved twin + caps write/indirect sync | SemASM | **done** (`b9a7079`) |
 | **U0** | `memcmp` dual-buffer oracle/contract/vectors | SemASM | **done** (`da8b57a`) |
 | **U1** | `memcmp` asm/e2e/goldens/adversarial + CI | SemASM | **done** (`ca959f3`) |
-| **V0–V3** | VAA pin + memcmp Gate + search allow-execution smoke | VAA | **done** |
+| **V0?V3** | VAA pin + memcmp Gate + search allow-execution smoke | VAA | **done** |
 
 SysV `count_byte_red_zone` pairs with Win64 `count_byte_win64_shadow` as the ABI dual
 (not a literal `*_red_zone_win64` name twin).
@@ -582,10 +573,10 @@ Tranche X3 + U + V closed: SemASM tip
 `b8d24c1` / functional U1 `ca959f39924a34a3bca2a5effe71e96e63238250`;
 VAA Gate handoff `a9f926d` / V3 docs `789f7ad` (CI pin remains U1 `ca959f3`).
 
-**Honesty:** Gate-1 Incomplete ≠ Verified. SoftHSM / Fulcio / practice seals ≠
+**Honesty:** Gate-1 Incomplete ? Verified. SoftHSM / Fulcio / practice seals ?
 SemASM Verified. Pipeline assemble/link/execute on x86 remains `experimental`.
-LLM / search mutator output ≠ Verified. `memcmp` oracle/vectors ≠ formal
-`ensures`/alias proof. Gate-2 `search --ingest --allow-execution` Verified ≠
+LLM / search mutator output ? Verified. `memcmp` oracle/vectors ? formal
+`ensures`/alias proof. Gate-2 `search --ingest --allow-execution` Verified ?
 CryptOpt. MemCmp harness is x86-only; AArch64/RISC-V fail closed (X4). NASM
 win64 does not emit WRITE on code sections; X0 uses
 `fixtures/obj/count_byte_wx_win64.obj` (WRITE|EXECUTE patched).

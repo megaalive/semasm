@@ -6,7 +6,11 @@ follow [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
-## [0.2.1] - 2026-07-24
+### Added
+
+- **Tw A64/RV adversarial twins** — `*_wrong` / `memcmp_*_write` fixtures for
+  write-shape, MemCmp, and `min_usize` on AArch64/RV64 (behavior/memory
+  fail-closed). Sample coverage ≠ formal proof.
 
 Patch past `v0.2.0`: A64/RV leaf depth for `control` and `memory`. Incomplete ≠
 Verified; sample CI coverage ≠ full CFG/CFI or region-precise store proof; no
@@ -58,7 +62,8 @@ capabilities, behavioral oracles, and `VerificationReport` evidence. It is
   `docs/CONTRACT_EXPR_V1_SUBSET.md`); **0008 A64/RV memory-effect parity**
   (Me0–Me5: A64/RV collectors + `agent verify` alias/expr wire + ± fixtures);
   **0009 A64/RV decode/lower bump** (Dx-parity; Da0–Da5 done —
-  `verified_in_ci` sample coverage; `control` still x86-only).
+  `verified_in_ci` sample coverage; as-of-0.2.0 the indirect CFG leaf was still
+  x86-only — **superseded in 0.2.1** by Co).
 - **G1–G5 program** — Region/Alias → ContractExpr → memory-effect parity →
   VAA isolation ops → VAA trust ops (**ops proof Done**; production trust root
   / hardware HSM / operated remote log remain locked).
@@ -84,7 +89,8 @@ capabilities, behavioral oracles, and `VerificationReport` evidence. It is
   `verified_in_ci` (adversarial CI corpus; **≠** full-ISA formal proof).
 - **Da owner sign-off** — AArch64/RV64 Linux `decode` / `lower` →
   `verified_in_ci` (ADR 0009 adversarial corpus; **≠** full-ISA formal proof;
-  indirect CFG leaf policy still x86-only).
+  as-of-0.2.0 indirect CFG leaf policy was still x86-only — **superseded in
+  0.2.1** by Co).
 - x86 assemble/link/execute/`pipeline_verify` already `verified_in_ci` (M1);
   `agent_verify` remains a separate claim from pipeline evidence.
 - Caps / README / STABILIZATION honesty synced with multi-ISA write-shape

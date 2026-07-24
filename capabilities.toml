@@ -24,7 +24,9 @@
 # - AArch64/RV64 `decode`/`lower` = `verified_in_ci` after ADR 0009 / Da0–Da5
 #   (cross-target e2e adversarial: svc/ecall, unknown insn fmov/mrs/fence/mulh,
 #   trailing bytes, W+X, indirect CFG leaf). Sample coverage ≠ full-ISA proof.
-#   A64/RV `memory` leaf remains skipped (x86 read-only buffer policy only).
+#   A64/RV `control` + read-only `memory` leaves are evaluated (Co/Mm; sample ≠
+#   CFG/CFI or region-precise store proof). Write-shape contracts still skip the
+#   static memory leaf (ADR 0003/0004).
 # - AArch64/RV64 **pipeline** evidence remains strong; do not read x86 decode
 #   bump as an A64/RV decode bump without the Da checklist.
 # - MemCmp agent harness: x86 (SysV + Win64) **and** AArch64/RISC-V (H3).
@@ -250,10 +252,16 @@ fixtures = [
     "fixtures/asm/count_byte_indirect_aarch64.S",
     "fixtures/asm/count_byte_write_aarch64.S",
     "fixtures/asm/min_usize_aarch64.S",
+    "fixtures/asm/min_usize_wrong_aarch64.S",
     "fixtures/asm/memcmp_aarch64.S",
+    "fixtures/asm/memcmp_wrong_aarch64.S",
+    "fixtures/asm/memcmp_write_aarch64.S",
     "fixtures/asm/replace_byte_aarch64.S",
+    "fixtures/asm/replace_byte_wrong_aarch64.S",
     "fixtures/asm/memset_aarch64.S",
+    "fixtures/asm/memset_wrong_aarch64.S",
     "fixtures/asm/memcpy_aarch64.S",
+    "fixtures/asm/memcpy_wrong_aarch64.S",
 ]
 ci_jobs = ["e2e (AArch64 Linux)"]
 
@@ -287,10 +295,16 @@ fixtures = [
     "fixtures/asm/count_byte_indirect_riscv64.S",
     "fixtures/asm/count_byte_write_riscv64.S",
     "fixtures/asm/min_usize_riscv64.S",
+    "fixtures/asm/min_usize_wrong_riscv64.S",
     "fixtures/asm/memcmp_riscv64.S",
+    "fixtures/asm/memcmp_wrong_riscv64.S",
+    "fixtures/asm/memcmp_write_riscv64.S",
     "fixtures/asm/replace_byte_riscv64.S",
+    "fixtures/asm/replace_byte_wrong_riscv64.S",
     "fixtures/asm/memset_riscv64.S",
+    "fixtures/asm/memset_wrong_riscv64.S",
     "fixtures/asm/memcpy_riscv64.S",
+    "fixtures/asm/memcpy_wrong_riscv64.S",
 ]
 ci_jobs = ["e2e (RV64 Linux)"]
 
