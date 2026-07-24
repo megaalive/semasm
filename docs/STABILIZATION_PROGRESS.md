@@ -95,7 +95,8 @@ ceremony** (next landable after Da CI green at tip `a85deae`).
 | **Mm** | A64/RV read-only `memory` leaf | **done** - `docs/A64_RV_MEMORY_LEAF_PLAN.md` |
 | **Rel-0.2.1** | Patch tag `v0.2.1` (Co+Mm) | **done** - tip `22d1543`; [Release](https://github.com/megaalive/semasm/releases/tag/v0.2.1) |
 | **Tw** | A64/RV adversarial twins (write-shape / MemCmp / min) | **done** (`c0655f1`) |
-| **Ff** | A64/RV `find_first_byte` / `find_last_byte` | **in progress** |
+| **Ff** | A64/RV `find_first_byte` / `find_last_byte` | **done** (`3876277`) |
+| **Ab** | `abi_analysis` ? `verified_in_ci` (primary four) | **in progress** |
 
 ### A64/RV Decode/Lower Bump (Da0?Da5) ? done
 

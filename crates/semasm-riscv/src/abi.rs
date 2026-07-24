@@ -336,8 +336,15 @@ fn step(ins: &LoweredInstr) -> Step {
                 }
             }
         }
-        "addi" | "add" => {
-            // RISC-V: addi rd, rs1, imm — check if rd is sp and rs1 is sp
+        "addi" | "add" | "c.addi" | "c.addi16sp" => {
+            // RISC-V: addi rd, rs1, imm — or compressed `c.addi16sp imm` / `c.addi sp, imm`.
+            if let (Some(Operand::Reg(rd)), Some(Operand::Imm(n))) =
+                (ins.operands.first(), ins.operands.get(1))
+            {
+                if matches!(rd.storage, Storage::Gpr(Gpr::Sp)) && ins.operands.len() == 2 {
+                    s.sp_change -= *n;
+                }
+            }
             if ins.operands.len() >= 3 {
                 if let (Some(Operand::Reg(rd)), Some(Operand::Reg(rs1)), Some(Operand::Imm(n))) = (
                     ins.operands.get(0),
@@ -619,6 +626,21 @@ mod tests {
             .find(|f| f.code == "STACK_BALANCE_RET")
             .expect("expected STACK_BALANCE_RET");
         assert_eq!(f.severity, Severity::Error);
+        assert_eq!(r.final_sp_delta, 16);
+    }
+
+    #[test]
+    fn unbalanced_stack_compressed_addi16sp_is_error() {
+        let body = vec![
+            ins("c.addi16sp", Kind::Binary, vec![reg(Gpr::Sp), imm(-16)]),
+            ins("ret", Kind::Return, vec![]),
+        ];
+        let r = analyze(&body);
+        assert!(
+            r.findings.iter().any(|f| f.code == "STACK_BALANCE_RET"),
+            "expected STACK_BALANCE_RET for c.addi16sp: {:?}",
+            r.findings
+        );
         assert_eq!(r.final_sp_delta, 16);
     }
 

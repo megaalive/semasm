@@ -320,8 +320,9 @@ fn step(ins: &LoweredInstr) -> Step {
             // A64 forms: `sub sp, sp, #16` (3 ops) or synthetic `sub sp, #16` (2 ops).
             let dest = ins.operands.first();
             let imm = match (ins.operands.get(1), ins.operands.get(2)) {
-                (Some(Operand::Imm(n)), _) => Some(*n),
-                (Some(Operand::Reg(_)), Some(Operand::Imm(n))) => Some(*n),
+                (Some(Operand::Imm(n)), _) | (Some(Operand::Reg(_)), Some(Operand::Imm(n))) => {
+                    Some(*n)
+                }
                 _ => None,
             };
             if let (Some(Operand::Reg(r)), Some(n)) = (dest, imm) {
@@ -574,11 +575,7 @@ mod tests {
     fn unbalanced_stack_three_operand_sub_sp_is_error() {
         // Capstone/gas form: `sub sp, sp, #16`.
         let body = vec![
-            ins(
-                "sub",
-                Kind::Binary,
-                vec![reg_sp(), reg_sp(), imm(16)],
-            ),
+            ins("sub", Kind::Binary, vec![reg_sp(), reg_sp(), imm(16)]),
             ins("ret", Kind::Return, vec![]),
         ];
         let r = analyze(&body);
