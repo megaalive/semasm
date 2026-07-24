@@ -211,7 +211,7 @@ pub fn evaluate_contract_expressions(
     })
 }
 
-fn integer_param_names(contract: &CheckedContract) -> BTreeMap<String, ()> {
+fn integer_param_names(contract: &CheckedContract) -> BTreeSet<String> {
     use crate::sem_type::SemType;
     contract
         .parameters
@@ -222,7 +222,7 @@ fn integer_param_names(contract: &CheckedContract) -> BTreeMap<String, ()> {
                 SemType::UInt { .. } | SemType::Int { .. } | SemType::Usize | SemType::Isize
             )
         })
-        .map(|p| (p.name.clone(), ()))
+        .map(|p| p.name.clone())
         .collect()
 }
 
@@ -231,7 +231,7 @@ fn eval_condition(
     cond: &CheckedCondition,
     alias: Option<&AliasAnalysisReport>,
     bindings: &ExprBindings,
-    integer_params: &BTreeMap<String, ()>,
+    integer_params: &BTreeSet<String>,
 ) -> ContractExprEvidence {
     // Fb1 (ADR 0012): requires param↔literal int comparisons are declared
     // caller bound obligations — not proven_true, not silent omission.
@@ -260,7 +260,7 @@ fn eval_condition(
 fn try_caller_bound_obligation(
     expr: &Expr,
     bindings: &ExprBindings,
-    integer_params: &BTreeMap<String, ()>,
+    integer_params: &BTreeSet<String>,
 ) -> Option<(ExprJudgement, String)> {
     let Expr::Binary {
         op, left, right, ..
@@ -281,14 +281,10 @@ fn try_caller_bound_obligation(
         return None;
     }
     let param_lit = match (left.as_ref(), right.as_ref()) {
-        (Expr::Ident { name, .. }, Expr::Int { value, .. })
-            if integer_params.contains_key(name) =>
-        {
+        (Expr::Ident { name, .. }, Expr::Int { value, .. }) if integer_params.contains(name) => {
             Some((name.as_str(), *op, *value, true))
         }
-        (Expr::Int { value, .. }, Expr::Ident { name, .. })
-            if integer_params.contains_key(name) =>
-        {
+        (Expr::Int { value, .. }, Expr::Ident { name, .. }) if integer_params.contains(name) => {
             Some((name.as_str(), *op, *value, false))
         }
         _ => None,
