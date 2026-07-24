@@ -1,6 +1,6 @@
 # ABI analysis maturity bump — plan (Ab)
 
-**Status:** in progress (corpus + caps flip)  
+**Status:** **done** (`0e35029` / tip after Ab)  
 **Honesty:** CI-verified sample coverage ≠ formal ABI / calling-convention proof.
 
 ## Claim
