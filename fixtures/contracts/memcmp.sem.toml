@@ -24,6 +24,10 @@ name = "result"
 type = "isize"
 
 [[function.requires]]
+expression = "regions.disjoint(a, b)"
+reason = "Region/Alias + contract-expr-v1: a and b must be disjoint."
+
+[[function.requires]]
 expression = "length <= 4096"
 reason = "Arbitrary safety limit for this fixture."
 
@@ -40,6 +44,26 @@ region = "a[0..length]"
 [[function.effects]]
 kind = "memory_read"
 region = "b[0..length]"
+
+[function.memory]
+
+[[function.memory.regions]]
+name = "a"
+base = "a"
+length = "length"
+access = "read"
+
+[[function.memory.regions]]
+name = "b"
+base = "b"
+length = "length"
+access = "read"
+
+[[function.memory.relations]]
+left = "a"
+right = "b"
+require = "disjoint"
+basis = "precondition"
 
 [function.constraints]
 no_heap = true

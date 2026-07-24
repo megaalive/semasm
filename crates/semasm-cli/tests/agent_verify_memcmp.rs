@@ -58,7 +58,7 @@ fn agent_verify_memcmp_allow_execution_is_verified() {
     let value: serde_json::Value = serde_json::from_str(&stdout).unwrap_or_else(|error| {
         panic!("expected VerificationReport JSON ({error}): {stdout}\nstderr={stderr}")
     });
-    assert_eq!(value["status"], "verified");
+    assert_eq!(value["status"], "verified_under_preconditions");
     assert_eq!(value["behavior"]["all_passed"], true);
     assert!(value["behavior"]["cases"].as_array().unwrap().len() >= 5);
     assert_eq!(value["behavior_oracle"]["id"], "builtin.buffer.memcmp_i8");
