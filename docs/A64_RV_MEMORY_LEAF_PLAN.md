@@ -1,6 +1,6 @@
 # A64 / RV `memory` leaf — plan (Mm)
 
-**Status:** in progress (Mm1–Mm3 coded; Mm4 CI pending)  
+**Status:** **done** (Mm0–Mm5; CI green at `e991182`)  
 **Honesty locks:** Incomplete ≠ Verified · SoftHSM ≠ HSM · CI sample ≠ full-ISA · this leaf is **read-only buffer scan** only (same contract as x86), not full memory-safety proof.
 
 ## Goal
@@ -28,12 +28,12 @@ Detection = `OpKind::Store` + any non-stack `Mem` operand (reuse carve-outs from
 
 | ID | Work | Done when |
 |----|------|-----------|
-| Mm0 | This plan | Merged |
-| Mm1 | `is_*_explicit_memory_write` + `check_*_read_only_buffer_leaf`; wire A64/RV arms; `memory: Passed` on success | Unit green |
-| Mm2 | Fixtures `count_byte_write_{aarch64,riscv64}.S` + adversarial tests | Local adversarial green |
-| Mm3 | Flip unit expects `Skipped` → `Passed` for golden memory; CLI_COMPAT + capabilities + CHANGELOG | Docs synced |
-| Mm4 | Push; wait `e2e-aarch64` / `e2e-riscv64` green | CI green |
-| Mm5 | ROADMAP: mark Me-mem done | Closeout |
+| Mm0 | This plan | **done** |
+| Mm1 | `is_*_explicit_memory_write` + `check_*_read_only_buffer_leaf`; wire A64/RV arms; `memory: Passed` on success | **done** |
+| Mm2 | Fixtures `count_byte_write_{aarch64,riscv64}.S` + adversarial tests | **done** |
+| Mm3 | Flip unit expects `Skipped` → `Passed` for golden memory; CLI_COMPAT + capabilities + CHANGELOG | **done** |
+| Mm4 | Push; wait `e2e-aarch64` / `e2e-riscv64` green | **done** (`e991182`) |
+| Mm5 | ROADMAP: mark Me-mem done | **done** |
 
 ## Out of scope
 

@@ -16,7 +16,7 @@ CI-proven support.
 | G1–G5 + Da | Region/Alias, ContractExpr, Me parity, VAA Io/Tr ops, A64/RV decode bump | **done** |
 | Rel-0.2 | Annotated tag + GitHub Release `v0.2.0` | **done** |
 | Co + Vd | A64/RV `control` leaf + VAA Gate depth on tip | **done** |
-| Mm | A64/RV `memory` leaf (read-only buffer) | **in progress** |
+| Mm | A64/RV `memory` leaf (read-only buffer) | **done** |
 
 ## Declared target identities
 
@@ -41,8 +41,7 @@ conformance evidence are proven.
 - Keep CI owner jobs green with `SEMASM_REQUIRE_TOOLCHAIN=1`.
 - Prefer fail-closed adversarial fixtures over broader mnemonic coverage.
 - Do **not** add new ISAs until landed paths stay deep and honest.
-- **In progress:** A64/RV `memory` leaf — `docs/A64_RV_MEMORY_LEAF_PLAN.md`
-  (sample coverage ≠ formal/region-precise store proof; ADR 0004).
+- **In progress:** _(none — next landable is consumer pin / light hygiene)_
 - Still deferred (Horizon-locked): full memory alias / symbolic proof; formal
   `ensures`; CryptOpt; hardware HSM; live-model Gate; optional offline C size
   comparison (not a CI gate).
@@ -51,6 +50,8 @@ conformance evidence are proven.
 - **Done (Co):** A64/RV `control` gate — `docs/A64_RV_CONTROL_GATE_PLAN.md`.
 - **Done (Vd):** VAA Gate pin + write-shape `vaa run` smokes —
   `docs/V0_2_CONTROLLER_DEPTH_PLAN.md`.
+- **Done (Mm):** A64/RV `memory` leaf — `docs/A64_RV_MEMORY_LEAF_PLAN.md`
+  (CI green at `e991182`; sample ≠ region-precise proof).
 - **Done (hygiene):** Dependabot `actions/checkout@v7` merged.
 
 Consumer pin / Gate smoke: see VAA `docs/progress.md`. Shared progress:
