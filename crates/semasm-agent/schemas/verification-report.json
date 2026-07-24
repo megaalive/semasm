@@ -713,7 +713,7 @@
           "const": "passed"
         },
         {
-          "description": "Affine accesses match declared regions; bounds rely on symbolic region length (caller obligation).",
+          "description": "Affine accesses match declared regions, but bounds rely on symbolic\nregion length (caller obligation); no unknown addresses / denials.",
           "type": "string",
           "const": "passed_under_preconditions"
         },
