@@ -10,4 +10,4 @@ pub const SEMASM_VERSION_MAJOR: u32 = 0;
 pub const SEMASM_VERSION_MINOR: u32 = 2;
 
 /// Patch version component.
-pub const SEMASM_VERSION_PATCH: u32 = 0;
+pub const SEMASM_VERSION_PATCH: u32 = 1;

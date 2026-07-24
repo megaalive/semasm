@@ -325,7 +325,7 @@ dependencies = [
 
 [[package]]
 name = "semasm-aarch64"
-version = "0.2.0"
+version = "0.2.1"
 dependencies = [
  "semasm-asir",
  "semasm-decode",
@@ -334,7 +334,7 @@ dependencies = [
 
 [[package]]
 name = "semasm-agent"
-version = "0.2.0"
+version = "0.2.1"
 dependencies = [
  "schemars",
  "semasm-contract",
@@ -347,14 +347,14 @@ dependencies = [
 
 [[package]]
 name = "semasm-asir"
-version = "0.2.0"
+version = "0.2.1"
 dependencies = [
  "semasm-core",
 ]
 
 [[package]]
 name = "semasm-build"
-version = "0.2.0"
+version = "0.2.1"
 dependencies = [
  "semasm-core",
  "semasm-obj",
@@ -367,7 +367,7 @@ dependencies = [
 
 [[package]]
 name = "semasm-cfg"
-version = "0.2.0"
+version = "0.2.1"
 dependencies = [
  "semasm-decode",
  "serde",
@@ -377,7 +377,7 @@ dependencies = [
 
 [[package]]
 name = "semasm-cli"
-version = "0.2.0"
+version = "0.2.1"
 dependencies = [
  "clap",
  "semasm-aarch64",
@@ -398,7 +398,7 @@ dependencies = [
 
 [[package]]
 name = "semasm-contract"
-version = "0.2.0"
+version = "0.2.1"
 dependencies = [
  "schemars",
  "semasm-core",
@@ -410,7 +410,7 @@ dependencies = [
 
 [[package]]
 name = "semasm-core"
-version = "0.2.0"
+version = "0.2.1"
 dependencies = [
  "schemars",
  "serde",
@@ -419,7 +419,7 @@ dependencies = [
 
 [[package]]
 name = "semasm-decode"
-version = "0.2.0"
+version = "0.2.1"
 dependencies = [
  "capstone",
  "semasm-core",
@@ -431,7 +431,7 @@ dependencies = [
 
 [[package]]
 name = "semasm-obj"
-version = "0.2.0"
+version = "0.2.1"
 dependencies = [
  "object",
  "semasm-core",
@@ -443,7 +443,7 @@ dependencies = [
 
 [[package]]
 name = "semasm-riscv"
-version = "0.2.0"
+version = "0.2.1"
 dependencies = [
  "semasm-asir",
  "semasm-decode",
@@ -452,7 +452,7 @@ dependencies = [
 
 [[package]]
 name = "semasm-target"
-version = "0.2.0"
+version = "0.2.1"
 dependencies = [
  "schemars",
  "semasm-core",
@@ -463,7 +463,7 @@ dependencies = [
 
 [[package]]
 name = "semasm-x86"
-version = "0.2.0"
+version = "0.2.1"
 dependencies = [
  "semasm-asir",
  "semasm-decode",

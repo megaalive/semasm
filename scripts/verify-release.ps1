@@ -1,7 +1,7 @@
 # Verify the SemASM 0.2 source tree before tagging a release.
 [CmdletBinding()]
 param(
-    [string]$ExpectedVersion = "0.2.0"
+    [string]$ExpectedVersion = "0.2.1"
 )
 
 $ErrorActionPreference = "Stop"

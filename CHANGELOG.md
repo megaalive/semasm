@@ -6,6 +6,12 @@ follow [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+## [0.2.1] - 2026-07-24
+
+Patch past `v0.2.0`: A64/RV leaf depth for `control` and `memory`. Incomplete ≠
+Verified; sample CI coverage ≠ full CFG/CFI or region-precise store proof; no
+crates.io.
+
 ### Added
 
 - **Mm A64/RV `memory` leaf** — read-only buffer scan fail-closed on
@@ -16,6 +22,10 @@ follow [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   `jr`/`jalr`) with adversarial fixtures; golden paths report `control:
   passed`. Sample coverage ≠ full CFG proof. See
   `docs/A64_RV_CONTROL_GATE_PLAN.md`.
+
+### Changed
+
+- Dependabot: `actions/checkout@v7` on CI/fuzz/release workflows.
 
 ## [0.2.0] - 2026-07-24
 
@@ -181,6 +191,7 @@ capabilities, behavioral oracles, and `VerificationReport` evidence. It is
   AArch64/RV64 `decode`/`lower` remain `partial`. See `semasm status` and
   `capabilities.toml`.
 
-[Unreleased]: https://github.com/megaalive/semasm/compare/v0.2.0...HEAD
+[Unreleased]: https://github.com/megaalive/semasm/compare/v0.2.1...HEAD
+[0.2.1]: https://github.com/megaalive/semasm/releases/tag/v0.2.1
 [0.2.0]: https://github.com/megaalive/semasm/releases/tag/v0.2.0
 [0.1.0]: https://github.com/megaalive/semasm/releases/tag/v0.1.0

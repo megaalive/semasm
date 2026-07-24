@@ -4,7 +4,7 @@ set -euo pipefail
 
 repo_root="$(cd "$(dirname "$0")/.." && pwd)"
 cd "$repo_root"
-expected_version="${1:-0.2.0}"
+expected_version="${1:-0.2.1}"
 manifest_version="$(sed -n 's/^version = "\([^"]*\)"/\1/p' Cargo.toml | head -n1)"
 test "$manifest_version" = "$expected_version"
 
