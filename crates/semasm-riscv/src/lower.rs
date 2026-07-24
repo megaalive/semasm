@@ -174,7 +174,9 @@ fn classify(base: &str) -> Option<OpKind> {
         "addi" | "addiw" | "subw" | "addw" | "andi" | "ori" | "slli" => Some(OpKind::Binary),
         "li" => Some(OpKind::Store),
         "slt" | "sltu" | "slti" | "sltiu" => Some(OpKind::Compare),
-        "beq" | "bne" | "blt" | "bge" | "bltu" | "bgeu" | "beqz" | "bnez" => Some(OpKind::Branch),
+        "beq" | "bne" | "blt" | "bge" | "bltu" | "bgeu" | "beqz" | "bnez" | "j" | "jr" => {
+            Some(OpKind::Branch)
+        }
         "jalr" | "jal" => Some(OpKind::Call), // jalr also used for returns; lower() disambiguates
         "ret" => Some(OpKind::Return),
         "ecall" | "ebreak" => Some(OpKind::Unknown),

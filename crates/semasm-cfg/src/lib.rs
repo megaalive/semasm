@@ -316,10 +316,12 @@ fn classify(ins: &PhysicalInstruction) -> BlockEnd {
     let groups = &ins.groups;
     let mnemonic = ins.mnemonic.to_ascii_lowercase();
 
-    let is_ret = groups.iter().any(|g| g == "ret");
+    let is_ret = groups.iter().any(|g| g == "ret") || mnemonic == "ret";
     let is_call = groups.iter().any(|g| g == "call");
     let is_jump = groups.iter().any(|g| g == "jump");
 
+    // Prefer mnemonic `ret` before Capstone's call-group on RISC-V
+    // `jalr zero, 0(ra)` aliases (otherwise leaf policy sees an indirect call).
     if is_ret {
         return BlockEnd::Return;
     }
@@ -771,6 +773,21 @@ mod tests {
                 ..
             }
         ));
+    }
+
+    #[test]
+    fn riscv_ret_mnemonic_is_return_even_with_call_group() {
+        let ret = PhysicalInstruction {
+            address: 0x1000,
+            bytes: vec![0x67, 0x80, 0x00, 0x00],
+            mnemonic: "ret".into(),
+            operands: vec![],
+            read_regs: vec!["ra".into()],
+            write_regs: vec![],
+            groups: vec!["call".into()],
+            detail_available: true,
+        };
+        assert_eq!(classify_instruction(&ret), BlockEnd::Return);
     }
 
     #[test]

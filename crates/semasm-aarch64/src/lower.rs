@@ -191,8 +191,8 @@ fn classify(base: &str) -> Option<OpKind> {
             Some(OpKind::Binary)
         }
         "cmp" | "cmn" | "tst" => Some(OpKind::Compare),
-        "b" | "cbz" | "cbnz" => Some(OpKind::Branch),
-        "bl" => Some(OpKind::Call),
+        "b" | "br" | "cbz" | "cbnz" | "tbz" | "tbnz" => Some(OpKind::Branch),
+        "bl" | "blr" => Some(OpKind::Call),
         "ret" => Some(OpKind::Return),
         "svc" | "hvc" | "smc" | "brk" | "hlt" => Some(OpKind::Unknown),
         _ => None,

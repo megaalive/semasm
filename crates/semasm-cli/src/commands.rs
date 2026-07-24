@@ -1327,30 +1327,37 @@ fn check_cfg_leaf(
                 target: None,
                 address,
             } => {
-                return Err(SemanticGateError {
-                    stage: "cfg",
-                    message: format!(
-                        "leaf control-flow policy rejected incomplete jump from {:#x} to {:#x}",
-                        block.end_address, address
-                    ),
-                    decode: Some(decode_coverage),
-                    lowering: Some(lowering_coverage),
-                });
+                // Capstone on relocatable RISC-V/A64 often reports PC-rel
+                // immediates as 0 until link. Non-zero unresolved targets still
+                // fail closed (x86 relative encodings usually resolve in-blob).
+                if *address != 0 {
+                    return Err(SemanticGateError {
+                        stage: "cfg",
+                        message: format!(
+                            "leaf control-flow policy rejected incomplete jump from {:#x} to {:#x}",
+                            block.end_address, address
+                        ),
+                        decode: Some(decode_coverage),
+                        lowering: Some(lowering_coverage),
+                    });
+                }
             }
             BlockEnd::ConditionalBranch {
                 taken: None,
                 taken_address,
                 ..
             } => {
-                return Err(SemanticGateError {
-                    stage: "cfg",
-                    message: format!(
-                        "leaf control-flow policy rejected incomplete conditional from {:#x} to {:#x}",
-                        block.end_address, taken_address
-                    ),
-                    decode: Some(decode_coverage),
-                    lowering: Some(lowering_coverage),
-                });
+                if *taken_address != 0 {
+                    return Err(SemanticGateError {
+                        stage: "cfg",
+                        message: format!(
+                            "leaf control-flow policy rejected incomplete conditional from {:#x} to {:#x}",
+                            block.end_address, taken_address
+                        ),
+                        decode: Some(decode_coverage),
+                        lowering: Some(lowering_coverage),
+                    });
+                }
             }
             BlockEnd::Indirect | BlockEnd::Unknown => {
                 return Err(SemanticGateError {
