@@ -8,6 +8,8 @@ follow [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Added
 
+- **Sei Ra4** — `VerificationReport.region_access` wired; `Failed` demotes
+  verify; `Incomplete` observational until Ra5/Ra6 gate.
 - **Sei Ra1** — Region Access Evidence engine (`region-access-affine-v1`):
   affine access → region match with bounds/permission fail-closed status.
 - **Sei Ra0 / ADR 0011** — Region Access Evidence v1 plan accepted

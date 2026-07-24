@@ -360,6 +360,10 @@ pub struct VerificationReport {
     /// `[function.memory]` block or the target cannot collect effects.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub alias_analysis: Option<semasm_contract::AliasAnalysisReport>,
+    /// Region Access Evidence v1 (ADR 0011). Absent without `[function.memory]`
+    /// or when effects cannot be collected.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub region_access: Option<semasm_contract::RegionAccessReport>,
     /// Contract Expression Semantics v1 (ADR 0007). Absent when no subset
     /// expression was attempted (all `not_evaluated`).
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -473,6 +477,7 @@ impl VerificationReport {
             behavior,
             behavior_oracle: None,
             alias_analysis: None,
+            region_access: None,
             contract_expressions: None,
         }
     }
@@ -517,6 +522,25 @@ impl VerificationReport {
             }
         }
         self.alias_analysis = Some(alias_analysis);
+        self
+    }
+
+    /// Attach Region Access Evidence v1 (fluent builder).
+    ///
+    /// [`semasm_contract::RegionAccessStatus::Failed`] →
+    /// [`VerificationStatus::SemanticFailed`]. Incomplete remains observational
+    /// until the x86 acceptance corpus / caps gate (Sei Ra5–Ra6) — do not treat
+    /// unknown accesses as verified silence, but do not yet demote every
+    /// incomplete leaf (many use symbolic lengths).
+    #[must_use]
+    pub fn with_region_access(
+        mut self,
+        region_access: semasm_contract::RegionAccessReport,
+    ) -> Self {
+        if region_access.status == semasm_contract::RegionAccessStatus::Failed {
+            self.status = VerificationStatus::SemanticFailed;
+        }
+        self.region_access = Some(region_access);
         self
     }
 

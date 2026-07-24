@@ -60,6 +60,17 @@
       "description": "How execution was isolated (or that only static gates ran).",
       "$ref": "#/$defs/ExecutionIsolation"
     },
+    "region_access": {
+      "description": "Region Access Evidence v1 (ADR 0011). Absent without `[function.memory]`\nor when effects cannot be collected.",
+      "anyOf": [
+        {
+          "$ref": "#/$defs/RegionAccessReport"
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
     "routine_symbol": {
       "description": "Routine symbol under verification.",
       "type": "string"
@@ -102,6 +113,21 @@
     "executable"
   ],
   "$defs": {
+    "AccessMode": {
+      "description": "Load vs store.",
+      "oneOf": [
+        {
+          "description": "Memory load.",
+          "type": "string",
+          "const": "load"
+        },
+        {
+          "description": "Memory store.",
+          "type": "string",
+          "const": "store"
+        }
+      ]
+    },
     "AliasAnalysisReport": {
       "description": "Full alias-analysis block for [`crate` consumers / VerificationReport].",
       "type": "object",
@@ -285,6 +311,31 @@
         "vectors_failed",
         "vectors_total",
         "evidence_hash"
+      ]
+    },
+    "BoundsStatus": {
+      "description": "Bounds judgement for one access.",
+      "oneOf": [
+        {
+          "description": "Access fully inside a matched region (static affine).",
+          "type": "string",
+          "const": "proven_inside"
+        },
+        {
+          "description": "Access fully outside all candidate regions (static affine).",
+          "type": "string",
+          "const": "proven_outside"
+        },
+        {
+          "description": "Might escape; not proven either way.",
+          "type": "string",
+          "const": "may_escape"
+        },
+        {
+          "description": "Address not modeled enough to judge.",
+          "type": "string",
+          "const": "unknown"
+        }
       ]
     },
     "ContractExprEvidence": {
@@ -522,6 +573,80 @@
         "all_passed"
       ]
     },
+    "MemoryAccessEvidence": {
+      "description": "One memory-access evidence row.",
+      "type": "object",
+      "properties": {
+        "address": {
+          "description": "Short address expression for reporting.",
+          "type": "string"
+        },
+        "bounds": {
+          "description": "Bounds status.",
+          "$ref": "#/$defs/BoundsStatus"
+        },
+        "evidence_basis": {
+          "description": "Evidence basis for this row.",
+          "$ref": "#/$defs/RelationEvidenceBasis",
+          "default": "unknown"
+        },
+        "instruction_offset": {
+          "description": "Instruction offset when known (0 if unavailable).",
+          "type": "integer",
+          "format": "uint64",
+          "default": 0,
+          "minimum": 0
+        },
+        "operation": {
+          "description": "Load or store.",
+          "$ref": "#/$defs/AccessMode"
+        },
+        "permission": {
+          "description": "Permission status.",
+          "$ref": "#/$defs/PermissionStatus"
+        },
+        "region": {
+          "description": "Matched contract region name, if any.",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "width": {
+          "description": "Access width in bytes.",
+          "type": "integer",
+          "format": "uint32",
+          "minimum": 0
+        }
+      },
+      "required": [
+        "operation",
+        "width",
+        "address",
+        "bounds",
+        "permission"
+      ]
+    },
+    "PermissionStatus": {
+      "description": "Permission judgement for one access against a matched region.",
+      "oneOf": [
+        {
+          "description": "Mode allowed by region access declaration.",
+          "type": "string",
+          "const": "allowed"
+        },
+        {
+          "description": "Mode denied by region access declaration.",
+          "type": "string",
+          "const": "denied"
+        },
+        {
+          "description": "No matched region / unknown.",
+          "type": "string",
+          "const": "unknown"
+        }
+      ]
+    },
     "ProofBasis": {
       "description": "How a recognized shape's behavioral claim was established.",
       "oneOf": [
@@ -529,6 +654,73 @@
           "description": "Named builtin oracle plus synthesized/evaluated vectors — not contract alone.",
           "type": "string",
           "const": "oracle_and_vectors"
+        }
+      ]
+    },
+    "RegionAccessReport": {
+      "description": "Full region-access block for VerificationReport (wired in Ra4).",
+      "type": "object",
+      "properties": {
+        "accesses": {
+          "description": "Per-access rows.",
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/MemoryAccessEvidence"
+          }
+        },
+        "accesses_proven_inside": {
+          "description": "Accesses with [`BoundsStatus::ProvenInside`].",
+          "type": "integer",
+          "format": "uint",
+          "minimum": 0
+        },
+        "accesses_total": {
+          "description": "Total non-stack accesses considered.",
+          "type": "integer",
+          "format": "uint",
+          "minimum": 0
+        },
+        "accesses_unknown": {
+          "description": "Accesses with unknown address / bounds.",
+          "type": "integer",
+          "format": "uint",
+          "minimum": 0
+        },
+        "model": {
+          "description": "Evidence model id.",
+          "type": "string"
+        },
+        "status": {
+          "description": "Aggregate slice status.",
+          "$ref": "#/$defs/RegionAccessStatus"
+        }
+      },
+      "required": [
+        "model",
+        "status",
+        "accesses_total",
+        "accesses_proven_inside",
+        "accesses_unknown",
+        "accesses"
+      ]
+    },
+    "RegionAccessStatus": {
+      "description": "Aggregate status for the region-access evidence slice.",
+      "oneOf": [
+        {
+          "description": "Every non-stack access proven inside an allowed region; no unknowns.",
+          "type": "string",
+          "const": "passed"
+        },
+        {
+          "description": "Unknown / may-escape accesses present (or unmatched).",
+          "type": "string",
+          "const": "incomplete"
+        },
+        {
+          "description": "Proven out-of-bounds or permission denied.",
+          "type": "string",
+          "const": "failed"
         }
       ]
     },

@@ -23,7 +23,7 @@ without per-target corpus.
 | **Ra1** | Target-neutral access evidence types + engine (affine match) | **done** |
 | **Ra2** | Match affine accesses to contract regions (x86 effects in) | **done** (folded into Ra1) |
 | **Ra3** | Bounds + permission status; fail-closed aggregate | **done** (folded into Ra1) |
-| **Ra4** | Wire `VerificationReport.region_access`; schema bump if needed | **planned** |
+| **Ra4** | Wire `VerificationReport.region_access`; Failed demotes (Incomplete observational until Ra5/Ra6) | **done** |
 | **Ra5** | x86-64 acceptance corpus (minimum fixtures in Sei §4) | **planned** |
 | **Ra6** | Caps/docs honesty; A64/RV observational only | **planned** |
 | **Ra7** | AArch64 parity corpus (separate) | **locked** |

@@ -20,12 +20,12 @@ use semasm_agent::{
 use semasm_build::exec;
 use semasm_build::report::{self, CommandRecordJson, ExecutionInfo};
 use semasm_build::{BuildError, Pipeline};
-#[cfg(feature = "capstone")]
-use semasm_contract::evaluate_alias;
 use semasm_contract::{
     check_file, evaluate_contract_expressions, explain_code, format_diagnostics_terminal,
-    AliasAnalysisReport, CheckReportJson, ContractCode, ExprBindings,
+    AliasAnalysisReport, CheckReportJson, ContractCode, ExprBindings, RegionAccessReport,
 };
+#[cfg(feature = "capstone")]
+use semasm_contract::{evaluate_alias, evaluate_region_access};
 use semasm_obj::{ContainerKind, ObjectError};
 use semasm_target::{tools, TargetIdentity};
 #[cfg(feature = "capstone")]
@@ -453,7 +453,8 @@ fn run_agent_verify_core(
 
     let finalize_report = |report: VerificationReport,
                            behavior: Option<&semasm_agent::harness::HarnessReport>,
-                           alias: Option<AliasAnalysisReport>|
+                           alias: Option<AliasAnalysisReport>,
+                           region_access: Option<RegionAccessReport>|
      -> VerificationReport {
         let mut report = match recognized_oracle {
             Some(recognized) => report.with_behavior_oracle(harness::build_behavior_oracle(
@@ -470,6 +471,9 @@ fn run_agent_verify_core(
             evaluate_contract_expressions(&checked, alias.as_ref(), &ExprBindings::default());
         if let Some(alias) = alias {
             report = report.with_alias_analysis(alias);
+        }
+        if let Some(region_access) = region_access {
+            report = report.with_region_access(region_access);
         }
         if let Some(exprs) = expr_report {
             report = report.with_contract_expressions(exprs);
@@ -535,7 +539,7 @@ fn run_agent_verify_core(
 
     let object_bytes = std::fs::metadata(&routine_object).map_or(0, |meta| meta.len());
 
-    let (semantic, alias_analysis) =
+    let (semantic, alias_analysis, region_access) =
         match verify_candidate_semantics(&routine_object, &identity, &routine_symbol, &checked) {
             Ok(result) => result,
             Err(error) => {
@@ -549,6 +553,7 @@ fn run_agent_verify_core(
                         None,
                         ExecutionIsolation::StaticOnly,
                     ),
+                    None,
                     None,
                     None,
                 );
@@ -578,6 +583,7 @@ fn run_agent_verify_core(
                     ),
                     None,
                     alias_analysis.clone(),
+                    region_access.clone(),
                 );
                 return VerifyCore::Done {
                     report: Box::new(report),
@@ -649,6 +655,7 @@ fn run_agent_verify_core(
             ),
             None,
             alias_analysis.clone(),
+            region_access.clone(),
         );
         let _ = std::fs::remove_dir_all(&directory);
         return VerifyCore::Done {
@@ -671,6 +678,7 @@ fn run_agent_verify_core(
             ),
             None,
             alias_analysis.clone(),
+            region_access.clone(),
         );
         let _ = std::fs::remove_dir_all(&directory);
         eprintln!(
@@ -727,6 +735,9 @@ fn run_agent_verify_core(
         evaluate_contract_expressions(&checked, None, &ExprBindings::default())
     {
         report = report.with_contract_expressions(exprs);
+    }
+    if let Some(region_access) = region_access {
+        report = report.with_region_access(region_access);
     }
 
     let exit = match report.status {
@@ -802,6 +813,16 @@ fn print_verification_terminal(report: &VerificationReport) {
             alias.relations.len()
         );
     }
+    if let Some(region) = &report.region_access {
+        println!(
+            "Region access: model={} status={} proven_inside={}/{} unknowns={}",
+            region.model,
+            region.status.as_str(),
+            region.accesses_proven_inside,
+            region.accesses_total,
+            region.accesses_unknown
+        );
+    }
     if let Some(exprs) = &report.contract_expressions {
         println!(
             "Contract expressions: model={} status={} rows={}",
@@ -852,12 +873,33 @@ fn check_executable_object(
 }
 
 #[cfg(feature = "capstone")]
+fn semantic_gates_passed(code_bytes: u64, decode: Coverage, lowering: Coverage) -> SemanticGates {
+    SemanticGates {
+        object_policy: GateStatus::Passed,
+        executable_bytes: code_bytes,
+        decode,
+        lowering,
+        abi: GateStatus::Passed,
+        capability: GateStatus::Passed,
+        control: GateStatus::Passed,
+        memory: GateStatus::Passed,
+    }
+}
+
+#[cfg(feature = "capstone")]
 fn verify_candidate_semantics(
     object_path: &Path,
     identity: &TargetIdentity,
     routine_symbol: &str,
     contract: &semasm_contract::CheckedContract,
-) -> Result<(SemanticGates, Option<AliasAnalysisReport>), SemanticGateError> {
+) -> Result<
+    (
+        SemanticGates,
+        Option<AliasAnalysisReport>,
+        Option<RegionAccessReport>,
+    ),
+    SemanticGateError,
+> {
     require_semantic_target(identity)?;
     check_candidate_object_policy(object_path, identity, routine_symbol)?;
 
@@ -877,19 +919,12 @@ fn verify_candidate_semantics(
                 decode_coverage,
                 lowering_coverage,
             )?;
-            let alias_analysis = evaluate_x86_alias(contract, &lowered, identity.abi);
+            let (alias_analysis, region_access) =
+                evaluate_x86_memory_evidence(contract, &lowered, identity.abi);
             Ok((
-                SemanticGates {
-                    object_policy: GateStatus::Passed,
-                    executable_bytes: code_bytes,
-                    decode: decode_coverage,
-                    lowering: lowering_coverage,
-                    abi: GateStatus::Passed,
-                    capability: GateStatus::Passed,
-                    control: GateStatus::Passed,
-                    memory: GateStatus::Passed,
-                },
+                semantic_gates_passed(code_bytes, decode_coverage, lowering_coverage),
                 alias_analysis,
+                region_access,
             ))
         }
         (Isa::AArch64, Abi::Aapcs64, ObjectFormat::Elf) => {
@@ -906,19 +941,12 @@ fn verify_candidate_semantics(
                 decode_coverage,
                 lowering_coverage,
             )?;
-            let alias_analysis = evaluate_aarch64_alias(contract, &lowered);
+            let (alias_analysis, region_access) =
+                evaluate_aarch64_memory_evidence(contract, &lowered);
             Ok((
-                SemanticGates {
-                    object_policy: GateStatus::Passed,
-                    executable_bytes: code_bytes,
-                    decode: decode_coverage,
-                    lowering: lowering_coverage,
-                    abi: GateStatus::Passed,
-                    capability: GateStatus::Passed,
-                    control: GateStatus::Passed,
-                    memory: GateStatus::Passed,
-                },
+                semantic_gates_passed(code_bytes, decode_coverage, lowering_coverage),
                 alias_analysis,
+                region_access,
             ))
         }
         (Isa::Riscv64, Abi::Riscv, ObjectFormat::Elf) => {
@@ -935,19 +963,12 @@ fn verify_candidate_semantics(
                 decode_coverage,
                 lowering_coverage,
             )?;
-            let alias_analysis = evaluate_riscv_alias(contract, &lowered);
+            let (alias_analysis, region_access) =
+                evaluate_riscv_memory_evidence(contract, &lowered);
             Ok((
-                SemanticGates {
-                    object_policy: GateStatus::Passed,
-                    executable_bytes: code_bytes,
-                    decode: decode_coverage,
-                    lowering: lowering_coverage,
-                    abi: GateStatus::Passed,
-                    capability: GateStatus::Passed,
-                    control: GateStatus::Passed,
-                    memory: GateStatus::Passed,
-                },
+                semantic_gates_passed(code_bytes, decode_coverage, lowering_coverage),
                 alias_analysis,
+                region_access,
             ))
         }
         _ => Err(SemanticGateError::new(
@@ -961,39 +982,54 @@ fn verify_candidate_semantics(
 }
 
 #[cfg(feature = "capstone")]
-fn evaluate_x86_alias(
+fn evaluate_x86_memory_evidence(
     contract: &semasm_contract::CheckedContract,
     lowered: &[semasm_x86::lower::LoweredInstr],
     abi: Abi,
-) -> Option<AliasAnalysisReport> {
-    let memory = contract.memory.as_ref()?;
+) -> (Option<AliasAnalysisReport>, Option<RegionAccessReport>) {
+    let Some(memory) = contract.memory.as_ref() else {
+        return (None, None);
+    };
     let convention = match abi {
         Abi::SysVAmd64 => crate::memory_effects::AbiConvention::SysV,
         Abi::WindowsX64 => crate::memory_effects::AbiConvention::Win64,
-        _ => return None,
+        _ => return (None, None),
     };
     let accesses = crate::memory_effects::collect_memory_effects(lowered, contract, convention);
-    Some(evaluate_alias(memory, &accesses))
+    (
+        Some(evaluate_alias(memory, &accesses)),
+        Some(evaluate_region_access(memory, &accesses)),
+    )
 }
 
 #[cfg(feature = "capstone")]
-fn evaluate_aarch64_alias(
+fn evaluate_aarch64_memory_evidence(
     contract: &semasm_contract::CheckedContract,
     lowered: &[semasm_aarch64::lower::LoweredInstr],
-) -> Option<AliasAnalysisReport> {
-    let memory = contract.memory.as_ref()?;
+) -> (Option<AliasAnalysisReport>, Option<RegionAccessReport>) {
+    let Some(memory) = contract.memory.as_ref() else {
+        return (None, None);
+    };
     let accesses = crate::memory_effects_aarch64::collect_memory_effects(lowered, contract);
-    Some(evaluate_alias(memory, &accesses))
+    (
+        Some(evaluate_alias(memory, &accesses)),
+        Some(evaluate_region_access(memory, &accesses)),
+    )
 }
 
 #[cfg(feature = "capstone")]
-fn evaluate_riscv_alias(
+fn evaluate_riscv_memory_evidence(
     contract: &semasm_contract::CheckedContract,
     lowered: &[semasm_riscv::lower::LoweredInstr],
-) -> Option<AliasAnalysisReport> {
-    let memory = contract.memory.as_ref()?;
+) -> (Option<AliasAnalysisReport>, Option<RegionAccessReport>) {
+    let Some(memory) = contract.memory.as_ref() else {
+        return (None, None);
+    };
     let accesses = crate::memory_effects_riscv::collect_memory_effects(lowered, contract);
-    Some(evaluate_alias(memory, &accesses))
+    (
+        Some(evaluate_alias(memory, &accesses)),
+        Some(evaluate_region_access(memory, &accesses)),
+    )
 }
 
 #[cfg(feature = "capstone")]
@@ -1655,7 +1691,14 @@ fn verify_candidate_semantics(
     _identity: &TargetIdentity,
     _routine_symbol: &str,
     _contract: &semasm_contract::CheckedContract,
-) -> Result<(SemanticGates, Option<AliasAnalysisReport>), SemanticGateError> {
+) -> Result<
+    (
+        SemanticGates,
+        Option<AliasAnalysisReport>,
+        Option<RegionAccessReport>,
+    ),
+    SemanticGateError,
+> {
     Err(SemanticGateError::new(
         "decode",
         "agent verification requires a build with the `capstone` feature",
