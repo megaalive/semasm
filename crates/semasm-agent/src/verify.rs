@@ -527,18 +527,32 @@ impl VerificationReport {
 
     /// Attach Region Access Evidence v1 (fluent builder).
     ///
-    /// [`semasm_contract::RegionAccessStatus::Failed`] →
-    /// [`VerificationStatus::SemanticFailed`]. Incomplete remains observational
-    /// until the x86 acceptance corpus / caps gate (Sei Ra5–Ra6) — do not treat
-    /// unknown accesses as verified silence, but do not yet demote every
-    /// incomplete leaf (many use symbolic lengths).
+    /// - [`semasm_contract::RegionAccessStatus::Passed`] — no change.
+    /// - [`semasm_contract::RegionAccessStatus::PassedUnderPreconditions`] —
+    ///   demote [`VerificationStatus::Verified`] to
+    ///   [`VerificationStatus::VerifiedUnderPreconditions`] (symbolic length
+    ///   coverage is a caller obligation; not unconditional verified).
+    /// - [`semasm_contract::RegionAccessStatus::Failed`] →
+    ///   [`VerificationStatus::SemanticFailed`].
+    /// - Incomplete remains observational for leaves without a Gate profile
+    ///   requiring complete region access (do not treat unknown as verified
+    ///   silence, but do not demote every incomplete leaf).
     #[must_use]
     pub fn with_region_access(
         mut self,
         region_access: semasm_contract::RegionAccessReport,
     ) -> Self {
-        if region_access.status == semasm_contract::RegionAccessStatus::Failed {
-            self.status = VerificationStatus::SemanticFailed;
+        match region_access.status {
+            semasm_contract::RegionAccessStatus::Passed => {}
+            semasm_contract::RegionAccessStatus::PassedUnderPreconditions => {
+                if self.status == VerificationStatus::Verified {
+                    self.status = VerificationStatus::VerifiedUnderPreconditions;
+                }
+            }
+            semasm_contract::RegionAccessStatus::Failed => {
+                self.status = VerificationStatus::SemanticFailed;
+            }
+            semasm_contract::RegionAccessStatus::Incomplete => {}
         }
         self.region_access = Some(region_access);
         self

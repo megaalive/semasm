@@ -19,6 +19,9 @@ pub const REGION_ACCESS_AFFINE_V1: &str = "region-access-affine-v1";
 pub enum RegionAccessStatus {
     /// Every non-stack access proven inside an allowed region; no unknowns.
     Passed,
+    /// Affine accesses match declared regions, but bounds rely on symbolic
+    /// region length (caller obligation); no unknown addresses / denials.
+    PassedUnderPreconditions,
     /// Unknown / may-escape accesses present (or unmatched).
     Incomplete,
     /// Proven out-of-bounds or permission denied.
@@ -31,6 +34,7 @@ impl RegionAccessStatus {
     pub const fn as_str(self) -> &'static str {
         match self {
             Self::Passed => "passed",
+            Self::PassedUnderPreconditions => "passed_under_preconditions",
             Self::Incomplete => "incomplete",
             Self::Failed => "failed",
         }
@@ -159,9 +163,24 @@ pub fn evaluate_region_access(
 
     let mut any_failed = false;
     let mut any_incomplete = false;
+    let mut any_under_preconditions = false;
     for row in &rows {
         if row.bounds == BoundsStatus::ProvenOutside || row.permission == PermissionStatus::Denied {
             any_failed = true;
+        } else if row.bounds == BoundsStatus::Unknown
+            || row.permission == PermissionStatus::Unknown
+        {
+            any_incomplete = true;
+        } else if row.bounds == BoundsStatus::MayEscape {
+            // Symbolic-length regions: matched + allowed is a caller-length
+            // obligation, not a static inside proof (ADR 0011 honesty).
+            if row.evidence_basis == RelationEvidenceBasis::DeclaredPrecondition
+                && row.permission == PermissionStatus::Allowed
+            {
+                any_under_preconditions = true;
+            } else {
+                any_incomplete = true;
+            }
         } else if row.bounds != BoundsStatus::ProvenInside
             || row.permission != PermissionStatus::Allowed
         {
@@ -173,6 +192,8 @@ pub fn evaluate_region_access(
         RegionAccessStatus::Failed
     } else if any_incomplete || accesses_unknown > 0 {
         RegionAccessStatus::Incomplete
+    } else if any_under_preconditions {
+        RegionAccessStatus::PassedUnderPreconditions
     } else {
         // Empty access list → passed (nothing unknown); all proven inside+allowed.
         RegionAccessStatus::Passed
@@ -297,15 +318,34 @@ fn judge_affine_access(
         };
     }
 
+    let region = candidates
+        .iter()
+        .copied()
+        .find(|r| access_allowed(r.access, access.mode))
+        .or_else(|| candidates.first().copied())
+        .expect("candidates non-empty");
+    let permission = if access_allowed(region.access, access.mode) {
+        PermissionStatus::Allowed
+    } else {
+        PermissionStatus::Denied
+    };
+    // Symbolic length cannot prove static inside; treat matched+allowed as a
+    // declared length/coverage precondition (not Incomplete silence).
+    let under_length_precondition =
+        matches!(region.length, LengthSpec::Param(_)) && permission == PermissionStatus::Allowed;
     MemoryAccessEvidence {
         instruction_offset: access.instruction_offset,
         operation: access.mode,
         width: access.width_bytes,
         address,
-        region: candidates.first().map(|r| r.name.clone()),
+        region: Some(region.name.clone()),
         bounds: BoundsStatus::MayEscape,
-        permission: PermissionStatus::Unknown,
-        evidence_basis: RelationEvidenceBasis::Unknown,
+        permission,
+        evidence_basis: if under_length_precondition {
+            RelationEvidenceBasis::DeclaredPrecondition
+        } else {
+            RelationEvidenceBasis::Unknown
+        },
     }
 }
 

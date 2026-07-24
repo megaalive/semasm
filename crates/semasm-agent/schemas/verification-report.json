@@ -713,6 +713,11 @@
           "const": "passed"
         },
         {
+          "description": "Affine accesses match declared regions; bounds rely on symbolic region length (caller obligation).",
+          "type": "string",
+          "const": "passed_under_preconditions"
+        },
+        {
           "description": "Unknown / may-escape accesses present (or unmatched).",
           "type": "string",
           "const": "incomplete"

@@ -6,6 +6,15 @@ follow [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Added
+
+- **Region access `passed_under_preconditions`** — matched affine accesses into
+  symbolic-length regions (permission allowed) are no longer Incomplete
+  silence: slice status `passed_under_preconditions`, `accesses_unknown=0`,
+  demotes overall `verified` → `verified_under_preconditions`. Literal-length
+  may-escape stays Incomplete. Enables VAA `memory-leaf-affine-v1` on
+  memcpy-class leaves without claiming formal memory safety.
+
 ### Fixed
 
 - **x86 memory effects** — track rbp/rsp frame spills of pointer parameters so
@@ -14,8 +23,7 @@ follow [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   `semantic_failed` on Win64 HlaX64 `count_byte`). Sample ≠ formal memory
   safety; `region_access` Incomplete remains observational.
 
-### Added
-
+### Added (Sei Ra)
 - **Sei Ra6** — caps/docs honesty for `region-access-affine-v1` (x86 corpus
   named; A64/RV observational; Incomplete ≠ demote).
 - **Sei Ra5** — x86 Region Access acceptance corpus
