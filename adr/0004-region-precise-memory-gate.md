@@ -12,8 +12,9 @@ ADR 0003 shipped write-shape buffer leaves (`replace_byte`, `memset`,
 aspirational, not a description of an implemented analysis. As of this ADR:
 
 - The static `memory` semantic gate
-  (`check_x86_read_only_buffer_leaf` / `is_x86_explicit_memory_write` in
-  `semasm-cli`) runs **only** when `is_read_only_buffer_scan` is true. For any
+  (`check_*_read_only_buffer_leaf` / `is_*_explicit_memory_write` in
+  `semasm-cli` for x86, AArch64, and RISC-V) runs **only** when
+  `is_read_only_buffer_scan` is true. For any
   contract that declares `memory_write` — every write-shape leaf — the
   function returns `Ok(())` immediately, before looking at a single decoded
   instruction. There is no static, instruction-level, or region-aware check

@@ -15,6 +15,8 @@ CI-proven support.
 | X86 Golden Depth | SysV+Win64 e2e symmetry, ABI/decode/W+X adversarial CI, golden demo | **done** |
 | G1–G5 + Da | Region/Alias, ContractExpr, Me parity, VAA Io/Tr ops, A64/RV decode bump | **done** |
 | Rel-0.2 | Annotated tag + GitHub Release `v0.2.0` | **done** |
+| Co + Vd | A64/RV `control` leaf + VAA Gate depth on tip | **done** |
+| Mm | A64/RV `memory` leaf (read-only buffer) | **in progress** |
 
 ## Declared target identities
 
@@ -34,21 +36,22 @@ x86-32, ARMv7, Windows ARM64, UEFI, WebAssembly, AVR, many MCU boards,
 kernel modules, eBPF, and GPU ISAs are deferred until target-kit contracts and
 conformance evidence are proven.
 
-## Near-term criteria (post-`v0.2.0`)
+## Near-term criteria (post-`v0.2.0` / Co / Vd)
 
 - Keep CI owner jobs green with `SEMASM_REQUIRE_TOOLCHAIN=1`.
 - Prefer fail-closed adversarial fixtures over broader mnemonic coverage.
 - Do **not** add new ISAs until landed paths stay deep and honest.
-- **Next depth (queued):** VAA controller/Gate smoke on tip `v0.2.0` (+ Co
-  control tip when landed). A64/RV `control` leaf ported (sample coverage;
-  `memory` still skipped).
+- **In progress:** A64/RV `memory` leaf — `docs/A64_RV_MEMORY_LEAF_PLAN.md`
+  (sample coverage ≠ formal/region-precise store proof; ADR 0004).
 - Still deferred (Horizon-locked): full memory alias / symbolic proof; formal
   `ensures`; CryptOpt; hardware HSM; live-model Gate; optional offline C size
   comparison (not a CI gate).
 - **Done:** GitHub Release tags `v0.1.0` and `v0.2.0` (checklist-gated; CLI
   archives only; no crates.io).
-- **Done (Co):** A64/RV `control` gate (indirect CFG leaf; see
-  `docs/A64_RV_CONTROL_GATE_PLAN.md`).
+- **Done (Co):** A64/RV `control` gate — `docs/A64_RV_CONTROL_GATE_PLAN.md`.
+- **Done (Vd):** VAA Gate pin + write-shape `vaa run` smokes —
+  `docs/V0_2_CONTROLLER_DEPTH_PLAN.md`.
+- **Done (hygiene):** Dependabot `actions/checkout@v7` merged.
 
 Consumer pin / Gate smoke: see VAA `docs/progress.md`. Shared progress:
 `docs/STABILIZATION_PROGRESS.md`.

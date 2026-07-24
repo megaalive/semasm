@@ -29,5 +29,5 @@ Forbidden: claiming complete CFG / PAC / landing-pad verification.
 
 ## Non-goals
 
-- A64/RV `memory` gate (read-only buffer leaf) — still skipped
+- A64/RV `memory` gate (read-only buffer leaf) — see `docs/A64_RV_MEMORY_LEAF_PLAN.md`
 - Formal CFG / PAC / BTI completeness

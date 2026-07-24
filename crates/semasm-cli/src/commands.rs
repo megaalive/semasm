@@ -894,6 +894,12 @@ fn verify_candidate_semantics(
             let lowering_coverage = Coverage::complete(lowered.len());
             check_aarch64_abi_capability(&lowered, decode_coverage, lowering_coverage)?;
             check_cfg_leaf(&physical, decode_coverage, lowering_coverage)?;
+            check_aarch64_read_only_buffer_leaf(
+                &lowered,
+                contract,
+                decode_coverage,
+                lowering_coverage,
+            )?;
             let alias_analysis = evaluate_aarch64_alias(contract, &lowered);
             Ok((
                 SemanticGates {
@@ -904,8 +910,7 @@ fn verify_candidate_semantics(
                     abi: GateStatus::Passed,
                     capability: GateStatus::Passed,
                     control: GateStatus::Passed,
-                    // Read-only buffer memory leaf remains x86-only in this slice.
-                    memory: GateStatus::Skipped,
+                    memory: GateStatus::Passed,
                 },
                 alias_analysis,
             ))
@@ -918,6 +923,12 @@ fn verify_candidate_semantics(
             let lowering_coverage = Coverage::complete(lowered.len());
             check_riscv_abi_capability(&lowered, decode_coverage, lowering_coverage)?;
             check_cfg_leaf(&physical, decode_coverage, lowering_coverage)?;
+            check_riscv_read_only_buffer_leaf(
+                &lowered,
+                contract,
+                decode_coverage,
+                lowering_coverage,
+            )?;
             let alias_analysis = evaluate_riscv_alias(contract, &lowered);
             Ok((
                 SemanticGates {
@@ -928,8 +939,7 @@ fn verify_candidate_semantics(
                     abi: GateStatus::Passed,
                     capability: GateStatus::Passed,
                     control: GateStatus::Passed,
-                    // Read-only buffer memory leaf remains x86-only in this slice.
-                    memory: GateStatus::Skipped,
+                    memory: GateStatus::Passed,
                 },
                 alias_analysis,
             ))
@@ -1449,6 +1459,121 @@ fn is_x86_explicit_memory_write(instruction: &semasm_x86::lower::LoweredInstr) -
 }
 
 #[cfg(feature = "capstone")]
+fn check_aarch64_read_only_buffer_leaf(
+    lowered: &[semasm_aarch64::lower::LoweredInstr],
+    contract: &semasm_contract::CheckedContract,
+    decode_coverage: Coverage,
+    lowering_coverage: Coverage,
+) -> Result<(), SemanticGateError> {
+    if !harness::is_read_only_buffer_scan(contract) {
+        return Ok(());
+    }
+    for instruction in lowered {
+        if is_aarch64_explicit_memory_write(instruction) {
+            return Err(SemanticGateError {
+                stage: "memory",
+                message: format!(
+                    "read-only buffer leaf rejected memory store `{}`",
+                    instruction.mnemonic
+                ),
+                decode: Some(decode_coverage),
+                lowering: Some(lowering_coverage),
+            });
+        }
+    }
+    Ok(())
+}
+
+/// True when a modelled store writes through a non-stack memory operand.
+///
+/// Capstone store order is src-then-Mem (`strb wzr, [x0]`), unlike x86.
+/// SP / FP (x29) spills without an index are carved out (same as effect
+/// collectors). Register-only `mov` classified as `Store` has no Mem → false.
+#[cfg(feature = "capstone")]
+fn is_aarch64_explicit_memory_write(instruction: &semasm_aarch64::lower::LoweredInstr) -> bool {
+    use semasm_aarch64::lower::Operand;
+    use semasm_aarch64::{Gp, Storage};
+    use semasm_asir::OpKind;
+
+    if !matches!(instruction.kind, OpKind::Store) {
+        return false;
+    }
+    for op in &instruction.operands {
+        let Operand::Mem(mem) = op else {
+            continue;
+        };
+        let stack_spill = match mem.base {
+            Some(base) => match base.storage {
+                Storage::Sp => true,
+                Storage::Gp(Gp::Fp) if mem.index.is_none() => true,
+                _ => false,
+            },
+            None => false,
+        };
+        if !stack_spill {
+            return true;
+        }
+    }
+    false
+}
+
+#[cfg(feature = "capstone")]
+fn check_riscv_read_only_buffer_leaf(
+    lowered: &[semasm_riscv::lower::LoweredInstr],
+    contract: &semasm_contract::CheckedContract,
+    decode_coverage: Coverage,
+    lowering_coverage: Coverage,
+) -> Result<(), SemanticGateError> {
+    if !harness::is_read_only_buffer_scan(contract) {
+        return Ok(());
+    }
+    for instruction in lowered {
+        if is_riscv_explicit_memory_write(instruction) {
+            return Err(SemanticGateError {
+                stage: "memory",
+                message: format!(
+                    "read-only buffer leaf rejected memory store `{}`",
+                    instruction.mnemonic
+                ),
+                decode: Some(decode_coverage),
+                lowering: Some(lowering_coverage),
+            });
+        }
+    }
+    Ok(())
+}
+
+/// True when a modelled store writes through a non-stack memory operand.
+///
+/// Capstone store order is src-then-Mem (`sb zero, 0(a0)`). SP / S0 spills
+/// without an index are carved out. Register-only `mv`/`li` as `Store` → false.
+#[cfg(feature = "capstone")]
+fn is_riscv_explicit_memory_write(instruction: &semasm_riscv::lower::LoweredInstr) -> bool {
+    use semasm_asir::OpKind;
+    use semasm_riscv::lower::Operand;
+    use semasm_riscv::{Gpr, Storage};
+
+    if !matches!(instruction.kind, OpKind::Store) {
+        return false;
+    }
+    for op in &instruction.operands {
+        let Operand::Mem(mem) = op else {
+            continue;
+        };
+        let stack_spill = match mem.base {
+            Some(base) => {
+                matches!(base.storage, Storage::Gpr(Gpr::Sp | Gpr::S0) if mem.index.is_none())
+            }
+            None => false,
+        };
+        if !stack_spill {
+            return true;
+        }
+    }
+    false
+}
+
+#[cfg(feature = "capstone")]
 fn check_aarch64_abi_capability(
     lowered: &[semasm_aarch64::lower::LoweredInstr],
     decode_coverage: Coverage,
@@ -1664,6 +1789,130 @@ mod semantic_gate_tests {
         );
     }
 
+    #[cfg(feature = "capstone")]
+    #[test]
+    fn aarch64_memory_write_classifier_allows_sp_spill_not_arg_buffer() {
+        use semasm_aarch64::lower::{LoweredInstr, MemOperand, Operand};
+        use semasm_aarch64::{Gp, Register, Width};
+        use semasm_asir::OpKind as Kind;
+
+        let sp_spill = LoweredInstr {
+            mnemonic: "str".into(),
+            kind: Kind::Store,
+            width: Width::B64,
+            signed: None,
+            operands: vec![
+                Operand::Reg(Gp::X0.full()),
+                Operand::Mem(MemOperand {
+                    base: Some(Register::sp()),
+                    index: None,
+                    scale: 1,
+                    disp: -16,
+                    width: Width::B64,
+                }),
+            ],
+        };
+        assert!(
+            !is_aarch64_explicit_memory_write(&sp_spill),
+            "frame spill via [sp] must not trip the buffer leaf"
+        );
+
+        let reg_mov = LoweredInstr {
+            mnemonic: "mov".into(),
+            kind: Kind::Store,
+            width: Width::B64,
+            signed: None,
+            operands: vec![Operand::Reg(Gp::X0.full()), Operand::Reg(Gp::X1.full())],
+        };
+        assert!(
+            !is_aarch64_explicit_memory_write(&reg_mov),
+            "register-only mov must not trip the buffer leaf"
+        );
+
+        let buffer_store = LoweredInstr {
+            mnemonic: "strb".into(),
+            kind: Kind::Store,
+            width: Width::B8,
+            signed: None,
+            operands: vec![
+                Operand::Reg(Register::zr()),
+                Operand::Mem(MemOperand {
+                    base: Some(Gp::X0.full()),
+                    index: None,
+                    scale: 1,
+                    disp: 0,
+                    width: Width::B8,
+                }),
+            ],
+        };
+        assert!(
+            is_aarch64_explicit_memory_write(&buffer_store),
+            "store via argument pointer must still fail the buffer leaf"
+        );
+    }
+
+    #[cfg(feature = "capstone")]
+    #[test]
+    fn riscv_memory_write_classifier_allows_sp_spill_not_arg_buffer() {
+        use semasm_asir::OpKind as Kind;
+        use semasm_riscv::lower::{LoweredInstr, MemOperand, Operand};
+        use semasm_riscv::{Gpr, Register, Width};
+
+        let sp_spill = LoweredInstr {
+            mnemonic: "sd".into(),
+            kind: Kind::Store,
+            width: Width::B64,
+            signed: None,
+            operands: vec![
+                Operand::Reg(Gpr::A0.full()),
+                Operand::Mem(MemOperand {
+                    base: Some(Register::sp()),
+                    index: None,
+                    scale: 1,
+                    disp: -16,
+                    width: Width::B64,
+                }),
+            ],
+        };
+        assert!(
+            !is_riscv_explicit_memory_write(&sp_spill),
+            "frame spill via (sp) must not trip the buffer leaf"
+        );
+
+        let reg_mv = LoweredInstr {
+            mnemonic: "mv".into(),
+            kind: Kind::Store,
+            width: Width::B64,
+            signed: None,
+            operands: vec![Operand::Reg(Gpr::A0.full()), Operand::Reg(Gpr::A1.full())],
+        };
+        assert!(
+            !is_riscv_explicit_memory_write(&reg_mv),
+            "register-only mv must not trip the buffer leaf"
+        );
+
+        let buffer_store = LoweredInstr {
+            mnemonic: "sb".into(),
+            kind: Kind::Store,
+            width: Width::B32,
+            signed: None,
+            operands: vec![
+                Operand::Reg(Register::zero()),
+                Operand::Mem(MemOperand {
+                    base: Some(Gpr::A0.full()),
+                    index: None,
+                    scale: 1,
+                    disp: 0,
+                    width: Width::B32,
+                }),
+            ],
+        };
+        assert!(
+            is_riscv_explicit_memory_write(&buffer_store),
+            "store via argument pointer must still fail the buffer leaf"
+        );
+    }
+
     #[test]
     #[ignore = "requires aarch64-linux-gnu-as on PATH"]
     fn aarch64_candidate_passes_static_semantic_gates() {
@@ -1700,7 +1949,7 @@ mod semantic_gate_tests {
         assert_eq!(gates.abi, GateStatus::Passed);
         assert_eq!(gates.capability, GateStatus::Passed);
         assert_eq!(gates.control, GateStatus::Passed);
-        assert_eq!(gates.memory, GateStatus::Skipped);
+        assert_eq!(gates.memory, GateStatus::Passed);
         let _ = std::fs::remove_dir_all(scratch);
     }
 
@@ -1740,7 +1989,7 @@ mod semantic_gate_tests {
         assert_eq!(gates.abi, GateStatus::Passed);
         assert_eq!(gates.capability, GateStatus::Passed);
         assert_eq!(gates.control, GateStatus::Passed);
-        assert_eq!(gates.memory, GateStatus::Skipped);
+        assert_eq!(gates.memory, GateStatus::Passed);
         let _ = std::fs::remove_dir_all(scratch);
     }
 }

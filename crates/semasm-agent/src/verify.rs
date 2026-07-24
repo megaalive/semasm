@@ -131,9 +131,10 @@ fn gate_status_passed() -> GateStatus {
 impl SemanticGates {
     /// True when every required semantic sub-gate passed with full coverage.
     ///
-    /// [`GateStatus::Skipped`] is allowed for `memory` when the read-only
-    /// buffer leaf is not implemented for the target (AArch64 / RV64 today).
-    /// `control` is run on x86 and A64/RV (sample leaf policy).
+    /// [`GateStatus::Skipped`] is allowed for `control` / `memory` when that
+    /// leaf stage did not run (fail-closed partial snapshots). On x86 and
+    /// A64/RV, golden paths that reach the end of static gates report
+    /// `Passed` for both leaves (sample coverage ≠ formal proof).
     #[must_use]
     pub fn all_passed(&self) -> bool {
         fn required(status: GateStatus) -> bool {

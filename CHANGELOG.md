@@ -8,10 +8,14 @@ follow [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Added
 
+- **Mm A64/RV `memory` leaf** — read-only buffer scan fail-closed on
+  AArch64/RV64 (`strb`/`sb` adversarial fixtures); golden paths report
+  `memory: passed`. Sample coverage ≠ region-precise store proof (ADR 0004).
+  See `docs/A64_RV_MEMORY_LEAF_PLAN.md`.
 - **Co A64/RV `control` gate** — leaf indirect CFG fail-closed (`br`/`blr`,
   `jr`/`jalr`) with adversarial fixtures; golden paths report `control:
-  passed`. Memory leaf still skipped on A64/RV. Sample coverage ≠ full CFG
-  proof. See `docs/A64_RV_CONTROL_GATE_PLAN.md`.
+  passed`. Sample coverage ≠ full CFG proof. See
+  `docs/A64_RV_CONTROL_GATE_PLAN.md`.
 
 ## [0.2.0] - 2026-07-24
 
