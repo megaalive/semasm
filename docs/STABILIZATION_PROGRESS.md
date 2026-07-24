@@ -97,7 +97,13 @@ isolation ops → trust ops). Tips: SemASM `ffd0b58` / VAA `ef748c5`.
 | **Da0–Da5** | A64/RV `decode`/`lower` → `verified_in_ci` | **Done** — ADR 0009; adversarial corpus + caps flip (sample coverage ≠ full-ISA proof; `control` still x86-only) |
 
 Hygiene: Unreleased CHANGELOG summarizes G1–G5 + Da; **new git tag is a separate
-ceremony**.
+ceremony** (next landable after Da CI green at tip `a85deae`).
+
+### Next landable (post–Da)
+
+| Wave | Focus | Unlock when |
+|---|---|---|
+| **Rel-0.2** | Annotated tag + GitHub Release (post-`v0.1.0` Unreleased) | Owner sign-off on version + `docs/RELEASE_CHECKLIST.md` |
 
 ### A64/RV Decode/Lower Bump (Da0–Da5) — done
 
