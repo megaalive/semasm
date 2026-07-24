@@ -8,6 +8,8 @@ follow [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Added
 
+- **Ff A64/RV `find_first_byte` / `find_last_byte`** — golden + wrong fixtures
+  and cross-target e2e; BufferScan harness reuse. Sample ≠ formal ensures.
 - **Tw A64/RV adversarial twins** — `*_wrong` / `memcmp_*_write` fixtures for
   write-shape, MemCmp, and `min_usize` on AArch64/RV64 (behavior/memory
   fail-closed). Sample coverage ≠ formal proof.

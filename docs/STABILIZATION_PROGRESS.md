@@ -31,9 +31,9 @@ Stabilization through Rel-0.2.1 is closed on `main`. Tip tag: **`v0.2.1`**
 (A64/RV `control`), Mm (A64/RV read-only `memory`), and VAA Gate pin (Vd) are
 **done**. Sample CI coverage != full-ISA / CFG/CFI / region-precise store proof.
 
-**In progress:** tip honesty sync + A64/RV adversarial twins for write-shape /
-MemCmp / `min_usize` (fail-closed depth). Horizon remains locked: formal
-`ensures`, symbolic alias, CryptOpt, hardware HSM, live-model Gate.
+**In progress:** A64/RV `find_first_byte` / `find_last_byte` packs (Ff). Horizon
+remains locked: formal `ensures`, symbolic alias, CryptOpt, hardware HSM,
+live-model Gate. Tw adversarial twins landed at `c0655f1`.
 
 ### Region/Alias Evidence v1 (Ra0?Ra6) ? **done**
 
@@ -94,7 +94,8 @@ ceremony** (next landable after Da CI green at tip `a85deae`).
 | **Co** | A64/RV `control` leaf | **done** - `docs/A64_RV_CONTROL_GATE_PLAN.md` |
 | **Mm** | A64/RV read-only `memory` leaf | **done** - `docs/A64_RV_MEMORY_LEAF_PLAN.md` |
 | **Rel-0.2.1** | Patch tag `v0.2.1` (Co+Mm) | **done** - tip `22d1543`; [Release](https://github.com/megaalive/semasm/releases/tag/v0.2.1) |
-| **Tw** | A64/RV adversarial twins (write-shape / MemCmp / min) | **in progress** |
+| **Tw** | A64/RV adversarial twins (write-shape / MemCmp / min) | **done** (`c0655f1`) |
+| **Ff** | A64/RV `find_first_byte` / `find_last_byte` | **in progress** |
 
 ### A64/RV Decode/Lower Bump (Da0?Da5) ? done
 

@@ -18,7 +18,8 @@ CI-proven support.
 | Co + Vd | A64/RV `control` leaf + VAA Gate depth on tip | **done** |
 | Mm | A64/RV `memory` leaf (read-only buffer) | **done** |
 | Rel-0.2.1 | Patch tag + GitHub Release `v0.2.1` (Co+Mm) | **done** |
-| Tw | A64/RV adversarial twins (write-shape / MemCmp / min) | **in progress** |
+| Tw | A64/RV adversarial twins (write-shape / MemCmp / min) | **done** (`c0655f1`) |
+| Ff | A64/RV `find_first_byte` / `find_last_byte` packs | **in progress** |
 
 ## Declared target identities
 
@@ -43,7 +44,9 @@ conformance evidence are proven.
 - Keep CI owner jobs green with `SEMASM_REQUIRE_TOOLCHAIN=1`.
 - Prefer fail-closed adversarial fixtures over broader mnemonic coverage.
 - Do **not** add new ISAs until landed paths stay deep and honest.
-- **In progress:** Tw A64/RV adversarial twins — `docs/A64_RV_ADVERSARIAL_TWINS_PLAN.md`.
+- **In progress:** Ff A64/RV find-index packs (`find_first_byte` / `find_last_byte`).
+- **Done (Tw):** A64/RV adversarial twins — `docs/A64_RV_ADVERSARIAL_TWINS_PLAN.md`
+  (`c0655f1`).
 - Still deferred (Horizon-locked): full memory alias / symbolic proof; formal
   `ensures`; CryptOpt; hardware HSM; live-model Gate; optional offline C size
   comparison (not a CI gate).

@@ -262,6 +262,10 @@ fixtures = [
     "fixtures/asm/memset_wrong_aarch64.S",
     "fixtures/asm/memcpy_aarch64.S",
     "fixtures/asm/memcpy_wrong_aarch64.S",
+    "fixtures/asm/find_first_byte_aarch64.S",
+    "fixtures/asm/find_first_byte_wrong_aarch64.S",
+    "fixtures/asm/find_last_byte_aarch64.S",
+    "fixtures/asm/find_last_byte_wrong_aarch64.S",
 ]
 ci_jobs = ["e2e (AArch64 Linux)"]
 
@@ -305,6 +309,10 @@ fixtures = [
     "fixtures/asm/memset_wrong_riscv64.S",
     "fixtures/asm/memcpy_riscv64.S",
     "fixtures/asm/memcpy_wrong_riscv64.S",
+    "fixtures/asm/find_first_byte_riscv64.S",
+    "fixtures/asm/find_first_byte_wrong_riscv64.S",
+    "fixtures/asm/find_last_byte_riscv64.S",
+    "fixtures/asm/find_last_byte_wrong_riscv64.S",
 ]
 ci_jobs = ["e2e (RV64 Linux)"]
 

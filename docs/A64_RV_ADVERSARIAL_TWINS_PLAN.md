@@ -1,6 +1,6 @@
 # A64 / RV adversarial twins — plan (Tw)
 
-**Status:** in progress  
+**Status:** **done** (`c0655f1`)  
 **Honesty:** fail-closed sample twins ≠ formal ensures / store-region proof.
 
 ## Goal
@@ -13,11 +13,11 @@ assert `behavior_failed` / `semantic_failed` beyond `count_byte`.
 
 | Leaf | Twin | Status |
 |---|---|---|
-| `replace_byte` | wrong (no mutate) | queued |
-| `memset` | wrong (no store) | queued |
-| `memcpy` | wrong (no copy) | queued |
-| `memcmp` | wrong (always 0) + write (store) | queued |
-| `min_usize` | wrong (always a) | queued |
+| `replace_byte` | wrong (no mutate) | **done** |
+| `memset` | wrong (no store) | **done** |
+| `memcpy` | wrong (no copy) | **done** |
+| `memcmp` | wrong (always 0) + write (store) | **done** |
+| `min_usize` | wrong (always a) | **done** |
 
 ## Out of scope
 
