@@ -387,12 +387,23 @@ fn classify(ins: &PhysicalInstruction) -> BlockEnd {
 
 /// Parse a direct branch/call target address from the operand list.
 ///
-/// Returns `Some(addr)` when the (first) operand is a bare immediate such as
-/// `0x400010` or Capstone's decimal form `7`, and `None` when it is a register
-/// or memory expression (indirect transfer) or absent.
+/// Returns `Some(addr)` when an operand is a bare immediate such as
+/// `0x400010`, Capstone's `#0x10` / decimal form, and `None` when only
+/// register or memory expressions are present (indirect transfer).
+///
+/// Scans operands from last to first so AArch64 `cbz xN, #imm` / `tbz` forms
+/// (register first) still resolve the immediate target.
 fn parse_target(ins: &PhysicalInstruction) -> Option<u64> {
-    let op = ins.operands.first()?;
-    let trimmed = op.trim();
+    for op in ins.operands.iter().rev() {
+        if let Some(addr) = parse_imm_operand(op) {
+            return Some(addr);
+        }
+    }
+    None
+}
+
+fn parse_imm_operand(op: &str) -> Option<u64> {
+    let trimmed = op.trim().trim_start_matches('#');
     if let Some(hex) = trimmed
         .strip_prefix("0x")
         .or_else(|| trimmed.strip_prefix("0X"))
@@ -739,6 +750,27 @@ mod tests {
             detail_available: true,
         };
         assert_eq!(classify_instruction(&jr), BlockEnd::Indirect);
+    }
+
+    #[test]
+    fn aarch64_cbz_reg_imm_is_conditional() {
+        let cbz = PhysicalInstruction {
+            address: 0x1000,
+            bytes: vec![0x00, 0x00, 0x00, 0xb4],
+            mnemonic: "cbz".into(),
+            operands: vec!["x1".into(), "#0x1010".into()],
+            read_regs: vec!["x1".into()],
+            write_regs: vec![],
+            groups: vec!["jump".into()],
+            detail_available: true,
+        };
+        assert!(matches!(
+            classify_instruction(&cbz),
+            BlockEnd::ConditionalBranch {
+                taken_address: 0x1010,
+                ..
+            }
+        ));
     }
 
     #[test]
