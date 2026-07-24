@@ -873,7 +873,7 @@ fn check_executable_object(
 }
 
 #[cfg(feature = "capstone")]
-fn semantic_gates_passed(code_bytes: u64, decode: Coverage, lowering: Coverage) -> SemanticGates {
+fn semantic_gates_passed(code_bytes: usize, decode: Coverage, lowering: Coverage) -> SemanticGates {
     SemanticGates {
         object_policy: GateStatus::Passed,
         executable_bytes: code_bytes,
