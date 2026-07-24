@@ -34,12 +34,12 @@ capabilities, behavioral oracles, and `VerificationReport` evidence. It is
   **0007 Contract expression semantics v1** (`contract-expr-v1` subset eval +
   `VerificationReport.contract_expressions`; see
   `docs/CONTRACT_EXPR_V1_SUBSET.md`); **0008 A64/RV memory-effect parity**
-  (scope lock + `docs/A64_RV_MEMORY_EFFECT_PARITY_PLAN.md`; Me0 docs —
-  collectors pending; A64/RV `decode`/`lower` stay `partial`).
+  (Me0–Me5: A64/RV collectors + `agent verify` alias/expr wire + ± fixtures;
+  A64/RV `decode`/`lower` stay `partial`).
 - **Region/Alias Evidence v1** — `function.memory.regions` /
-  `relations` schema (CTR008), x86 effect collection, fail-closed relation
-  engine, `VerificationReport.alias_analysis`, ± corpus fixtures (no
-  `memmove`).
+  `relations` schema (CTR008), x86 + AArch64 + RISC-V effect collection,
+  fail-closed relation engine, `VerificationReport.alias_analysis`, ± corpus
+  fixtures (no `memmove`).
 - **Contract Expression Semantics v1** — fail-closed subset evaluator for
   `regions.disjoint|equal|contains` (and closed comparisons with bindings);
   unknown predicates → incomplete; contradicting atoms → failed.

@@ -83,23 +83,23 @@ evidence — not SMT / full contract verification. Plan:
 
 | Wave | Focus | Unlock when |
 |---|---|---|
-| **G3** | A64/RV memory-effect parity | **Unlocked** — ADR 0008 + [A64_RV_MEMORY_EFFECT_PARITY_PLAN.md](A64_RV_MEMORY_EFFECT_PARITY_PLAN.md) (Me0 landed; Me1–Me5 pending) |
+| **G3** | A64/RV memory-effect parity | **Done** — Me0–Me5 (ADR 0008; collectors + verify wire + ± fixtures; `decode`/`lower` stay `partial`) |
 | **G4** | Isolation ops proof (VAA) | Public untrusted execution / network+credential bar |
 | **G5** | Trust root nyata (VAA) | After evidence semantics stable (Ra6 + G2 Ce5) |
 
-### A64/RV Memory-Effect Parity (Me0–Me5) — in progress
+### A64/RV Memory-Effect Parity (Me0–Me5) — done
 
-Gelombang 3: produce Region/Alias v1 memory-effect facts on AArch64/RISC-V
-for supported leaves — **not** a `decode`/`lower` → `verified_in_ci` bump.
+Gelombang 3: Region/Alias v1 memory-effect facts on AArch64/RISC-V for
+supported leaves — **not** a `decode`/`lower` → `verified_in_ci` bump.
 Plan: [A64_RV_MEMORY_EFFECT_PARITY_PLAN.md](A64_RV_MEMORY_EFFECT_PARITY_PLAN.md).
 
 | Step | Focus | Status |
 |---|---|---|
-| **Me0** | ADR 0008 + plan + progress pointers | **landed** |
-| **Me1** | AArch64 effect collector | pending |
-| **Me2** | RISC-V effect collector | pending |
-| **Me3–Me4** | wire verify + ± CI fixtures | pending |
-| **Me5** | caps/docs honesty | pending |
+| **Me0** | ADR 0008 + plan + progress pointers | **done** |
+| **Me1** | AArch64 effect collector | **done** |
+| **Me2** | RISC-V effect collector | **done** |
+| **Me3–Me4** | wire verify + ± CI fixtures | **done** |
+| **Me5** | caps/docs honesty | **done** |
 
 ### Next waves (X4 + H4 + Y) — closed
 
@@ -365,9 +365,11 @@ untouched.
 
 Honesty: the static `memory` gate only runs for read-only buffer scans; for
 write-shape leaves (`replace_byte`/`memset`/`memcpy`) region evidence is the
-x86 harness comparing post-call buffer bytes (including sample-based guard
+harness comparing post-call buffer bytes (including sample-based guard
 bytes from H2) against synthesized oracle vectors — dynamic, sample-based,
-x86-only, no formal alias analysis. See `adr/0004-region-precise-memory-gate.md`
+no formal alias analysis. Separately, Region/Alias Evidence v1
+(`region-affine-v1`) collects affine memory effects on x86 + AArch64 +
+RISC-V (ADR 0006/0008). See `adr/0004-region-precise-memory-gate.md`
 and Horizon H2. W4 HlaX64 `replace_byte` bridge and Thin write-shape bridges
 landed separately; A64/RV write-shape harness landed as priority follow-on
 after H3 (sample-based guards; still ≠ formal/symbolic proof).

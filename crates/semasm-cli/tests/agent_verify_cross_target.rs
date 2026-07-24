@@ -322,6 +322,43 @@ fn agent_verify_memcpy_aarch64_allow_execution_is_verified() {
     });
     assert_eq!(value["status"], "verified");
     assert_eq!(value["behavior_oracle"]["id"], "builtin.buffer.memcpy");
+    assert_eq!(value["alias_analysis"]["model"], "region-affine-v1");
+    assert_eq!(value["alias_analysis"]["status"], "passed");
+    assert_eq!(value["contract_expressions"]["model"], "contract-expr-v1");
+    assert_eq!(value["contract_expressions"]["status"], "passed");
+}
+
+#[test]
+#[ignore = "requires aarch64-linux-gnu-as/ld on PATH"]
+fn agent_verify_memcpy_unknown_address_aarch64_is_semantic_failed() {
+    let source = workspace_root().join("fixtures/asm/memcpy_unknown_address_aarch64.S");
+    let output = run_agent_verify_contract(
+        &source,
+        "aarch64-unknown-linux-gnu",
+        false,
+        "fixtures/contracts/memcpy_unknown_address.sem.toml",
+    );
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    if skip_if_incomplete(&stderr) {
+        return;
+    }
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    assert!(
+        !output.status.success(),
+        "expected non-zero exit; stderr={stderr}; stdout={stdout}"
+    );
+    let value: serde_json::Value = serde_json::from_str(&stdout).unwrap_or_else(|error| {
+        panic!("expected VerificationReport JSON ({error}): {stdout}\nstderr={stderr}")
+    });
+    assert_eq!(value["status"], "semantic_failed");
+    assert_eq!(value["alias_analysis"]["model"], "region-affine-v1");
+    assert_eq!(value["alias_analysis"]["status"], "incomplete");
+    assert!(
+        value["alias_analysis"]["unknown_memory_accesses"]
+            .as_u64()
+            .unwrap_or(0)
+            >= 1
+    );
 }
 
 #[test]
@@ -348,4 +385,41 @@ fn agent_verify_memcpy_riscv64_allow_execution_is_verified() {
     });
     assert_eq!(value["status"], "verified");
     assert_eq!(value["behavior_oracle"]["id"], "builtin.buffer.memcpy");
+    assert_eq!(value["alias_analysis"]["model"], "region-affine-v1");
+    assert_eq!(value["alias_analysis"]["status"], "passed");
+    assert_eq!(value["contract_expressions"]["model"], "contract-expr-v1");
+    assert_eq!(value["contract_expressions"]["status"], "passed");
+}
+
+#[test]
+#[ignore = "requires riscv64-linux-gnu-as/ld on PATH"]
+fn agent_verify_memcpy_unknown_address_riscv64_is_semantic_failed() {
+    let source = workspace_root().join("fixtures/asm/memcpy_unknown_address_riscv64.S");
+    let output = run_agent_verify_contract(
+        &source,
+        "riscv64gc-unknown-linux-gnu",
+        false,
+        "fixtures/contracts/memcpy_unknown_address.sem.toml",
+    );
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    if skip_if_incomplete(&stderr) {
+        return;
+    }
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    assert!(
+        !output.status.success(),
+        "expected non-zero exit; stderr={stderr}; stdout={stdout}"
+    );
+    let value: serde_json::Value = serde_json::from_str(&stdout).unwrap_or_else(|error| {
+        panic!("expected VerificationReport JSON ({error}): {stdout}\nstderr={stderr}")
+    });
+    assert_eq!(value["status"], "semantic_failed");
+    assert_eq!(value["alias_analysis"]["model"], "region-affine-v1");
+    assert_eq!(value["alias_analysis"]["status"], "incomplete");
+    assert!(
+        value["alias_analysis"]["unknown_memory_accesses"]
+            .as_u64()
+            .unwrap_or(0)
+            >= 1
+    );
 }

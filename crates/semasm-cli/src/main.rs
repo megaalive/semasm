@@ -11,6 +11,10 @@ mod inspect;
 #[cfg(feature = "capstone")]
 mod memory_effects;
 #[cfg(feature = "capstone")]
+mod memory_effects_aarch64;
+#[cfg(feature = "capstone")]
+mod memory_effects_riscv;
+#[cfg(feature = "capstone")]
 mod output;
 
 use std::path::PathBuf;

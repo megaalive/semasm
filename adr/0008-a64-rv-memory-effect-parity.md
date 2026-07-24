@@ -59,8 +59,8 @@ Ordered steps **Me0–Me5** in `docs/A64_RV_MEMORY_EFFECT_PARITY_PLAN.md`.
 
 ## Consequences
 
-- ADR 0005/0006/0007 remain; harness multi-ISA ≠ alias-slice multi-ISA until
-  Me5 is green.
+- ADR 0005/0006/0007 remain; harness multi-ISA and alias-slice multi-ISA for
+  Region/Alias v1 supported leaves (Me5 done).
 - G4/G5 stay deferred.
 - A separate future ADR is required before any A64/RV `decode`/`lower`
   maturity flip.

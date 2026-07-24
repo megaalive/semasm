@@ -215,6 +215,7 @@ jobs:
             cargo test -p semasm-cli --all-features --test agent_verify_cross_target agent_verify_replace_byte_aarch64 -- --ignored --nocapture
             cargo test -p semasm-cli --all-features --test agent_verify_cross_target agent_verify_memset_aarch64 -- --ignored --nocapture
             cargo test -p semasm-cli --all-features --test agent_verify_cross_target agent_verify_memcpy_aarch64 -- --ignored --nocapture
+            cargo test -p semasm-cli --all-features --test agent_verify_cross_target agent_verify_memcpy_unknown_address_aarch64 -- --ignored --nocapture
             cargo test -p semasm-cli --all-features --test agent_verify_adversarial _aarch64_ -- --ignored --nocapture
           else
             cargo test -p semasm-cli --all-features commands::semantic_gate_tests::riscv64_candidate_passes_static_semantic_gates -- --ignored --exact --nocapture
@@ -223,6 +224,7 @@ jobs:
             cargo test -p semasm-cli --all-features --test agent_verify_cross_target agent_verify_replace_byte_riscv64 -- --ignored --nocapture
             cargo test -p semasm-cli --all-features --test agent_verify_cross_target agent_verify_memset_riscv64 -- --ignored --nocapture
             cargo test -p semasm-cli --all-features --test agent_verify_cross_target agent_verify_memcpy_riscv64 -- --ignored --nocapture
+            cargo test -p semasm-cli --all-features --test agent_verify_cross_target agent_verify_memcpy_unknown_address_riscv64 -- --ignored --nocapture
             cargo test -p semasm-cli --all-features --test agent_verify_adversarial _riscv64_ -- --ignored --nocapture
           fi
 
@@ -253,6 +255,7 @@ jobs:
         run: |
           cargo test -p semasm-cli --all-features --test alias_evidence_v1 -- --nocapture
           cargo test -p semasm-contract --lib alias:: -- --nocapture
+          cargo test -p semasm-cli --all-features memory_effects -- --nocapture
 
       - name: Contract Expression Semantics v1 corpus
         run: |

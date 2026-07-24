@@ -891,6 +891,7 @@ fn verify_candidate_semantics(
             let lowered = lower_aarch64_instructions(&physical, decode_coverage)?;
             let lowering_coverage = Coverage::complete(lowered.len());
             check_aarch64_abi_capability(&lowered, decode_coverage, lowering_coverage)?;
+            let alias_analysis = evaluate_aarch64_alias(contract, &lowered);
             Ok((
                 SemanticGates {
                     object_policy: GateStatus::Passed,
@@ -903,7 +904,7 @@ fn verify_candidate_semantics(
                     control: GateStatus::Skipped,
                     memory: GateStatus::Skipped,
                 },
-                None,
+                alias_analysis,
             ))
         }
         (Isa::Riscv64, Abi::Riscv, ObjectFormat::Elf) => {
@@ -913,6 +914,7 @@ fn verify_candidate_semantics(
             let lowered = lower_riscv_instructions(&physical, decode_coverage)?;
             let lowering_coverage = Coverage::complete(lowered.len());
             check_riscv_abi_capability(&lowered, decode_coverage, lowering_coverage)?;
+            let alias_analysis = evaluate_riscv_alias(contract, &lowered);
             Ok((
                 SemanticGates {
                     object_policy: GateStatus::Passed,
@@ -925,7 +927,7 @@ fn verify_candidate_semantics(
                     control: GateStatus::Skipped,
                     memory: GateStatus::Skipped,
                 },
-                None,
+                alias_analysis,
             ))
         }
         _ => Err(SemanticGateError::new(
@@ -951,6 +953,26 @@ fn evaluate_x86_alias(
         _ => return None,
     };
     let accesses = crate::memory_effects::collect_memory_effects(lowered, contract, convention);
+    Some(evaluate_alias(memory, &accesses))
+}
+
+#[cfg(feature = "capstone")]
+fn evaluate_aarch64_alias(
+    contract: &semasm_contract::CheckedContract,
+    lowered: &[semasm_aarch64::lower::LoweredInstr],
+) -> Option<AliasAnalysisReport> {
+    let memory = contract.memory.as_ref()?;
+    let accesses = crate::memory_effects_aarch64::collect_memory_effects(lowered, contract);
+    Some(evaluate_alias(memory, &accesses))
+}
+
+#[cfg(feature = "capstone")]
+fn evaluate_riscv_alias(
+    contract: &semasm_contract::CheckedContract,
+    lowered: &[semasm_riscv::lower::LoweredInstr],
+) -> Option<AliasAnalysisReport> {
+    let memory = contract.memory.as_ref()?;
+    let accesses = crate::memory_effects_riscv::collect_memory_effects(lowered, contract);
     Some(evaluate_alias(memory, &accesses))
 }
 

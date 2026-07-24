@@ -21,12 +21,12 @@ Honesty: `unknown ≠ disjoint`; missing effects → incomplete; no silent pass.
 
 | Step | Focus | Status |
 |---|---|---|
-| **Me0** | ADR 0008 Accepted + this plan + progress pointers | **landed** (this commit) |
-| **Me1** | AArch64 memory-effect collector (affinity + unknown) | pending |
-| **Me2** | RISC-V memory-effect collector (affinity + unknown) | pending |
-| **Me3** | Wire `agent verify` alias (+ expr) on A64/RV paths | pending |
-| **Me4** | ± fixtures + CI filters (memcpy/memset-style; no memmove) | pending |
-| **Me5** | Caps / README / CHANGELOG honesty; G4 stays locked | pending |
+| **Me0** | ADR 0008 Accepted + this plan + progress pointers | **done** |
+| **Me1** | AArch64 memory-effect collector (affinity + unknown) | **done** |
+| **Me2** | RISC-V memory-effect collector (affinity + unknown) | **done** |
+| **Me3** | Wire `agent verify` alias (+ expr) on A64/RV paths | **done** |
+| **Me4** | ± fixtures + CI filters (memcpy/memset-style; no memmove) | **done** |
+| **Me5** | Caps / README / CHANGELOG honesty; G4 stays locked | **done** |
 
 ### Me1 — AArch64 effects
 

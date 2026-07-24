@@ -38,9 +38,11 @@
 # - Region/Alias Evidence v1 (`region-affine-v1`, ADR 0006): selected affine
 #   memory-region relations for supported leaf patterns (identity/const).
 #   Owner evidence: `semasm-contract` alias unit tests +
-#   `semasm-cli` `alias_evidence_v1` + x86 `agent_verify_*` e2e. **Not**
+#   `semasm-cli` `alias_evidence_v1` + x86/`AArch64`/`RISC-V` effect collectors
+#   + `agent_verify_*` e2e (incl. unknown-address twins). **Not**
 #   general alias analysis / formal memory safety. `unknown`/`may_overlap`/
-#   `not_evaluated` ≠ passed.
+#   `not_evaluated` ≠ passed. A64/RV memory-effect parity for this slice is
+#   ADR 0008 (Me0–Me5); A64/RV `decode`/`lower` stay `partial`.
 # - Contract Expression Semantics v1 (`contract-expr-v1`, ADR 0007): documented
 #   subset of requires/ensures (see docs/CONTRACT_EXPR_V1_SUBSET.md), including
 #   `regions.disjoint|equal|contains` against living alias evidence. Owner:
