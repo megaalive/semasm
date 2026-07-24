@@ -46,11 +46,11 @@ conformance evidence are proven.
 - Keep CI owner jobs green with `SEMASM_REQUIRE_TOOLCHAIN=1`.
 - Prefer fail-closed adversarial fixtures over broader mnemonic coverage.
 - Do **not** add new ISAs until landed paths stay deep and honest.
-- **In progress:** **Sei P0** — ADR 0010 alias proof vs assumption vs caller
-  obligation (`docs/SEMANTIC_EVIDENCE_INTEGRITY_PLAN.md`). Horizon cliffs stay
+- **In progress:** **Sei Ra** — Region Access Evidence v1 after P0
+  (`docs/REGION_ACCESS_EVIDENCE_V1_PLAN.md`; ADR 0011). Horizon cliffs stay
   locked.
-- **Next (Sei):** after P0 green — VAA Evidence Requirement Profiles + Region
-  Access Evidence v1.
+- **Done (Sei P0):** ADR 0010 alias proof vs caller obligation (`680f88a` /
+  `26c89e6`).
 - **Done (Tw):** A64/RV adversarial twins — `docs/A64_RV_ADVERSARIAL_TWINS_PLAN.md`
   (`c0655f1`).
 - **Done (Ff):** A64/RV find-index packs at `3876277`.

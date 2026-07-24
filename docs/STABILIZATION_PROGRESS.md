@@ -31,11 +31,10 @@ Stabilization through Rel-0.2.1 is closed on `main`. Tip tag: **`v0.2.1`**
 (A64/RV `control`), Mm (A64/RV read-only `memory`), and VAA Gate pin (Vd) are
 **done**. Sample CI coverage != full-ISA / CFG/CFI / region-precise store proof.
 
-**In progress:** **Sei P0** (ADR 0010) - distinct param names != proven
-disjoint; explicit `basis = "precondition"`; `verified_under_preconditions`.
-Plan: [SEMANTIC_EVIDENCE_INTEGRITY_PLAN.md](SEMANTIC_EVIDENCE_INTEGRITY_PLAN.md).
-Horizon remains locked: formal `ensures`, symbolic alias, CryptOpt, hardware
-HSM, live-model Gate. Tw `c0655f1`; Ff `3876277`; Ab `0e35029`.
+**In progress:** **Sei Ra** (ADR 0011) - Region Access Evidence v1; plan
+[REGION_ACCESS_EVIDENCE_V1_PLAN.md](REGION_ACCESS_EVIDENCE_V1_PLAN.md).
+**Done (Sei P0):** ADR 0010 + `unresolved_obligations`. Horizon remains locked:
+formal `ensures`, symbolic alias, CryptOpt, hardware HSM, live-model Gate.
 
 ### Region/Alias Evidence v1 (Ra0?Ra6) ? **done**
 
