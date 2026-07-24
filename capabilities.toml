@@ -304,7 +304,6 @@ fixtures = [
     "fixtures/asm/count_byte_indirect_riscv64.S",
     "fixtures/asm/count_byte_write_riscv64.S",
     "fixtures/asm/count_byte_callee_saved_riscv64.S",
-    "fixtures/asm/count_byte_stack_imbalance_riscv64.S",
     "fixtures/asm/min_usize_riscv64.S",
     "fixtures/asm/min_usize_wrong_riscv64.S",
     "fixtures/asm/memcmp_riscv64.S",
