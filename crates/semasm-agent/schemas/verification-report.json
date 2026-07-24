@@ -4,6 +4,17 @@
   "description": "Full agent verification report: one compose, no pending mutation.",
   "type": "object",
   "properties": {
+    "alias_analysis": {
+      "description": "Region/Alias Evidence v1 (ADR 0006). Absent when the contract has no\n`[function.memory]` block or the target cannot collect effects.",
+      "anyOf": [
+        {
+          "$ref": "#/$defs/AliasAnalysisReport"
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
     "behavior": {
       "description": "Behavioral harness results when execution was allowed.",
       "anyOf": [
@@ -80,6 +91,100 @@
     "executable"
   ],
   "$defs": {
+    "AliasAnalysisReport": {
+      "description": "Full alias-analysis block for [`crate` consumers / VerificationReport].",
+      "type": "object",
+      "properties": {
+        "assumptions": {
+          "description": "Explicit honesty assumptions.",
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "model": {
+          "description": "Evidence model id.",
+          "type": "string"
+        },
+        "relations": {
+          "description": "Per-relation rows.",
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/AliasRelationEvidence"
+          }
+        },
+        "status": {
+          "description": "Aggregate slice status.",
+          "$ref": "#/$defs/AliasStatus"
+        },
+        "unknown_memory_accesses": {
+          "description": "Count of unmodeled (non-stack) memory accesses.",
+          "type": "integer",
+          "format": "uint",
+          "minimum": 0
+        }
+      },
+      "required": [
+        "model",
+        "status",
+        "relations",
+        "unknown_memory_accesses",
+        "assumptions"
+      ]
+    },
+    "AliasRelationEvidence": {
+      "description": "Per-relation evidence row.",
+      "type": "object",
+      "properties": {
+        "basis": {
+          "description": "Short proof basis or reason string.",
+          "type": "string"
+        },
+        "left": {
+          "description": "Left region name.",
+          "type": "string"
+        },
+        "observed": {
+          "description": "Observed relation status.",
+          "$ref": "#/$defs/RelationObserved"
+        },
+        "required": {
+          "description": "Required relation from the contract.",
+          "type": "string"
+        },
+        "right": {
+          "description": "Right region name.",
+          "type": "string"
+        }
+      },
+      "required": [
+        "left",
+        "right",
+        "required",
+        "observed",
+        "basis"
+      ]
+    },
+    "AliasStatus": {
+      "description": "Aggregate status for the alias evidence slice.",
+      "oneOf": [
+        {
+          "description": "Every required relation was proven and no unknown accesses were seen.",
+          "type": "string",
+          "const": "passed"
+        },
+        {
+          "description": "Required relation unproven and/or unknown memory accesses present.",
+          "type": "string",
+          "const": "incomplete"
+        },
+        {
+          "description": "Observed relation contradicts a required one.",
+          "type": "string",
+          "const": "failed"
+        }
+      ]
+    },
     "BehaviorOracle": {
       "description": "Named deterministic behavioral oracle attached to a verification report.",
       "type": "object",
@@ -264,6 +369,46 @@
           "description": "Named builtin oracle plus synthesized/evaluated vectors — not contract alone.",
           "type": "string",
           "const": "oracle_and_vectors"
+        }
+      ]
+    },
+    "RelationObserved": {
+      "description": "Observed status for one declared relation.",
+      "oneOf": [
+        {
+          "description": "Distinct pointer-parameter identities.",
+          "type": "string",
+          "const": "proven_disjoint"
+        },
+        {
+          "description": "Identical base (and matching const affine span when comparable).",
+          "type": "string",
+          "const": "proven_equal"
+        },
+        {
+          "description": "Constant affine containment.",
+          "type": "string",
+          "const": "proven_contains"
+        },
+        {
+          "description": "Constant affine partial overlap.",
+          "type": "string",
+          "const": "proven_partial_overlap"
+        },
+        {
+          "description": "Possible overlap; not proven either way.",
+          "type": "string",
+          "const": "may_overlap"
+        },
+        {
+          "description": "Region declaration could not be interpreted.",
+          "type": "string",
+          "const": "invalid_region"
+        },
+        {
+          "description": "Engine did not evaluate this relation.",
+          "type": "string",
+          "const": "not_evaluated"
         }
       ]
     },

@@ -349,6 +349,10 @@ pub struct VerificationReport {
     /// oracle plus vectors — not by weak contract `ensures` alone.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub behavior_oracle: Option<BehaviorOracle>,
+    /// Region/Alias Evidence v1 (ADR 0006). Absent when the contract has no
+    /// `[function.memory]` block or the target cannot collect effects.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub alias_analysis: Option<semasm_contract::AliasAnalysisReport>,
 }
 
 /// Named deterministic behavioral oracle attached to a verification report.
@@ -457,6 +461,7 @@ impl VerificationReport {
             executable,
             behavior,
             behavior_oracle: None,
+            alias_analysis: None,
         }
     }
 
@@ -472,6 +477,23 @@ impl VerificationReport {
     #[must_use]
     pub fn with_behavior_oracle(mut self, oracle: BehaviorOracle) -> Self {
         self.behavior_oracle = Some(oracle);
+        self
+    }
+
+    /// Attach Region/Alias Evidence v1 (fluent builder).
+    ///
+    /// When the slice is not [`semasm_contract::AliasStatus::Passed`], the
+    /// report status becomes [`VerificationStatus::SemanticFailed`] (fail-closed;
+    /// incomplete ≠ verified).
+    #[must_use]
+    pub fn with_alias_analysis(
+        mut self,
+        alias_analysis: semasm_contract::AliasAnalysisReport,
+    ) -> Self {
+        if alias_analysis.status != semasm_contract::AliasStatus::Passed {
+            self.status = VerificationStatus::SemanticFailed;
+        }
+        self.alias_analysis = Some(alias_analysis);
         self
     }
 }

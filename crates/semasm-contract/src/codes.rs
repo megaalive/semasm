@@ -20,6 +20,8 @@ pub enum ContractCode {
     Ctr006,
     /// Invalid target override.
     Ctr007,
+    /// Invalid Region/Alias memory block (ADR 0006).
+    Ctr008,
 }
 
 impl ContractCode {
@@ -34,6 +36,7 @@ impl ContractCode {
             Self::Ctr005 => "CTR005",
             Self::Ctr006 => "CTR006",
             Self::Ctr007 => "CTR007",
+            Self::Ctr008 => "CTR008",
         }
     }
 
@@ -78,6 +81,12 @@ impl ContractCode {
                  and must not mix incompatible ABI/format/profile combinations \
                  once those checks are enabled."
             }
+            Self::Ctr008 => {
+                "CTR008: invalid function.memory block (Region/Alias Evidence v1). \
+                 Regions need known pointer bases, length params or literals, and \
+                 access in {read,write,read_write}. Relations need known region \
+                 endpoints and require in {disjoint,equal,contains}."
+            }
         }
     }
 
@@ -92,13 +101,14 @@ impl ContractCode {
             "CTR005" => Some(Self::Ctr005),
             "CTR006" => Some(Self::Ctr006),
             "CTR007" => Some(Self::Ctr007),
+            "CTR008" => Some(Self::Ctr008),
             _ => None,
         }
     }
 
     /// All codes in numeric order.
     #[must_use]
-    pub const fn all() -> [Self; 7] {
+    pub const fn all() -> [Self; 8] {
         [
             Self::Ctr001,
             Self::Ctr002,
@@ -107,6 +117,7 @@ impl ContractCode {
             Self::Ctr005,
             Self::Ctr006,
             Self::Ctr007,
+            Self::Ctr008,
         ]
     }
 }

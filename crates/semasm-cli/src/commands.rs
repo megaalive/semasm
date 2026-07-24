@@ -21,7 +21,8 @@ use semasm_build::exec;
 use semasm_build::report::{self, CommandRecordJson, ExecutionInfo};
 use semasm_build::{BuildError, Pipeline};
 use semasm_contract::{
-    check_file, explain_code, format_diagnostics_terminal, CheckReportJson, ContractCode,
+    check_file, evaluate_alias, explain_code, format_diagnostics_terminal, AliasAnalysisReport,
+    CheckReportJson, ContractCode,
 };
 use semasm_obj::{ContainerKind, ObjectError};
 use semasm_target::{tools, TargetIdentity};
@@ -445,9 +446,10 @@ fn run_agent_verify_core(
     let routine_symbol = checked.name.clone();
 
     let finalize_report = |report: VerificationReport,
-                           behavior: Option<&semasm_agent::harness::HarnessReport>|
+                           behavior: Option<&semasm_agent::harness::HarnessReport>,
+                           alias: Option<AliasAnalysisReport>|
      -> VerificationReport {
-        let report = match recognized_oracle {
+        let mut report = match recognized_oracle {
             Some(recognized) => report.with_behavior_oracle(harness::build_behavior_oracle(
                 recognized,
                 &checked,
@@ -458,6 +460,9 @@ fn run_agent_verify_core(
             )),
             None => report,
         };
+        if let Some(alias) = alias {
+            report = report.with_alias_analysis(alias);
+        }
         report.with_digests(contract_digest.clone(), source_digest.clone())
     };
 
@@ -519,9 +524,9 @@ fn run_agent_verify_core(
 
     let object_bytes = std::fs::metadata(&routine_object).map_or(0, |meta| meta.len());
 
-    let semantic =
+    let (semantic, alias_analysis) =
         match verify_candidate_semantics(&routine_object, &identity, &routine_symbol, &checked) {
-            Ok(gates) => gates,
+            Ok(result) => result,
             Err(error) => {
                 eprintln!("semantic gate failed: {error}");
                 let report = finalize_report(
@@ -533,6 +538,7 @@ fn run_agent_verify_core(
                         None,
                         ExecutionIsolation::StaticOnly,
                     ),
+                    None,
                     None,
                 );
                 let _ = std::fs::remove_dir_all(&directory);
@@ -560,6 +566,7 @@ fn run_agent_verify_core(
                         ExecutionIsolation::StaticOnly,
                     ),
                     None,
+                    alias_analysis.clone(),
                 );
                 return VerifyCore::Done {
                     report: Box::new(report),
@@ -630,6 +637,7 @@ fn run_agent_verify_core(
                 ExecutionIsolation::StaticOnly,
             ),
             None,
+            alias_analysis.clone(),
         );
         let _ = std::fs::remove_dir_all(&directory);
         return VerifyCore::Done {
@@ -651,6 +659,7 @@ fn run_agent_verify_core(
                 ExecutionIsolation::StaticOnly,
             ),
             None,
+            alias_analysis.clone(),
         );
         let _ = std::fs::remove_dir_all(&directory);
         eprintln!(
@@ -695,6 +704,9 @@ fn run_agent_verify_core(
     .with_digests(contract_digest, source_digest);
     if let Some(oracle) = oracle {
         report = report.with_behavior_oracle(oracle);
+    }
+    if let Some(alias) = alias_analysis {
+        report = report.with_alias_analysis(alias);
     }
 
     let exit = match report.status {
@@ -759,6 +771,15 @@ fn print_verification_terminal(report: &VerificationReport) {
         );
         println!("Oracle claim: {}", oracle.claim);
     }
+    if let Some(alias) = &report.alias_analysis {
+        println!(
+            "Alias analysis: model={} status={} unknowns={} relations={}",
+            alias.model,
+            alias.status.as_str(),
+            alias.unknown_memory_accesses,
+            alias.relations.len()
+        );
+    }
 
     match &report.behavior {
         Some(behavior) => {
@@ -806,7 +827,7 @@ fn verify_candidate_semantics(
     identity: &TargetIdentity,
     routine_symbol: &str,
     contract: &semasm_contract::CheckedContract,
-) -> Result<SemanticGates, SemanticGateError> {
+) -> Result<(SemanticGates, Option<AliasAnalysisReport>), SemanticGateError> {
     require_semantic_target(identity)?;
     check_candidate_object_policy(object_path, identity, routine_symbol)?;
 
@@ -826,16 +847,20 @@ fn verify_candidate_semantics(
                 decode_coverage,
                 lowering_coverage,
             )?;
-            Ok(SemanticGates {
-                object_policy: GateStatus::Passed,
-                executable_bytes: code_bytes,
-                decode: decode_coverage,
-                lowering: lowering_coverage,
-                abi: GateStatus::Passed,
-                capability: GateStatus::Passed,
-                control: GateStatus::Passed,
-                memory: GateStatus::Passed,
-            })
+            let alias_analysis = evaluate_x86_alias(contract, &lowered, identity.abi);
+            Ok((
+                SemanticGates {
+                    object_policy: GateStatus::Passed,
+                    executable_bytes: code_bytes,
+                    decode: decode_coverage,
+                    lowering: lowering_coverage,
+                    abi: GateStatus::Passed,
+                    capability: GateStatus::Passed,
+                    control: GateStatus::Passed,
+                    memory: GateStatus::Passed,
+                },
+                alias_analysis,
+            ))
         }
         (Isa::AArch64, Abi::Aapcs64, ObjectFormat::Elf) => {
             let (physical, code_bytes) =
@@ -844,17 +869,20 @@ fn verify_candidate_semantics(
             let lowered = lower_aarch64_instructions(&physical, decode_coverage)?;
             let lowering_coverage = Coverage::complete(lowered.len());
             check_aarch64_abi_capability(&lowered, decode_coverage, lowering_coverage)?;
-            Ok(SemanticGates {
-                object_policy: GateStatus::Passed,
-                executable_bytes: code_bytes,
-                decode: decode_coverage,
-                lowering: lowering_coverage,
-                abi: GateStatus::Passed,
-                capability: GateStatus::Passed,
-                // CFG / memory leaf policies are x86-only in this slice.
-                control: GateStatus::Skipped,
-                memory: GateStatus::Skipped,
-            })
+            Ok((
+                SemanticGates {
+                    object_policy: GateStatus::Passed,
+                    executable_bytes: code_bytes,
+                    decode: decode_coverage,
+                    lowering: lowering_coverage,
+                    abi: GateStatus::Passed,
+                    capability: GateStatus::Passed,
+                    // CFG / memory leaf policies are x86-only in this slice.
+                    control: GateStatus::Skipped,
+                    memory: GateStatus::Skipped,
+                },
+                None,
+            ))
         }
         (Isa::Riscv64, Abi::Riscv, ObjectFormat::Elf) => {
             let (physical, code_bytes) =
@@ -863,17 +891,20 @@ fn verify_candidate_semantics(
             let lowered = lower_riscv_instructions(&physical, decode_coverage)?;
             let lowering_coverage = Coverage::complete(lowered.len());
             check_riscv_abi_capability(&lowered, decode_coverage, lowering_coverage)?;
-            Ok(SemanticGates {
-                object_policy: GateStatus::Passed,
-                executable_bytes: code_bytes,
-                decode: decode_coverage,
-                lowering: lowering_coverage,
-                abi: GateStatus::Passed,
-                capability: GateStatus::Passed,
-                // CFG / memory leaf policies are x86-only in this slice.
-                control: GateStatus::Skipped,
-                memory: GateStatus::Skipped,
-            })
+            Ok((
+                SemanticGates {
+                    object_policy: GateStatus::Passed,
+                    executable_bytes: code_bytes,
+                    decode: decode_coverage,
+                    lowering: lowering_coverage,
+                    abi: GateStatus::Passed,
+                    capability: GateStatus::Passed,
+                    // CFG / memory leaf policies are x86-only in this slice.
+                    control: GateStatus::Skipped,
+                    memory: GateStatus::Skipped,
+                },
+                None,
+            ))
         }
         _ => Err(SemanticGateError::new(
             "target",
@@ -883,6 +914,22 @@ fn verify_candidate_semantics(
             ),
         )),
     }
+}
+
+#[cfg(feature = "capstone")]
+fn evaluate_x86_alias(
+    contract: &semasm_contract::CheckedContract,
+    lowered: &[semasm_x86::lower::LoweredInstr],
+    abi: Abi,
+) -> Option<AliasAnalysisReport> {
+    let memory = contract.memory.as_ref()?;
+    let convention = match abi {
+        Abi::SysVAmd64 => crate::memory_effects::AbiConvention::SysV,
+        Abi::WindowsX64 => crate::memory_effects::AbiConvention::Win64,
+        _ => return None,
+    };
+    let accesses = crate::memory_effects::collect_memory_effects(lowered, contract, convention);
+    Some(evaluate_alias(memory, &accesses))
 }
 
 #[cfg(feature = "capstone")]
@@ -1416,7 +1463,7 @@ fn verify_candidate_semantics(
     _identity: &TargetIdentity,
     _routine_symbol: &str,
     _contract: &semasm_contract::CheckedContract,
-) -> Result<SemanticGates, SemanticGateError> {
+) -> Result<(SemanticGates, Option<AliasAnalysisReport>), SemanticGateError> {
     Err(SemanticGateError::new(
         "decode",
         "agent verification requires a build with the `capstone` feature",
@@ -1460,7 +1507,8 @@ mod semantic_gate_tests {
         );
         let target = TargetIdentity::parse_known("x86_64-unknown-linux-gnu").unwrap();
         let contract = load_count_byte_contract(&workspace);
-        let gates = verify_candidate_semantics(&object, &target, "count_byte", &contract).unwrap();
+        let (gates, _alias) =
+            verify_candidate_semantics(&object, &target, "count_byte", &contract).unwrap();
         assert!(gates.all_passed());
         assert_eq!(gates.lowering.unknown, 0);
         assert_eq!(gates.lowering.modeled, gates.lowering.total);
@@ -1494,7 +1542,8 @@ mod semantic_gate_tests {
         );
         let target = TargetIdentity::parse_known("x86_64-pc-windows-msvc").unwrap();
         let contract = load_count_byte_contract(&workspace);
-        let gates = verify_candidate_semantics(&object, &target, "count_byte", &contract).unwrap();
+        let (gates, _alias) =
+            verify_candidate_semantics(&object, &target, "count_byte", &contract).unwrap();
         assert!(gates.all_passed());
         assert_eq!(gates.lowering.unknown, 0);
         assert_eq!(gates.abi, GateStatus::Passed);
@@ -1584,7 +1633,8 @@ mod semantic_gate_tests {
         );
         let target = TargetIdentity::parse_known("aarch64-unknown-linux-gnu").unwrap();
         let contract = load_count_byte_contract(&workspace);
-        let gates = verify_candidate_semantics(&object, &target, "count_byte", &contract).unwrap();
+        let (gates, _alias) =
+            verify_candidate_semantics(&object, &target, "count_byte", &contract).unwrap();
         assert!(gates.all_passed());
         assert_eq!(gates.abi, GateStatus::Passed);
         assert_eq!(gates.capability, GateStatus::Passed);
@@ -1623,7 +1673,8 @@ mod semantic_gate_tests {
         );
         let target = TargetIdentity::parse_known("riscv64gc-unknown-linux-gnu").unwrap();
         let contract = load_count_byte_contract(&workspace);
-        let gates = verify_candidate_semantics(&object, &target, "count_byte", &contract).unwrap();
+        let (gates, _alias) =
+            verify_candidate_semantics(&object, &target, "count_byte", &contract).unwrap();
         assert!(gates.all_passed());
         assert_eq!(gates.abi, GateStatus::Passed);
         assert_eq!(gates.capability, GateStatus::Passed);

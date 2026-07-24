@@ -43,6 +43,19 @@ region = "buffer[0..length]"
 kind = "memory_write"
 region = "buffer[0..length]"
 
+[function.memory]
+
+[[function.memory.regions]]
+name = "buf"
+base = "buffer"
+length = "length"
+access = "read_write"
+
+[[function.memory.relations]]
+left = "buf"
+right = "buf"
+require = "equal"
+
 [function.constraints]
 no_heap = true
 no_recursion = true

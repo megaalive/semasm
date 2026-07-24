@@ -1,0 +1,48 @@
+contract_version = "0.1"
+
+[function]
+name = "overlap_probe"
+summary = "Partial-overlap fixture: same base, overlapping const spans; require=disjoint must fail"
+
+[[function.parameters]]
+name = "buf"
+type = "ptr<u8>"
+role = "input"
+
+[[function.returns]]
+name = "status"
+type = "usize"
+
+[[function.effects]]
+kind = "memory_read"
+region = "buf"
+
+[[function.effects]]
+kind = "memory_write"
+region = "buf"
+
+[function.memory]
+
+[[function.memory.regions]]
+name = "head"
+base = "buf"
+offset = "0"
+length = "8"
+access = "read"
+
+[[function.memory.regions]]
+name = "tail"
+base = "buf"
+offset = "4"
+length = "8"
+access = "write"
+
+[[function.memory.relations]]
+left = "head"
+right = "tail"
+require = "disjoint"
+
+[function.constraints]
+no_heap = true
+no_recursion = true
+bounded_stack_bytes = 128

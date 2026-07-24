@@ -4941,6 +4941,7 @@ no_heap = true
             requires: vec![],
             ensures: vec![],
             effects: vec![],
+            memory: None,
             constraints: None,
             target_overrides: vec![],
         };

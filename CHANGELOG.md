@@ -29,7 +29,12 @@ capabilities, behavioral oracles, and `VerificationReport` evidence. It is
   `find_last_byte`, `sum_i64` Gate-ready packs (SysV/Win64) with adversarial
   twins.
 - **ADRs** — 0003 write-shape; 0004 region-precise memory honesty; 0005
-  multi-ISA MemCmp/write-shape honesty.
+  multi-ISA MemCmp/write-shape honesty; **0006 Region/Alias Evidence v1**
+  (`region-affine-v1`: selected affine relations; not general alias analysis).
+- **Region/Alias Evidence v1** — `function.memory.regions` /
+  `relations` schema (CTR008), x86 effect collection, fail-closed relation
+  engine, `VerificationReport.alias_analysis`, ± corpus fixtures (no
+  `memmove`).
 - **Dx adversarial deepen** — unknown-insn classes (`vzeroupper` / `cpuid` /
   `rdtsc`), trailing-bytes on multiple leaves, W+X (incl. patched Win64
   COFF), indirect branch; `agent verify` can stage prebuilt `.obj`/`.o`.
@@ -48,7 +53,8 @@ capabilities, behavioral oracles, and `VerificationReport` evidence. It is
 
 ### Honesty / non-goals (unchanged)
 
-- No formal theorem prover / `ensures` proof; no full symbolic alias analysis;
+- No formal theorem prover / `ensures` proof; no full symbolic / general alias
+  analysis (Region/Alias v1 is selected affine relations only);
   no CryptOpt embed; sample-based guards ≠ store-region proof.
 
 ## [0.1.0] - 2026-07-23

@@ -250,6 +250,17 @@
             "$ref": "#/$defs/CheckedCondition"
           }
         },
+        "memory": {
+          "description": "Optional Region/Alias Evidence v1 block.",
+          "anyOf": [
+            {
+              "$ref": "#/$defs/CheckedMemory"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
         "name": {
           "description": "Function name.",
           "type": "string"
@@ -314,6 +325,30 @@
         "target_overrides"
       ]
     },
+    "CheckedMemory": {
+      "description": "Checked `[function.memory]` block.",
+      "type": "object",
+      "properties": {
+        "regions": {
+          "description": "Declared regions.",
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/CheckedRegion"
+          }
+        },
+        "relations": {
+          "description": "Required relations.",
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/CheckedRelation"
+          }
+        }
+      },
+      "required": [
+        "regions",
+        "relations"
+      ]
+    },
     "CheckedParam": {
       "description": "Checked parameter.",
       "type": "object",
@@ -342,6 +377,63 @@
         "name",
         "ty",
         "type_source"
+      ]
+    },
+    "CheckedRegion": {
+      "description": "Checked affine memory region.",
+      "type": "object",
+      "properties": {
+        "access": {
+          "description": "Declared access.",
+          "$ref": "#/$defs/RegionAccess"
+        },
+        "base_param": {
+          "description": "Pointer parameter used as base.",
+          "type": "string"
+        },
+        "length": {
+          "description": "Region length.",
+          "$ref": "#/$defs/LengthSpec"
+        },
+        "name": {
+          "description": "Region name.",
+          "type": "string"
+        },
+        "offset": {
+          "description": "Constant byte offset from base.",
+          "type": "integer",
+          "format": "int64"
+        }
+      },
+      "required": [
+        "name",
+        "base_param",
+        "offset",
+        "length",
+        "access"
+      ]
+    },
+    "CheckedRelation": {
+      "description": "Checked required relation.",
+      "type": "object",
+      "properties": {
+        "left": {
+          "description": "Left region name.",
+          "type": "string"
+        },
+        "require": {
+          "description": "Required relation.",
+          "$ref": "#/$defs/RelationRequire"
+        },
+        "right": {
+          "description": "Right region name.",
+          "type": "string"
+        }
+      },
+      "required": [
+        "left",
+        "right",
+        "require"
       ]
     },
     "CheckedReturn": {
@@ -837,6 +929,39 @@
         }
       ]
     },
+    "LengthSpec": {
+      "description": "Length of a declared region.",
+      "oneOf": [
+        {
+          "description": "Named integer parameter.",
+          "type": "object",
+          "properties": {
+            "param": {
+              "type": "string"
+            }
+          },
+          "additionalProperties": false,
+          "required": [
+            "param"
+          ]
+        },
+        {
+          "description": "Decimal literal byte count.",
+          "type": "object",
+          "properties": {
+            "literal": {
+              "type": "integer",
+              "format": "uint64",
+              "minimum": 0
+            }
+          },
+          "additionalProperties": false,
+          "required": [
+            "literal"
+          ]
+        }
+      ]
+    },
     "ObjectFormat": {
       "description": "Object file / executable container format.",
       "oneOf": [
@@ -886,6 +1011,46 @@
       "required": [
         "hash",
         "content"
+      ]
+    },
+    "RegionAccess": {
+      "description": "Declared access mode for a memory region.",
+      "oneOf": [
+        {
+          "description": "Read-only.",
+          "type": "string",
+          "const": "read"
+        },
+        {
+          "description": "Write-only.",
+          "type": "string",
+          "const": "write"
+        },
+        {
+          "description": "Read and write.",
+          "type": "string",
+          "const": "read_write"
+        }
+      ]
+    },
+    "RelationRequire": {
+      "description": "Required relation kind (narrow v1 subset).",
+      "oneOf": [
+        {
+          "description": "Regions must not overlap.",
+          "type": "string",
+          "const": "disjoint"
+        },
+        {
+          "description": "Regions must be identical.",
+          "type": "string",
+          "const": "equal"
+        },
+        {
+          "description": "Left must contain right.",
+          "type": "string",
+          "const": "contains"
+        }
       ]
     },
     "SemType": {

@@ -152,9 +152,10 @@ sentence stays aspirational as a universal claim.
 | Candidate | Focus | Status |
 |---|---|---|
 | Guard-byte harness fixtures | Detect out-of-declared-region writes inside the fixture allocation | **Landed in H2** (x86 write-shape; sample-based canaries echoed in harness stdout; fail-closed on mutation). Owner evidence = existing `agent_verify_{replace_byte,memset,memcpy}` e2e + harness unit tests — not a separately named `region-gate` job. Criteria 2–3 progress; still **not** symbolic/formal proof (criterion 5 wording capped). |
-| Full alias / points-to analysis | General may-alias reasoning over pointer parameters | Horizon-locked deferred |
+| Region/Alias Evidence v1 | Selected affine region relations for supported leaves (`region-affine-v1`) | **Landed** (ADR 0006; Ra0–Ra6). Identity/const affine; fail-closed incomplete ≠ passed. **Not** general alias / points-to. |
+| Full alias / points-to analysis | General may-alias reasoning over pointer parameters | Horizon-locked deferred (beyond ADR 0006 v1) |
 | Formal store-region `ensures` | Prove writes confined to `[dst, dst+length)` for all inputs | Horizon-locked deferred |
-| AArch64/RISC-V write-shape harness | Lift fail-closed for `replace_byte`/`memset`/`memcpy` | Horizon-locked deferred (ADR 0005; after MemCmp A64/RV) |
+| AArch64/RISC-V write-shape harness | Lift fail-closed for `replace_byte`/`memset`/`memcpy` | **Landed** (priority follow-on; sample guards; still ≠ formal) |
 
 W4 HlaX64 `replace_byte` bridge and Thin write-shape bridges landed outside
 this ADR. Residual Rmem depth is Horizon-locked (formal ensures / full

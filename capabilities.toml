@@ -35,6 +35,12 @@
 #   Overlap fail-closed (ADR 0003): synthesized `dst`/`src` are always
 #   distinct fixture buffers, never aliased; the post-buffer Gate check
 #   covers `dst` only (`src` is unchanged input, never echoed back).
+# - Region/Alias Evidence v1 (`region-affine-v1`, ADR 0006): selected affine
+#   memory-region relations for supported leaf patterns (identity/const).
+#   Owner evidence: `semasm-contract` alias unit tests +
+#   `semasm-cli` `alias_evidence_v1` + x86 `agent_verify_*` e2e. **Not**
+#   general alias analysis / formal memory safety. `unknown`/`may_overlap`/
+#   `not_evaluated` ≠ passed.
 # - Ownership map: docs/STABILIZATION_PROGRESS.md (maturity follow-up M0/M1).
 # - Dx bump (owner sign-off): x86-64 `decode`/`lower` flipped to
 #   `verified_in_ci` below; checklist + readiness table in

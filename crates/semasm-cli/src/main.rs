@@ -9,6 +9,8 @@ mod commands;
 #[cfg(feature = "capstone")]
 mod inspect;
 #[cfg(feature = "capstone")]
+mod memory_effects;
+#[cfg(feature = "capstone")]
 mod output;
 
 use std::path::PathBuf;

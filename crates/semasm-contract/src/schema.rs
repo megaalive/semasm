@@ -44,12 +44,59 @@ pub struct FunctionSchema {
     /// Declared effects.
     #[serde(default)]
     pub effects: Vec<EffectSchema>,
+    /// Optional Region/Alias Evidence v1 block (ADR 0006).
+    #[serde(default)]
+    pub memory: Option<MemoryBlockSchema>,
     /// Resource / complexity constraints.
     #[serde(default)]
     pub constraints: Option<ConstraintsSchema>,
     /// Per-target overrides.
     #[serde(default)]
     pub target_overrides: Vec<TargetOverrideSchema>,
+}
+
+/// `[function.memory]` block: named regions and required relations (ADR 0006).
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, Default)]
+#[cfg_attr(feature = "schema", derive(schemars::JsonSchema))]
+#[serde(deny_unknown_fields)]
+pub struct MemoryBlockSchema {
+    /// Declared regions.
+    #[serde(default)]
+    pub regions: Vec<MemoryRegionSchema>,
+    /// Required relations between regions.
+    #[serde(default)]
+    pub relations: Vec<MemoryRelationSchema>,
+}
+
+/// One affine memory region `[base + offset, base + offset + length)`.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "schema", derive(schemars::JsonSchema))]
+#[serde(deny_unknown_fields)]
+pub struct MemoryRegionSchema {
+    /// Region name (referenced by relations).
+    pub name: String,
+    /// Pointer parameter name used as base.
+    pub base: String,
+    /// Constant byte offset from `base` (decimal literal; default `0`).
+    #[serde(default)]
+    pub offset: Option<String>,
+    /// Length: integer parameter name or decimal literal.
+    pub length: String,
+    /// Access mode.
+    pub access: String,
+}
+
+/// Required relation between two named regions.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "schema", derive(schemars::JsonSchema))]
+#[serde(deny_unknown_fields)]
+pub struct MemoryRelationSchema {
+    /// Left region name.
+    pub left: String,
+    /// Right region name.
+    pub right: String,
+    /// Required relation (`disjoint` | `equal` | `contains`).
+    pub require: String,
 }
 
 /// Parameter declaration.

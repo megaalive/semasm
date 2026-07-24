@@ -7,7 +7,9 @@ minimal target programs **without shipping a high-level language runtime**.
 
 > **Status:** pre-1.0 developer tooling (0.1 line). Thirteen workspace crates,
 > multi-target agent verify (SysV / Win64 / AArch64 / RV64), structured
-> `VerificationReport` evidence, and named CI owner jobs are in tree.
+> `VerificationReport` evidence (including optional Region/Alias Evidence v1
+> `region-affine-v1` — selected affine relations, **not** general alias
+> analysis), and named CI owner jobs are in tree.
 > Capability maturity is defined only by `capabilities.toml` — code present ≠
 > CI-proven support. Agent output remains **untrusted until verified**.
 

@@ -35,10 +35,133 @@ pub struct CheckedContract {
     pub ensures: Vec<CheckedCondition>,
     /// Checked effects.
     pub effects: Vec<EffectSchema>,
+    /// Optional Region/Alias Evidence v1 block.
+    pub memory: Option<CheckedMemory>,
     /// Constraints passthrough.
     pub constraints: Option<crate::schema::ConstraintsSchema>,
     /// Validated target override IDs.
     pub target_overrides: Vec<String>,
+}
+
+/// Declared access mode for a memory region.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "schema", derive(schemars::JsonSchema))]
+#[serde(rename_all = "snake_case")]
+pub enum RegionAccess {
+    /// Read-only.
+    Read,
+    /// Write-only.
+    Write,
+    /// Read and write.
+    ReadWrite,
+}
+
+impl RegionAccess {
+    /// Parse from contract string.
+    #[must_use]
+    pub fn parse(s: &str) -> Option<Self> {
+        match s {
+            "read" => Some(Self::Read),
+            "write" => Some(Self::Write),
+            "read_write" => Some(Self::ReadWrite),
+            _ => None,
+        }
+    }
+
+    /// Canonical string.
+    #[must_use]
+    pub const fn as_str(self) -> &'static str {
+        match self {
+            Self::Read => "read",
+            Self::Write => "write",
+            Self::ReadWrite => "read_write",
+        }
+    }
+}
+
+/// Required relation kind (narrow v1 subset).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "schema", derive(schemars::JsonSchema))]
+#[serde(rename_all = "snake_case")]
+pub enum RelationRequire {
+    /// Regions must not overlap.
+    Disjoint,
+    /// Regions must be identical.
+    Equal,
+    /// Left must contain right.
+    Contains,
+}
+
+impl RelationRequire {
+    /// Parse from contract string.
+    #[must_use]
+    pub fn parse(s: &str) -> Option<Self> {
+        match s {
+            "disjoint" => Some(Self::Disjoint),
+            "equal" => Some(Self::Equal),
+            "contains" => Some(Self::Contains),
+            _ => None,
+        }
+    }
+
+    /// Canonical string.
+    #[must_use]
+    pub const fn as_str(self) -> &'static str {
+        match self {
+            Self::Disjoint => "disjoint",
+            Self::Equal => "equal",
+            Self::Contains => "contains",
+        }
+    }
+}
+
+/// Length of a declared region.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "schema", derive(schemars::JsonSchema))]
+#[serde(rename_all = "snake_case")]
+pub enum LengthSpec {
+    /// Named integer parameter.
+    Param(String),
+    /// Decimal literal byte count.
+    Literal(u64),
+}
+
+/// Checked affine memory region.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "schema", derive(schemars::JsonSchema))]
+pub struct CheckedRegion {
+    /// Region name.
+    pub name: String,
+    /// Pointer parameter used as base.
+    pub base_param: String,
+    /// Constant byte offset from base.
+    pub offset: i64,
+    /// Region length.
+    pub length: LengthSpec,
+    /// Declared access.
+    pub access: RegionAccess,
+}
+
+/// Checked required relation.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "schema", derive(schemars::JsonSchema))]
+pub struct CheckedRelation {
+    /// Left region name.
+    pub left: String,
+    /// Right region name.
+    pub right: String,
+    /// Required relation.
+    pub require: RelationRequire,
+}
+
+/// Checked `[function.memory]` block.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, Default)]
+#[cfg_attr(feature = "schema", derive(schemars::JsonSchema))]
+pub struct CheckedMemory {
+    /// Declared regions.
+    pub regions: Vec<CheckedRegion>,
+    /// Required relations.
+    pub relations: Vec<CheckedRelation>,
 }
 
 /// Checked parameter.
@@ -271,6 +394,7 @@ fn validate_document(doc: &ContractDocument, diagnostics: &mut Diagnostics) -> C
     }
 
     check_effects(&f.effects, &names, diagnostics);
+    let memory = check_memory(f.memory.as_ref(), &parameters, diagnostics);
 
     let mut target_overrides = Vec::new();
     for ov in &f.target_overrides {
@@ -303,6 +427,7 @@ fn validate_document(doc: &ContractDocument, diagnostics: &mut Diagnostics) -> C
             requires,
             ensures,
             effects: f.effects.clone(),
+            memory,
             constraints: f.constraints.clone(),
             target_overrides,
         }),
@@ -404,6 +529,183 @@ fn check_effects(
             None,
         );
     }
+}
+
+#[allow(clippy::too_many_lines)]
+fn check_memory(
+    memory: Option<&crate::schema::MemoryBlockSchema>,
+    parameters: &[CheckedParam],
+    diagnostics: &mut Diagnostics,
+) -> Option<CheckedMemory> {
+    let block = memory?;
+
+    let mut region_names = BTreeSet::new();
+    let mut regions = Vec::new();
+
+    for region in &block.regions {
+        if !region_names.insert(region.name.clone()) {
+            push_code(
+                diagnostics,
+                ContractCode::Ctr008,
+                format!("duplicate memory region `{}`", region.name),
+                None,
+            );
+            continue;
+        }
+
+        let Some(base_param) = parameters.iter().find(|p| p.name == region.base) else {
+            push_code(
+                diagnostics,
+                ContractCode::Ctr008,
+                format!(
+                    "memory region `{}`: base `{}` is not a parameter",
+                    region.name, region.base
+                ),
+                None,
+            );
+            continue;
+        };
+        if !matches!(base_param.ty, SemType::Ptr { .. }) {
+            push_code(
+                diagnostics,
+                ContractCode::Ctr008,
+                format!(
+                    "memory region `{}`: base `{}` must be a pointer parameter",
+                    region.name, region.base
+                ),
+                None,
+            );
+            continue;
+        }
+
+        let offset = match region.offset.as_deref() {
+            None | Some("" | "0") => 0_i64,
+            Some(raw) => {
+                if let Some(v) = parse_i64_literal(raw) {
+                    v
+                } else {
+                    push_code(
+                        diagnostics,
+                        ContractCode::Ctr008,
+                        format!(
+                            "memory region `{}`: offset `{raw}` must be a decimal literal",
+                            region.name
+                        ),
+                        None,
+                    );
+                    continue;
+                }
+            }
+        };
+
+        let length = match parse_length_spec(&region.length, parameters) {
+            Ok(spec) => spec,
+            Err(msg) => {
+                push_code(
+                    diagnostics,
+                    ContractCode::Ctr008,
+                    format!("memory region `{}`: {msg}", region.name),
+                    None,
+                );
+                continue;
+            }
+        };
+
+        let Some(access) = RegionAccess::parse(&region.access) else {
+            push_code(
+                diagnostics,
+                ContractCode::Ctr008,
+                format!(
+                    "memory region `{}`: access `{}` must be read|write|read_write",
+                    region.name, region.access
+                ),
+                None,
+            );
+            continue;
+        };
+
+        regions.push(CheckedRegion {
+            name: region.name.clone(),
+            base_param: region.base.clone(),
+            offset,
+            length,
+            access,
+        });
+    }
+
+    let mut relations = Vec::new();
+    for rel in &block.relations {
+        if !region_names.contains(&rel.left) || !region_names.contains(&rel.right) {
+            push_code(
+                diagnostics,
+                ContractCode::Ctr008,
+                format!(
+                    "memory relation `{}`/`{}`: endpoints must name declared regions",
+                    rel.left, rel.right
+                ),
+                None,
+            );
+            continue;
+        }
+        let Some(require) = RelationRequire::parse(&rel.require) else {
+            push_code(
+                diagnostics,
+                ContractCode::Ctr008,
+                format!(
+                    "memory relation `{}`/`{}`: require `{}` must be disjoint|equal|contains",
+                    rel.left, rel.right, rel.require
+                ),
+                None,
+            );
+            continue;
+        };
+        relations.push(CheckedRelation {
+            left: rel.left.clone(),
+            right: rel.right.clone(),
+            require,
+        });
+    }
+
+    Some(CheckedMemory { regions, relations })
+}
+
+fn parse_length_spec(raw: &str, parameters: &[CheckedParam]) -> Result<LengthSpec, String> {
+    if let Some(lit) = parse_u64_literal(raw) {
+        return Ok(LengthSpec::Literal(lit));
+    }
+    let Some(param) = parameters.iter().find(|p| p.name == raw) else {
+        return Err(format!(
+            "length `{raw}` must be an integer parameter or decimal literal"
+        ));
+    };
+    if !is_integer_sem_type(&param.ty) {
+        return Err(format!("length parameter `{raw}` must be an integer type"));
+    }
+    Ok(LengthSpec::Param(raw.to_string()))
+}
+
+fn is_integer_sem_type(ty: &SemType) -> bool {
+    matches!(
+        ty,
+        SemType::UInt { .. } | SemType::Int { .. } | SemType::Usize | SemType::Isize
+    )
+}
+
+fn parse_u64_literal(raw: &str) -> Option<u64> {
+    let s = raw.trim();
+    if s.is_empty() || !s.bytes().all(|b| b.is_ascii_digit()) {
+        return None;
+    }
+    s.parse().ok()
+}
+
+fn parse_i64_literal(raw: &str) -> Option<i64> {
+    let s = raw.trim();
+    if let Some(rest) = s.strip_prefix('-') {
+        let v = parse_u64_literal(rest)?;
+        return i64::try_from(v).ok().map(|n| -n);
+    }
+    parse_u64_literal(s).and_then(|v| i64::try_from(v).ok())
 }
 
 fn push_code(
@@ -595,6 +897,71 @@ region = "buffer[0..1]"
             .diagnostics
             .iter()
             .any(|d| d.code.as_deref() == Some("CTR006")));
+    }
+
+    #[test]
+    fn accepts_memory_regions_and_relations() {
+        let r = check_str(
+            r#"
+contract_version = "0.1"
+[function]
+name = "memcpy"
+[[function.parameters]]
+name = "dst"
+type = "ptr<u8>"
+[[function.parameters]]
+name = "src"
+type = "ptr<const u8>"
+[[function.parameters]]
+name = "length"
+type = "usize"
+[[function.returns]]
+name = "status"
+type = "usize"
+[[function.memory.regions]]
+name = "src"
+base = "src"
+length = "length"
+access = "read"
+[[function.memory.regions]]
+name = "dst"
+base = "dst"
+offset = "0"
+length = "length"
+access = "write"
+[[function.memory.relations]]
+left = "src"
+right = "dst"
+require = "disjoint"
+"#,
+        );
+        assert!(r.ok(), "{:?}", r.diagnostics.into_vec());
+        let mem = r.contract.unwrap().memory.unwrap();
+        assert_eq!(mem.regions.len(), 2);
+        assert_eq!(mem.relations.len(), 1);
+    }
+
+    #[test]
+    fn rejects_invalid_memory_base() {
+        let r = check_str(
+            r#"
+contract_version = "0.1"
+[function]
+name = "f"
+[[function.parameters]]
+name = "length"
+type = "usize"
+[[function.memory.regions]]
+name = "buf"
+base = "length"
+length = "1"
+access = "read"
+"#,
+        );
+        assert!(r
+            .diagnostics
+            .iter()
+            .any(|d| d.code.as_deref() == Some("CTR008")));
     }
 
     #[test]

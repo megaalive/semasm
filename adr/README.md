@@ -13,3 +13,4 @@ ADRs record durable design decisions (crate boundaries, target model, dependency
 | [0003](0003-write-shape-buffer-leaves.md) | Write-shape buffer leaves (`replace_byte` v1) | Accepted |
 | [0004](0004-region-precise-memory-gate.md) | Region-precise memory gate honesty (Rmem) | Accepted |
 | [0005](0005-multi-isa-memcmp-write-shape.md) | Multi-ISA MemCmp / write-shape harness honesty | Accepted |
+| [0006](0006-region-alias-evidence-v1.md) | Region and Alias Evidence v1 (affine slice) | Accepted |

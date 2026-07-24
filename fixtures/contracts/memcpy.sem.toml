@@ -42,6 +42,25 @@ region = "dst[0..length]"
 kind = "memory_write"
 region = "dst[0..length]"
 
+[function.memory]
+
+[[function.memory.regions]]
+name = "src"
+base = "src"
+length = "length"
+access = "read"
+
+[[function.memory.regions]]
+name = "dst"
+base = "dst"
+length = "length"
+access = "write"
+
+[[function.memory.relations]]
+left = "src"
+right = "dst"
+require = "disjoint"
+
 [function.constraints]
 no_heap = true
 no_recursion = true

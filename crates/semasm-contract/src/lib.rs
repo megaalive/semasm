@@ -8,22 +8,29 @@
 
 #![forbid(unsafe_code)]
 
+pub mod alias;
 pub mod codes;
 pub mod expr;
 pub mod schema;
 pub mod sem_type;
 pub mod validate;
 
+pub use alias::{
+    evaluate_alias, AccessAddr, AccessMode, AliasAnalysisReport, AliasRelationEvidence,
+    AliasStatus, ObservedMemoryAccess, RelationObserved, REGION_AFFINE_V1,
+};
 pub use codes::ContractCode;
 pub use expr::{BinOp, Expr, UnaryOp};
 pub use schema::{
     ConditionSchema, ConstraintsSchema, ContractDocument, EffectSchema, FunctionSchema,
-    ParameterSchema, ReturnSchema, TargetOverrideSchema,
+    MemoryBlockSchema, MemoryRegionSchema, MemoryRelationSchema, ParameterSchema, ReturnSchema,
+    TargetOverrideSchema,
 };
 pub use sem_type::SemType;
 pub use validate::{
     check_file, check_str, format_diagnostics_terminal, CheckReportJson, CheckResult,
-    CheckedCondition, CheckedContract, CheckedParam, CheckedReturn, DiagnosticJson,
+    CheckedCondition, CheckedContract, CheckedMemory, CheckedParam, CheckedRegion, CheckedRelation,
+    CheckedReturn, DiagnosticJson, LengthSpec, RegionAccess, RelationRequire,
 };
 
 /// Explain a stable contract diagnostic code.

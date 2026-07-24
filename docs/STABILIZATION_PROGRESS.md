@@ -48,6 +48,30 @@ decode/lower on x86-64 Linux/Windows are `verified_in_ci` after **Dx owner
 sign-off** (adversarial corpus; ≠ full-ISA formal proof). AArch64/RV64
 `decode`/`lower` stay `partial`.
 
+### Region/Alias Evidence v1 (Ra0–Ra6) — **done**
+
+Vertical slice toward formal contract semantics (ADR 0006). **Not** general
+alias analysis / SMT / theorem prover. Claim: selected affine memory-region
+relations for supported leaf patterns. Locked next: ContractExpr v1 → A64/RV
+memory-effect parity → isolation ops → trust root.
+
+| Step | Focus | Status |
+|---|---|---|
+| **Ra0** | ADR 0006 Accepted + progress pointers | **done** |
+| **Ra1** | `memory.regions` / `relations` schema | **done** |
+| **Ra2–Ra3** | x86 effects + fail-closed engine | **done** |
+| **Ra4–Ra5** | report field + x86 corpus CI | **done** |
+| **Ra6** | caps/docs honesty | **done** |
+
+### Locked deferred waves (after Region/Alias v1)
+
+| Wave | Focus | Unlock when |
+|---|---|---|
+| **G2** | Contract expression semantics v1 | Ra6 green; expressions that reference living regions only |
+| **G3** | A64/RV memory-effect parity | After G2, or minimally after Ra6 if effects-only |
+| **G4** | Isolation ops proof (VAA) | Public untrusted execution / network+credential bar |
+| **G5** | Trust root nyata (VAA) | After evidence semantics stable (Ra6 + ideally G2) |
+
 ### Next waves (X4 + H4 + Y) — closed
 
 | Wave | Focus | Owner | Status |

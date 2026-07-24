@@ -249,6 +249,11 @@ jobs:
       - name: Test (capstone feature)
         run: cargo test --workspace --all-features
 
+      - name: Region/Alias Evidence v1 corpus
+        run: |
+          cargo test -p semasm-cli --all-features --test alias_evidence_v1 -- --nocapture
+          cargo test -p semasm-contract --lib alias:: -- --nocapture
+
       - name: Agent semantic-gate and verify integration tests
         run: |
           cargo test -p semasm-cli --all-features \
