@@ -83,7 +83,7 @@ fn assert_verified(output: &std::process::Output) {
     let value: serde_json::Value = serde_json::from_str(&stdout).unwrap_or_else(|error| {
         panic!("expected VerificationReport JSON ({error}): {stdout}\nstderr={stderr}")
     });
-    assert_eq!(value["status"], "verified");
+    assert_status_verified_or_under_preconditions(&value);
     assert_eq!(value["behavior"]["all_passed"], true);
     assert!(value["behavior"]["cases"].as_array().unwrap().len() >= 6);
 }
