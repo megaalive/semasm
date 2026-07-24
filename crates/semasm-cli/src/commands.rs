@@ -21,9 +21,11 @@ use semasm_build::exec;
 use semasm_build::report::{self, CommandRecordJson, ExecutionInfo};
 use semasm_build::{BuildError, Pipeline};
 use semasm_contract::{
-    check_file, evaluate_alias, evaluate_contract_expressions, explain_code,
-    format_diagnostics_terminal, AliasAnalysisReport, CheckReportJson, ContractCode, ExprBindings,
+    check_file, evaluate_contract_expressions, explain_code, format_diagnostics_terminal,
+    AliasAnalysisReport, CheckReportJson, ContractCode, ExprBindings,
 };
+#[cfg(feature = "capstone")]
+use semasm_contract::evaluate_alias;
 use semasm_obj::{ContainerKind, ObjectError};
 use semasm_target::{tools, TargetIdentity};
 #[cfg(feature = "capstone")]

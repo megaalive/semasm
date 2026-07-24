@@ -34,7 +34,7 @@ Honesty: Incomplete ≠ Verified; agent ≠ pipeline; x86 Dx ≠ A64/RV bump.
 | Wrong-behavior | `count_byte_wrong_*` | **met** |
 | Unknown / unmodelled | `fmov`/`mrs` · `fence`/`mulh` | **met** |
 | Trailing / undecodable | `count_byte_trailing_bytes_*` | **met** |
-| W+X | `count_byte_wx_*` ELF `awx` | **met** |
+| W+X | `count_byte_wx_*` ELF `.semasm_wx,"awx"` (not `.text`; gas strips `w` there) | **met** |
 | Indirect CFG leaf | x86-only (`control` skipped on A64/RV) | **N/A documented** |
 
 ### Da4 — Sign-off

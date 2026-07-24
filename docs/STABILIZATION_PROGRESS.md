@@ -83,7 +83,7 @@ evidence — not SMT / full contract verification. Plan:
 
 | Wave | Focus | Unlock when |
 |---|---|---|
-| **G3** | A64/RV memory-effect parity | **Done** — Me0–Me5 (ADR 0008; collectors + verify wire + ± fixtures; `decode`/`lower` stay `partial`) |
+| **G3** | A64/RV memory-effect parity | **Done** — Me0–Me5 (ADR 0008; collectors + verify wire + ± fixtures; Da later flipped `decode`/`lower` → `verified_in_ci`) |
 | **G4** | Isolation ops proof (VAA) | **Done** — Io0–Io5 at VAA `c040828` (claim matrix + backend id + network/credential argv checklist; **not** public-untrusted ready) |
 | **G5** | Trust root ops proof (VAA) | **Done** — Tr0–Tr5 at VAA `ef748c5` (`signer_kind` labels); **production** trust root / hardware HSM / operated remote log remain Horizon-locked |
 

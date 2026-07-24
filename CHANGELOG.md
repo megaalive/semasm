@@ -34,8 +34,7 @@ capabilities, behavioral oracles, and `VerificationReport` evidence. It is
   **0007 Contract expression semantics v1** (`contract-expr-v1` subset eval +
   `VerificationReport.contract_expressions`; see
   `docs/CONTRACT_EXPR_V1_SUBSET.md`); **0008 A64/RV memory-effect parity**
-  (Me0–Me5: A64/RV collectors + `agent verify` alias/expr wire + ± fixtures;
-  A64/RV `decode`/`lower` stay `partial` until ADR 0009 / Da\*);
+  (Me0–Me5: A64/RV collectors + `agent verify` alias/expr wire + ± fixtures);
   **0009 A64/RV decode/lower bump** (Dx-parity; Da0–Da5 done —
   `verified_in_ci` sample coverage; `control` still x86-only).
 - **G1–G5 program** — Region/Alias → ContractExpr → memory-effect parity →

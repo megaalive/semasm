@@ -129,9 +129,9 @@ cargo doc --workspace --no-deps
 - External-tool scenarios run in dedicated CI owner jobs
   (`SEMASM_REQUIRE_TOOLCHAIN=1`); local soft-skip is not allowed there.
 - A decoder or lowering implementation may cover only part of an ISA.
-  On x86-64 Linux/Windows, `decode` / `lower` are `CI-verified` against the
-  Dx adversarial corpus (not a full-ISA formal proof). AArch64/RV64
-  `decode` / `lower` remain `partial`.
+  On x86-64 Linux/Windows and AArch64/RV64 Linux, `decode` / `lower` are
+  `CI-verified` against the Dx/Da adversarial corpora (not a full-ISA formal
+  proof). RV32 decode remains `declared` / lower `partial`.
 - Canonical report reproducibility is checked across independent output roots;
   this does not promise byte-identical artifacts from every toolchain.
 - Manifest **Pipeline** vs **Agent** columns are separate: pipeline
@@ -151,8 +151,8 @@ build e2e; **Agent** = `semasm agent verify`.
 |---|---|---|---|---|---|---|---|---|
 | `x86_64-unknown-linux-gnu` | CI-verified | CI-verified | unit-tested | CI-verified | CI-verified | CI-verified | CI-verified | CI-verified |
 | `x86_64-pc-windows-msvc` | CI-verified | CI-verified | unit-tested | CI-verified | CI-verified | CI-verified | CI-verified | CI-verified |
-| `aarch64-unknown-linux-gnu` | partial | partial | unit-tested | CI-verified | CI-verified | CI-verified | CI-verified | CI-verified |
-| `riscv64gc-unknown-linux-gnu` | partial | partial | unit-tested | CI-verified | CI-verified | CI-verified | CI-verified | CI-verified |
+| `aarch64-unknown-linux-gnu` | CI-verified | CI-verified | unit-tested | CI-verified | CI-verified | CI-verified | CI-verified | CI-verified |
+| `riscv64gc-unknown-linux-gnu` | CI-verified | CI-verified | unit-tested | CI-verified | CI-verified | CI-verified | CI-verified | CI-verified |
 | `riscv32imac-unknown-none-elf` | declared | partial | unit-tested | unavailable | unavailable | unavailable | unavailable | declared |
 <!-- capabilities:end -->
 
