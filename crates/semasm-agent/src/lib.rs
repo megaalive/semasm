@@ -9,8 +9,14 @@
 
 pub mod context;
 pub mod evidence;
+pub mod failure;
 pub mod harness;
 pub mod verify;
+
+pub use failure::{
+    AgentFailureEnvelope, FailureLocation, FailureStage, Retryability,
+    AGENT_FAILURE_SCHEMA_VERSION,
+};
 
 use semasm_contract::CheckedContract;
 use semasm_core::SEMASM_VERSION;
@@ -153,6 +159,12 @@ pub struct ContextBundle {
     pub test_vectors: Vec<TestVector>,
     /// Shell commands that constitute acceptance.
     pub acceptance_commands: Vec<String>,
+    /// Builtin oracle catalog the agent may target (additive; empty in old packets).
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub supported_oracles: Vec<String>,
+    /// Loop idioms allowed under Fb7–Fb9b (Fb9c arbitrary invariants stay locked).
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub allowed_loop_idioms: Vec<String>,
 }
 
 /// A single ABI parameter mapping: name → register.
@@ -456,6 +468,8 @@ bounded_stack_bytes = 128
                 expected: serde_json::Value::Number(0.into()),
             }],
             acceptance_commands: vec!["nasm -f elf64 -o /dev/null src/count_byte.asm".into()],
+            supported_oracles: vec![],
+            allowed_loop_idioms: vec![],
         }
     }
 

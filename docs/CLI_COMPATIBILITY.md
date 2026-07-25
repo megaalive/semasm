@@ -40,18 +40,24 @@ VAA’s embedded agent-verify capability snapshot.
 Exit `0` only when overall status is `verified` (static gates passed and every
 harness vector passed after `--allow-execution`).
 
-Otherwise exit `1` and still emit a structured report when gates were reached:
+Otherwise exit `1` and still emit a structured JSON document on stdout:
 
-| Status | When |
+| Document | When |
+|---|---|
+| `VerificationReport` | Gates were reached (semantic / executable / behavior) |
+| `AgentFailureEnvelope` (`kind: agent_failure`) | Early exit: invalid target, missing toolchain, contract I/O, unsupported shape, assemble/link failure |
+
+| Status (VerificationReport) | When |
 |---|---|
 | `verified` | Static gates + behavioral vectors passed; no open caller obligations |
 | `verified_under_preconditions` | Same as `verified`, but alias/expr evidence relies on declared caller preconditions (ADR 0010; ≠ unconditional `verified`) |
 | `semantic_failed` | Object/decode/lowering/ABI/capability gate failed |
 | `executable_failed` | Linked image failed the executable-container policy |
 | `execution_denied` | Static gates passed; `--allow-execution` was not set |
-| `behavior_failed` | Execution ran; one or more vectors failed |
+| `behavior_failed` | Execution ran; one or more vectors failed (`behavior.cases[]` carries expected/observed) |
 
-JSON document type is `VerificationReport` from `semasm-agent::verify`:
+JSON document type for gate results is `VerificationReport` from `semasm-agent::verify`.
+Early failures use `AgentFailureEnvelope` (`crates/semasm-agent/schemas/agent-failure.json`).
 
 - `schema_version` — experimental agent schema (`0.5`); see
   `AGENT_SCHEMA_POLICY.md` and

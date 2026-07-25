@@ -189,6 +189,36 @@ pub const ORACLE_BUFFER_STORE_BYTE0: &str = "builtin.buffer.store_byte0";
 /// Profile version for [`ORACLE_BUFFER_STORE_BYTE0`].
 pub const ORACLE_BUFFER_STORE_BYTE0_VERSION: u32 = 1;
 
+/// Stable catalog of builtin oracles agents may target (x86 SysV/Win64 unless noted).
+#[must_use]
+pub fn supported_oracle_catalog() -> Vec<String> {
+    vec![
+        format!("{ORACLE_BUFFER_COUNT_EQUAL_U8}@v{ORACLE_BUFFER_COUNT_EQUAL_U8_VERSION}"),
+        format!("{ORACLE_BUFFER_FIND_FIRST_U8}@v{ORACLE_BUFFER_FIND_FIRST_U8_VERSION}"),
+        format!("{ORACLE_BUFFER_FIND_LAST_U8}@v{ORACLE_BUFFER_FIND_LAST_U8_VERSION}"),
+        format!("{ORACLE_BUFFER_MEMCMP_I8}@v{ORACLE_BUFFER_MEMCMP_I8_VERSION}"),
+        format!("{ORACLE_BUFFER_WRAPPING_SUM_I64}@v{ORACLE_BUFFER_WRAPPING_SUM_I64_VERSION}"),
+        format!("{ORACLE_BUFFER_REPLACE_BYTE}@v{ORACLE_BUFFER_REPLACE_BYTE_VERSION}"),
+        format!("{ORACLE_BUFFER_MEMSET}@v{ORACLE_BUFFER_MEMSET_VERSION}"),
+        format!("{ORACLE_BUFFER_MEMCPY}@v{ORACLE_BUFFER_MEMCPY_VERSION}"),
+        format!("{ORACLE_PURE_INT_BINARY_USIZE}@v{ORACLE_PURE_INT_BINARY_USIZE_VERSION}"),
+        format!("{ORACLE_PURE_INT_BINARY_I64}@v{ORACLE_PURE_INT_BINARY_I64_VERSION}"),
+        format!("{ORACLE_PURE_INT_UNARY_I64}@v{ORACLE_PURE_INT_UNARY_I64_VERSION}"),
+        format!("{ORACLE_BUFFER_LOAD_BYTE0}@v{ORACLE_BUFFER_LOAD_BYTE0_VERSION} (x86)"),
+        format!("{ORACLE_BUFFER_STORE_BYTE0}@v{ORACLE_BUFFER_STORE_BYTE0_VERSION} (x86)"),
+    ]
+}
+
+/// Loop idioms covered by Fb7–Fb9b collectors. Fb9c (arbitrary invariants) stays locked.
+#[must_use]
+pub fn allowed_loop_idioms() -> Vec<String> {
+    vec![
+        "count-up induction with constant stride (Fb7)".to_owned(),
+        "countdown (dec) induction with exclusive bound (Fb8)".to_owned(),
+        "affine index patterns on single buffer leaves (Fb9a/b)".to_owned(),
+    ]
+}
+
 /// Recognized binary pure-integer operation for `(usize, usize) -> usize`.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 enum PureIntOp {

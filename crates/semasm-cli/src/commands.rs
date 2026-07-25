@@ -10,6 +10,7 @@ use semasm_agent::{
         compare_reports, render_compare_markdown, render_evidence_card_json,
         render_evidence_card_markdown, EvidenceCardContext,
     },
+    failure::{AgentFailureEnvelope, FailureStage, Retryability},
     harness,
     verify::{
         sha256_digest_prefixed, ExecutableGate, ExecutionIsolation, GateStatus, SemanticGateError,
@@ -99,6 +100,20 @@ pub(crate) fn do_agent_packet(
         Vec::new(),
         Vec::new(),
     );
+    let allowed_commands = vec![
+        format!(
+            "semasm agent verify candidate.asm {} --target {target_str} --format json",
+            contract_path.display()
+        ),
+        format!(
+            "semasm agent verify candidate.asm {} --target {target_str} --format json --allow-execution",
+            contract_path.display()
+        ),
+    ];
+    let allowed_files = match source {
+        Some(path) => vec![path.display().to_string()],
+        None => vec!["candidate.asm".to_owned()],
+    };
     let packet = TaskPacket::new(
         "0.1.0",
         chrono_now(),
@@ -106,8 +121,8 @@ pub(crate) fn do_agent_packet(
         checked,
         identity,
         toolchain,
-        vec![contract_path.display().to_string()],
-        Vec::new(),
+        allowed_files,
+        allowed_commands,
         context,
     );
 
@@ -298,6 +313,16 @@ enum VerifyCore {
     },
 }
 
+/// Emit a structured failure envelope on stdout (stderr keeps the human line).
+fn early_failure(envelope: AgentFailureEnvelope, code: u8) -> VerifyCore {
+    eprintln!("{}", envelope.message);
+    match serde_json::to_string_pretty(&envelope) {
+        Ok(json) => println!("{json}"),
+        Err(error) => eprintln!("error: failed to serialize agent failure: {error}"),
+    }
+    VerifyCore::Early(ExitCode::from(code))
+}
+
 fn reproduce_verify_cmd(
     source: &Path,
     contract: &Path,
@@ -379,33 +404,62 @@ fn run_agent_verify_core(
     let identity = match TargetIdentity::parse_known(target_str) {
         Ok(identity) => identity,
         Err(error) => {
-            eprintln!("error: {error}");
-            return VerifyCore::Early(ExitCode::from(2));
+            return early_failure(
+                AgentFailureEnvelope::new(
+                    "INVALID_TARGET",
+                    FailureStage::Usage,
+                    format!("error: {error}"),
+                    Retryability::Never,
+                ),
+                2,
+            );
         }
     };
     let pipeline = Pipeline::discover(&identity);
     if !pipeline.all_tools_found() {
-        eprintln!("error: toolchain incomplete for target `{target_str}`");
-        eprintln!("  run `semasm target doctor {target_str}` for details");
-        eprintln!(
-            "  (assembler, linker, disassembler, and a runner such as qemu-x86_64 are required)"
+        return early_failure(
+            AgentFailureEnvelope::new(
+                "TOOLCHAIN_INCOMPLETE",
+                FailureStage::Toolchain,
+                format!(
+                    "error: toolchain incomplete for target `{target_str}`; run `semasm target doctor {target_str}`"
+                ),
+                Retryability::Tooling,
+            )
+            .with_target(target_str),
+            1,
         );
-        return VerifyCore::Early(ExitCode::from(1));
     }
     let run_isolation = ExecutionIsolation::from_runner(pipeline.toolchain.runner.as_deref());
 
     let contract_bytes = match std::fs::read(contract_path) {
         Ok(bytes) => bytes,
         Err(error) => {
-            eprintln!("{}: error: {error}", contract_path.display());
-            return VerifyCore::Early(ExitCode::from(1));
+            return early_failure(
+                AgentFailureEnvelope::new(
+                    "CONTRACT_IO",
+                    FailureStage::Io,
+                    format!("{}: error: {error}", contract_path.display()),
+                    Retryability::Tooling,
+                )
+                .with_target(target_str),
+                1,
+            );
         }
     };
     let source_bytes = match std::fs::read(source) {
         Ok(bytes) => bytes,
         Err(error) => {
-            eprintln!("{}: error: {error}", source.display());
-            return VerifyCore::Early(ExitCode::from(1));
+            return early_failure(
+                AgentFailureEnvelope::new(
+                    "SOURCE_IO",
+                    FailureStage::Io,
+                    format!("{}: error: {error}", source.display()),
+                    Retryability::Tooling,
+                )
+                .with_target(target_str),
+                1,
+            );
         }
     };
     let contract_digest = sha256_digest_prefixed(&contract_bytes);
@@ -413,34 +467,74 @@ fn run_agent_verify_core(
     let contract_text = match std::str::from_utf8(&contract_bytes) {
         Ok(text) => text,
         Err(error) => {
-            eprintln!("{}: error: {error}", contract_path.display());
-            return VerifyCore::Early(ExitCode::from(1));
+            return early_failure(
+                AgentFailureEnvelope::new(
+                    "CONTRACT_ENCODING",
+                    FailureStage::Contract,
+                    format!("{}: error: {error}", contract_path.display()),
+                    Retryability::Never,
+                )
+                .with_target(target_str)
+                .with_digests(Some(contract_digest), Some(source_digest)),
+                1,
+            );
         }
     };
     let check = semasm_contract::check_str(contract_text);
     if !check.ok() {
-        print!(
-            "{}",
-            format_diagnostics_terminal(&contract_path.display().to_string(), &check.diagnostics)
+        let diag = format_diagnostics_terminal(
+            &contract_path.display().to_string(),
+            &check.diagnostics,
         );
-        return VerifyCore::Early(ExitCode::from(1));
+        eprint!("{diag}");
+        return early_failure(
+            AgentFailureEnvelope::new(
+                "CONTRACT_INVALID",
+                FailureStage::Contract,
+                format!("{}: contract check failed", contract_path.display()),
+                Retryability::Never,
+            )
+            .with_target(target_str)
+            .with_digests(Some(contract_digest), Some(source_digest))
+            .with_detail(diag),
+            1,
+        );
     }
     let checked = check.contract.expect("ok() implies Some");
 
     let vectors = harness::synthesize_vectors(&checked);
     if vectors.is_empty() {
-        eprintln!(
-            "error: no test vectors synthesised for `{}`; \
-             the routine shape is not yet supported by the harness",
-            checked.name
+        return early_failure(
+            AgentFailureEnvelope::new(
+                "UNSUPPORTED_SHAPE",
+                FailureStage::UnsupportedShape,
+                format!(
+                    "error: no test vectors synthesised for `{}`; the routine shape is not yet supported by the harness",
+                    checked.name
+                ),
+                Retryability::Never,
+            )
+            .with_target(target_str)
+            .with_routine(&checked.name)
+            .with_digests(Some(contract_digest.clone()), Some(source_digest.clone())),
+            1,
         );
-        return VerifyCore::Early(ExitCode::from(1));
     }
     let harness_shape = match harness::resolve_harness_shape(&checked, &vectors) {
         Ok(shape) => shape,
         Err(message) => {
-            eprintln!("error: contract/harness mismatch: {message}");
-            return VerifyCore::Early(ExitCode::from(1));
+            return early_failure(
+                AgentFailureEnvelope::new(
+                    "HARNESS_MISMATCH",
+                    FailureStage::UnsupportedShape,
+                    format!("error: contract/harness mismatch: {message}"),
+                    Retryability::Never,
+                )
+                .with_target(target_str)
+                .with_routine(&checked.name)
+                .with_digests(Some(contract_digest.clone()), Some(source_digest.clone())),
+                1,
+            );
         }
     };
     let recognized_oracle = harness::recognize_behavior_oracle(&checked);
@@ -490,8 +584,18 @@ fn run_agent_verify_core(
             .unwrap_or("candidate")
     ));
     if let Err(error) = std::fs::create_dir_all(&directory) {
-        eprintln!("error: cannot create scratch dir: {error}");
-        return VerifyCore::Early(ExitCode::from(1));
+        return early_failure(
+            AgentFailureEnvelope::new(
+                "SCRATCH_IO",
+                FailureStage::Pipeline,
+                format!("error: cannot create scratch dir: {error}"),
+                Retryability::Tooling,
+            )
+            .with_target(target_str)
+            .with_routine(routine_symbol.clone())
+            .with_digests(Some(contract_digest.clone()), Some(source_digest.clone())),
+            1,
+        );
     }
     let routine_object = directory.join("routine.o");
     let harness_object = directory.join("harness.o");
@@ -511,28 +615,58 @@ fn run_agent_verify_core(
         // Object-policy adversarial fixtures (e.g. patched Win64 W+X COFF) skip
         // assemble and are copied into the scratch routine object path.
         if let Err(error) = std::fs::copy(source, &routine_object) {
-            eprintln!(
-                "{}: error: cannot stage prebuilt object: {error}",
-                source.display()
-            );
             let _ = std::fs::remove_dir_all(&directory);
-            return VerifyCore::Early(ExitCode::from(1));
+            return early_failure(
+                AgentFailureEnvelope::new(
+                    "SOURCE_IO",
+                    FailureStage::Io,
+                    format!(
+                        "{}: error: cannot stage prebuilt object: {error}",
+                        source.display()
+                    ),
+                    Retryability::Tooling,
+                )
+                .with_target(target_str)
+                .with_routine(routine_symbol.clone())
+                .with_digests(Some(contract_digest.clone()), Some(source_digest.clone())),
+                1,
+            );
         }
     } else {
         match pipeline.assemble_for_target(source, &routine_object) {
             Ok(output) if output.success() => {}
             Ok(output) => {
-                eprintln!(
-                    "assemble routine failed: {}",
-                    String::from_utf8_lossy(&output.stderr)
-                );
+                let detail = String::from_utf8_lossy(&output.stderr).into_owned();
                 let _ = std::fs::remove_dir_all(&directory);
-                return VerifyCore::Early(ExitCode::from(1));
+                return early_failure(
+                    AgentFailureEnvelope::new(
+                        "ASSEMBLE_FAILED",
+                        FailureStage::Assemble,
+                        format!("assemble routine failed: {detail}"),
+                        Retryability::Never,
+                    )
+                    .with_target(target_str)
+                    .with_routine(routine_symbol.clone())
+                    .with_digests(Some(contract_digest.clone()), Some(source_digest.clone()))
+                    .with_detail(detail),
+                    1,
+                );
             }
             Err(error) => {
-                eprintln!("assemble routine error: {error}");
                 let _ = std::fs::remove_dir_all(&directory);
-                return VerifyCore::Early(ExitCode::from(1));
+                return early_failure(
+                    AgentFailureEnvelope::new(
+                        "ASSEMBLE_ERROR",
+                        FailureStage::Assemble,
+                        format!("assemble routine error: {error}"),
+                        Retryability::Tooling,
+                    )
+                    .with_target(target_str)
+                    .with_routine(routine_symbol.clone())
+                    .with_digests(Some(contract_digest.clone()), Some(source_digest.clone()))
+                    .with_detail(error.to_string()),
+                    1,
+                );
             }
         }
     }
@@ -600,24 +734,54 @@ fn run_agent_verify_core(
     };
     let harness_path = directory.join(format!("harness.{harness_ext}"));
     if let Err(error) = std::fs::write(&harness_path, &harness_source) {
-        eprintln!("error: cannot write harness source: {error}");
         let _ = std::fs::remove_dir_all(&directory);
-        return VerifyCore::Early(ExitCode::from(1));
+        return early_failure(
+            AgentFailureEnvelope::new(
+                "HARNESS_IO",
+                FailureStage::Io,
+                format!("error: cannot write harness source: {error}"),
+                Retryability::Tooling,
+            )
+            .with_target(target_str)
+            .with_routine(routine_symbol.clone())
+            .with_digests(Some(contract_digest.clone()), Some(source_digest.clone())),
+            1,
+        );
     }
     match pipeline.assemble_for_target(&harness_path, &harness_object) {
         Ok(output) if output.success() => {}
         Ok(output) => {
-            eprintln!(
-                "assemble harness failed: {}",
-                String::from_utf8_lossy(&output.stderr)
-            );
+            let detail = String::from_utf8_lossy(&output.stderr).into_owned();
             let _ = std::fs::remove_dir_all(&directory);
-            return VerifyCore::Early(ExitCode::from(1));
+            return early_failure(
+                AgentFailureEnvelope::new(
+                    "ASSEMBLE_HARNESS_FAILED",
+                    FailureStage::Assemble,
+                    format!("assemble harness failed: {detail}"),
+                    Retryability::Never,
+                )
+                .with_target(target_str)
+                .with_routine(routine_symbol.clone())
+                .with_digests(Some(contract_digest.clone()), Some(source_digest.clone()))
+                .with_detail(detail),
+                1,
+            );
         }
         Err(error) => {
-            eprintln!("assemble harness error: {error}");
             let _ = std::fs::remove_dir_all(&directory);
-            return VerifyCore::Early(ExitCode::from(1));
+            return early_failure(
+                AgentFailureEnvelope::new(
+                    "ASSEMBLE_HARNESS_ERROR",
+                    FailureStage::Assemble,
+                    format!("assemble harness error: {error}"),
+                    Retryability::Tooling,
+                )
+                .with_target(target_str)
+                .with_routine(routine_symbol.clone())
+                .with_digests(Some(contract_digest.clone()), Some(source_digest.clone()))
+                .with_detail(error.to_string()),
+                1,
+            );
         }
     }
 
@@ -628,14 +792,37 @@ fn run_agent_verify_core(
     match pipeline.link_for_target(&[&routine_object, &harness_object], &executable, entry) {
         Ok(output) if output.success() => {}
         Ok(output) => {
-            eprintln!("link failed: {}", String::from_utf8_lossy(&output.stderr));
+            let detail = String::from_utf8_lossy(&output.stderr).into_owned();
             let _ = std::fs::remove_dir_all(&directory);
-            return VerifyCore::Early(ExitCode::from(1));
+            return early_failure(
+                AgentFailureEnvelope::new(
+                    "LINK_FAILED",
+                    FailureStage::Link,
+                    format!("link failed: {detail}"),
+                    Retryability::Never,
+                )
+                .with_target(target_str)
+                .with_routine(routine_symbol.clone())
+                .with_digests(Some(contract_digest.clone()), Some(source_digest.clone()))
+                .with_detail(detail),
+                1,
+            );
         }
         Err(error) => {
-            eprintln!("link error: {error}");
             let _ = std::fs::remove_dir_all(&directory);
-            return VerifyCore::Early(ExitCode::from(1));
+            return early_failure(
+                AgentFailureEnvelope::new(
+                    "LINK_ERROR",
+                    FailureStage::Link,
+                    format!("link error: {error}"),
+                    Retryability::Tooling,
+                )
+                .with_target(target_str)
+                .with_routine(routine_symbol.clone())
+                .with_digests(Some(contract_digest.clone()), Some(source_digest.clone()))
+                .with_detail(error.to_string()),
+                1,
+            );
         }
     }
 

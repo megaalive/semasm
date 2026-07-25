@@ -1,0 +1,58 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "AgentFailureEnvelope",
+  "description": "Stdout JSON when `semasm agent verify` fails before a full VerificationReport (toolchain, assemble/link, unsupported shape, I/O).",
+  "type": "object",
+  "required": [
+    "schema_version",
+    "kind",
+    "code",
+    "stage",
+    "message",
+    "retryability"
+  ],
+  "properties": {
+    "schema_version": { "type": "string", "const": "0.1" },
+    "kind": { "type": "string", "const": "agent_failure" },
+    "code": {
+      "type": "string",
+      "minLength": 1,
+      "description": "Stable reason code (UNSUPPORTED_SHAPE, ASSEMBLE_FAILED, TOOLCHAIN_INCOMPLETE, …)."
+    },
+    "stage": {
+      "type": "string",
+      "enum": [
+        "usage",
+        "toolchain",
+        "contract",
+        "io",
+        "unsupported_shape",
+        "assemble",
+        "link",
+        "execute",
+        "pipeline"
+      ]
+    },
+    "message": { "type": "string" },
+    "retryability": {
+      "type": "string",
+      "enum": ["never", "tooling", "transient"]
+    },
+    "tool_version": { "type": ["string", "null"] },
+    "target": { "type": ["string", "null"] },
+    "routine_symbol": { "type": ["string", "null"] },
+    "contract_digest": { "type": ["string", "null"] },
+    "source_digest": { "type": ["string", "null"] },
+    "location": {
+      "type": ["object", "null"],
+      "properties": {
+        "path": { "type": ["string", "null"] },
+        "line": { "type": ["integer", "null"], "minimum": 1 },
+        "column": { "type": ["integer", "null"], "minimum": 1 }
+      },
+      "additionalProperties": false
+    },
+    "detail": { "type": ["string", "null"] }
+  },
+  "additionalProperties": false
+}

@@ -61,6 +61,8 @@ impl ContextBundle {
             existing_source,
             test_vectors,
             acceptance_commands: build_acceptance(target, toolchain),
+            supported_oracles: crate::harness::supported_oracle_catalog(),
+            allowed_loop_idioms: crate::harness::allowed_loop_idioms(),
         }
     }
 
@@ -182,16 +184,18 @@ fn registers(regs: Option<&ABIRegisterMap>) -> (Vec<String>, Vec<String>) {
 }
 
 fn build_acceptance(target: &TargetIdentity, toolchain: &TargetToolchain) -> Vec<String> {
-    // Derived from the build pipeline known in semasm-build.
-    let fmt = target.nasm_format();
-    let ext = "asm";
+    let target_id = &target.name;
     vec![
-        format!("{} -f {fmt} -o /dev/null src/*.{ext}", toolchain.assembler),
         format!(
-            "{} --build-id=none --hash-style=sysv -o /dev/null /dev/null",
-            toolchain.linker,
+            "semasm agent verify candidate.asm contract.sem.toml --target {target_id} --format json"
         ),
-        format!("{} -f {fmt} src/*.{ext} -o src/*.o", toolchain.assembler),
+        format!(
+            "semasm agent verify candidate.asm contract.sem.toml --target {target_id} --format json --allow-execution"
+        ),
+        format!(
+            "semasm target doctor {target_id} --format json"
+        ),
+        format!("{} --version", toolchain.assembler),
     ]
 }
 

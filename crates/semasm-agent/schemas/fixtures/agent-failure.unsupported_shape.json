@@ -1,0 +1,11 @@
+{
+  "schema_version": "0.1",
+  "kind": "agent_failure",
+  "code": "UNSUPPORTED_SHAPE",
+  "stage": "unsupported_shape",
+  "message": "no builtin harness vectors for routine shape",
+  "retryability": "never",
+  "tool_version": "semasm 0.2.0",
+  "target": "x86_64-unknown-linux-gnu",
+  "routine_symbol": "foo"
+}
