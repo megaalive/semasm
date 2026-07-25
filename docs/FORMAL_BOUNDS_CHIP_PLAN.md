@@ -26,12 +26,13 @@ Forbidden: SMT; proving arbitrary `ensures`; claiming general memory safety.
 | **Fb6** | Range-guard index (`cmp`+`jae`/`jge` fall-through) → `proven_inside` | **done** |
 | **Fb7** | Post-test counted-loop induction (`access; inc; cmp; jb`) → `proven_inside` | **done** |
 | **Fb8** | Countdown induction (`mov N; dec; access; jnz`) → `proven_inside` | **done** |
-| **Fb9** | CFG-sound / arbitrary loop invariant induction | **locked** |
+| **Fb9a** | CFG-confirmed structured pre-test induction | **done** |
+| **Fb9b** | Arbitrary loop invariant inference | **locked** |
 
 ## Non-goals
 
 - Promoting symbolic-length `verified_under_preconditions` → `verified`
-- CFG-sound arbitrary loop invariant inference (Fb9)
+- Arbitrary loop invariant inference (Fb9b)
 - Changing VAA profile names for affine leaves
 - Claiming symbolic / unguarded indexed accesses are statically inside
 
@@ -66,4 +67,10 @@ register has parameter affinity. Collectors no longer collapse these to
 - **With** `index_max_exclusive` (Fb8): countdown loops
   `mov idx,N; …; dec idx; access; …; jnz/jns …` so after `dec`,
   `idx ∈ [0,N)`. Linear pattern match — **not** CFG-sound arbitrary
-  induction (Fb9 locked).
+  induction.
+- **With** `index_max_exclusive` (Fb9a): structured pre-test loops
+  `xor idx,idx; header: cmp idx,N; jae exit; access; inc idx; jmp header`.
+  Physical branch destinations must resolve to the header/exit instruction
+  addresses and no other body instruction may write `idx`. This is
+  CFG-confirmed for that narrow shape; arbitrary invariant inference remains
+  Fb9b locked.

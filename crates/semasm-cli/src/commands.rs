@@ -920,7 +920,7 @@ fn verify_candidate_semantics(
                 lowering_coverage,
             )?;
             let (alias_analysis, region_access) =
-                evaluate_x86_memory_evidence(contract, &lowered, identity.abi);
+                evaluate_x86_memory_evidence(contract, &physical, &lowered, identity.abi);
             Ok((
                 semantic_gates_passed(code_bytes, decode_coverage, lowering_coverage),
                 alias_analysis,
@@ -984,6 +984,7 @@ fn verify_candidate_semantics(
 #[cfg(feature = "capstone")]
 fn evaluate_x86_memory_evidence(
     contract: &semasm_contract::CheckedContract,
+    physical: &[semasm_decode::PhysicalInstruction],
     lowered: &[semasm_x86::lower::LoweredInstr],
     abi: Abi,
 ) -> (Option<AliasAnalysisReport>, Option<RegionAccessReport>) {
@@ -995,7 +996,9 @@ fn evaluate_x86_memory_evidence(
         Abi::WindowsX64 => crate::memory_effects::AbiConvention::Win64,
         _ => return (None, None),
     };
-    let accesses = crate::memory_effects::collect_memory_effects(lowered, contract, convention);
+    let accesses = crate::memory_effects::collect_memory_effects_with_cfg(
+        lowered, physical, contract, convention,
+    );
     (
         Some(evaluate_alias(memory, &accesses)),
         Some(evaluate_region_access(memory, &accesses)),

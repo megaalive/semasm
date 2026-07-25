@@ -8,6 +8,11 @@ follow [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Added
 
+- **Fb9a CFG-confirmed pre-test induction** — physical branch targets confirm
+  `xor idx,idx; cmp idx,N; jae exit; access; inc idx; jmp header` before
+  attaching `index_max_exclusive = N`. Structured shape only; arbitrary loop
+  invariant inference remains Fb9b locked. Symbolic-length Phase C/D are not
+  promoted.
 - **Fb8 countdown induction → proven_inside** — linear pattern
   `mov idx,N; dec idx; access [base+idx]; jnz/jns` attaches
   `index_max_exclusive = N`. Complements Fb7 count-up. CFG-sound
