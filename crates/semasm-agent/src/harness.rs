@@ -1330,14 +1330,11 @@ fn synthesize_pure_int_unary_i64_vectors(op: PureIntUnaryI64Op) -> Vec<TestVecto
             ("negative", -3),
             ("minus_one", -1),
         ],
-        PureIntUnaryI64Op::Double | PureIntUnaryI64Op::Inc | PureIntUnaryI64Op::AddBase100 => vec![
-            ("zero", 0),
-            ("positive", 5),
-            ("negative", -5),
-            ("max", i64::MAX),
-            ("min wraps", i64::MIN),
-        ],
-        PureIntUnaryI64Op::Identity | PureIntUnaryI64Op::Abs => vec![
+        PureIntUnaryI64Op::Double
+        | PureIntUnaryI64Op::Inc
+        | PureIntUnaryI64Op::AddBase100
+        | PureIntUnaryI64Op::Identity
+        | PureIntUnaryI64Op::Abs => vec![
             ("zero", 0),
             ("positive", 5),
             ("negative", -5),
