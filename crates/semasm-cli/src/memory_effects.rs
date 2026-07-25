@@ -138,8 +138,7 @@ fn discover_cfg_pre_test_inductions(
         let mut saw_inc = false;
         let mut accesses = Vec::new();
         let mut valid = true;
-        for at in header + 2..back {
-            let instr = &lowered[at];
+        for (at, instr) in lowered.iter().enumerate().take(back).skip(header + 2) {
             if writes_gp(instr, gp) {
                 let is_inc = instr.mnemonic.eq_ignore_ascii_case("inc")
                     && matches!(
@@ -164,7 +163,10 @@ fn discover_cfg_pre_test_inductions(
         }
         if valid && saw_inc {
             for at in accesses {
-                out.insert(at, (gp, *bound as u64));
+                let Ok(bound_u) = u64::try_from(*bound) else {
+                    continue;
+                };
+                out.insert(at, (gp, bound_u));
             }
         }
     }
@@ -264,7 +266,10 @@ fn discover_cfg_post_test_inductions(
         if branch_target_index(&physical[br_at], &by_address) != Some(access_at) {
             continue;
         }
-        out.insert(access_at, (idx_gp, *bound as u64));
+        let Ok(bound_u) = u64::try_from(*bound) else {
+            continue;
+        };
+        out.insert(access_at, (idx_gp, bound_u));
     }
     out
 }
@@ -369,7 +374,6 @@ fn post_test_bound_after(lowered: &[LoweredInstr], from: usize, gp: Gp) -> Optio
                                 return None;
                             }
                             saw_inc = true;
-                            continue;
                         }
                     }
                 }
@@ -406,7 +410,7 @@ fn post_test_bound_after(lowered: &[LoweredInstr], from: usize, gp: Gp) -> Optio
                             let br = next.mnemonic.to_ascii_lowercase();
                             // jb/jl: continue while index < bound after the inc.
                             if matches!(br.as_str(), "jb" | "jnae" | "jl" | "jnge") {
-                                return Some(*imm as u64);
+                                return u64::try_from(*imm).ok();
                             }
                         }
                     }
@@ -524,7 +528,7 @@ fn countdown_bound_for_access(lowered: &[LoweredInstr], access_at: usize, gp: Gp
                     if let Storage::Gp(d) = dst.storage {
                         if d == gp {
                             if *imm > 0 {
-                                return Some(*imm as u64);
+                                return u64::try_from(*imm).ok();
                             }
                             return None;
                         }
@@ -717,6 +721,7 @@ fn width_bytes(width: Width) -> u32 {
     width.bits() / 8
 }
 
+#[allow(clippy::too_many_lines)] // Fb affinity / cmp-bound state machine is intentionally dense.
 fn update_affinity(
     instr: &LoweredInstr,
     affinity: &mut HashMap<Gp, String>,
@@ -735,8 +740,8 @@ fn update_affinity(
                 (instr.operands.first(), instr.operands.get(1))
             {
                 if let Storage::Gp(gp) = reg.storage {
-                    if *imm >= 0 {
-                        *pending_cmp = Some((gp, *imm as u64));
+                    if let Ok(bound) = u64::try_from(*imm) {
+                        *pending_cmp = Some((gp, bound));
                     }
                 }
             }
@@ -795,7 +800,11 @@ fn update_affinity(
                         }
                         Some(Operand::Imm(imm)) => {
                             affinity.remove(&dst_gp);
-                            consts.insert(dst_gp, *imm as u64);
+                            if let Ok(c) = u64::try_from(*imm) {
+                                consts.insert(dst_gp, c);
+                            } else {
+                                consts.remove(&dst_gp);
+                            }
                             uppers.remove(&dst_gp);
                         }
                         Some(Operand::Mem(mem)) => {
