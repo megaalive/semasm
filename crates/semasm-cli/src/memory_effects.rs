@@ -124,15 +124,20 @@ fn classify_addr(mem: &MemOperand, affinity: &HashMap<Gp, String>) -> AccessAddr
     let Storage::Gp(gp) = base.storage else {
         return AccessAddr::Unknown;
     };
-    if mem.index.is_some() && mem.scale > 0 {
+    let Some(param) = affinity.get(&gp) else {
         return AccessAddr::Unknown;
-    }
-    match affinity.get(&gp) {
-        Some(param) => AccessAddr::Affine {
+    };
+    // Fb4: model indexed form instead of collapsing to Unknown.
+    if mem.index.is_some() {
+        return AccessAddr::Indexed {
             base_param: param.clone(),
-            offset: mem.disp,
-        },
-        None => AccessAddr::Unknown,
+            scale: mem.scale.max(1),
+            displacement: mem.disp,
+        };
+    }
+    AccessAddr::Affine {
+        base_param: param.clone(),
+        offset: mem.disp,
     }
 }
 

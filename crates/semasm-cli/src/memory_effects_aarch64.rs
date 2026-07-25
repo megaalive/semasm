@@ -86,17 +86,23 @@ fn classify_addr(mem: &MemOperand, affinity: &HashMap<Gp, String>) -> AccessAddr
     let Some(base) = mem.base else {
         return AccessAddr::Unknown;
     };
-    if mem.index.is_some() && mem.scale != 0 {
-        return AccessAddr::Unknown;
-    }
     match base.storage {
-        Storage::Gp(gp) => match affinity.get(&gp) {
-            Some(param) => AccessAddr::Affine {
+        Storage::Gp(gp) => {
+            let Some(param) = affinity.get(&gp) else {
+                return AccessAddr::Unknown;
+            };
+            if mem.index.is_some() {
+                return AccessAddr::Indexed {
+                    base_param: param.clone(),
+                    scale: u8::try_from(mem.scale.max(1)).unwrap_or(1),
+                    displacement: mem.disp,
+                };
+            }
+            AccessAddr::Affine {
                 base_param: param.clone(),
                 offset: mem.disp,
-            },
-            None => AccessAddr::Unknown,
-        },
+            }
+        }
         Storage::Sp | Storage::Nzcv => AccessAddr::StackFrame,
     }
 }

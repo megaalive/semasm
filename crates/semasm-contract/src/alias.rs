@@ -128,12 +128,25 @@ impl RelationObserved {
 #[cfg_attr(feature = "schema", derive(schemars::JsonSchema))]
 #[serde(rename_all = "snake_case")]
 pub enum AccessAddr {
-    /// Affine form relative to a named pointer parameter.
+    /// Affine form relative to a named pointer parameter (`base+const`).
     Affine {
         /// Parameter name used as base.
         base_param: String,
         /// Constant byte offset from that parameter.
         offset: i64,
+    },
+    /// Indexed form `base + index*scale + disp` (Fb4).
+    ///
+    /// Base is a named pointer parameter. Index bounds are **not** proven
+    /// statically in Fb4 — region_access treats these as may-escape /
+    /// under_preconditions (not unconditional `proven_inside`).
+    Indexed {
+        /// Parameter name used as base.
+        base_param: String,
+        /// Scale applied to the index register (1, 2, 4, or 8).
+        scale: u8,
+        /// Constant displacement.
+        displacement: i64,
     },
     /// Frame / stack spill (ignored for region/alias evidence).
     StackFrame,

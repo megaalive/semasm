@@ -224,6 +224,76 @@ fn judge_access(memory: &CheckedMemory, access: &ObservedMemoryAccess) -> Memory
         AccessAddr::Affine { base_param, offset } => {
             judge_affine_access(memory, access, base_param, *offset)
         }
+        AccessAddr::Indexed {
+            base_param,
+            scale,
+            displacement,
+        } => judge_indexed_access(memory, access, base_param, *scale, *displacement),
+    }
+}
+
+/// Fb4: indexed `base+index*scale+disp` with known base affinity.
+///
+/// Without a static index-range proof, never claim `proven_inside`. When the
+/// base matches a declared region and permission allows, record
+/// `may_escape` + `declared_precondition` (caller index/length obligation).
+fn judge_indexed_access(
+    memory: &CheckedMemory,
+    access: &ObservedMemoryAccess,
+    base_param: &str,
+    scale: u8,
+    displacement: i64,
+) -> MemoryAccessEvidence {
+    let address = format!("{base_param}+index*{scale}{displacement:+}");
+    let candidates: Vec<&CheckedRegion> = memory
+        .regions
+        .iter()
+        .filter(|r| r.base_param == base_param)
+        .collect();
+    if candidates.is_empty() {
+        return MemoryAccessEvidence {
+            instruction_offset: access.instruction_offset,
+            operation: access.mode,
+            width: access.width_bytes,
+            address,
+            region: None,
+            bounds: BoundsStatus::Unknown,
+            permission: PermissionStatus::Unknown,
+            evidence_basis: RelationEvidenceBasis::Unknown,
+        };
+    }
+    let region = candidates
+        .iter()
+        .copied()
+        .find(|r| access_allowed(r.access, access.mode))
+        .or_else(|| candidates.first().copied())
+        .expect("candidates non-empty");
+    let permission = if access_allowed(region.access, access.mode) {
+        PermissionStatus::Allowed
+    } else {
+        PermissionStatus::Denied
+    };
+    if permission == PermissionStatus::Denied {
+        return MemoryAccessEvidence {
+            instruction_offset: access.instruction_offset,
+            operation: access.mode,
+            width: access.width_bytes,
+            address,
+            region: Some(region.name.clone()),
+            bounds: BoundsStatus::MayEscape,
+            permission,
+            evidence_basis: RelationEvidenceBasis::ProvenStatic,
+        };
+    }
+    MemoryAccessEvidence {
+        instruction_offset: access.instruction_offset,
+        operation: access.mode,
+        width: access.width_bytes,
+        address,
+        region: Some(region.name.clone()),
+        bounds: BoundsStatus::MayEscape,
+        permission,
+        evidence_basis: RelationEvidenceBasis::DeclaredPrecondition,
     }
 }
 
@@ -553,5 +623,38 @@ mod tests {
         let report = evaluate_region_access(&memory, &accesses);
         assert_eq!(report.status, RegionAccessStatus::Incomplete);
         assert_eq!(report.accesses[0].bounds, BoundsStatus::MayEscape);
+    }
+
+    #[test]
+    fn indexed_base_is_under_preconditions_not_proven_inside() {
+        let memory = CheckedMemory {
+            regions: vec![region(
+                "buf",
+                "p",
+                0,
+                LengthSpec::Literal(8),
+                RegionAccess::Read,
+            )],
+            relations: vec![],
+        };
+        let accesses = vec![ObservedMemoryAccess {
+            mode: AccessMode::Load,
+            width_bytes: 1,
+            addr: AccessAddr::Indexed {
+                base_param: "p".into(),
+                scale: 1,
+                displacement: 0,
+            },
+            mnemonic: "mov".into(),
+            instruction_offset: 0,
+        }];
+        let report = evaluate_region_access(&memory, &accesses);
+        assert_eq!(report.status, RegionAccessStatus::PassedUnderPreconditions);
+        assert_eq!(report.accesses[0].bounds, BoundsStatus::MayEscape);
+        assert_eq!(
+            report.accesses[0].evidence_basis,
+            RelationEvidenceBasis::DeclaredPrecondition
+        );
+        assert_ne!(report.accesses[0].bounds, BoundsStatus::ProvenInside);
     }
 }
