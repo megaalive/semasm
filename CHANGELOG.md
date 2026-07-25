@@ -8,6 +8,12 @@ follow [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Added
 
+- **Concrete 1-byte cell leaves** — `load_byte0` / `store_byte0` with literal
+  region length `"1"` reach unconditional SemASM `verified`
+  (`region_access.passed`). Oracles `builtin.buffer.load_byte0` /
+  `builtin.buffer.store_byte0` + CellLoad/CellStore harness (SysV/Win64).
+  Does **not** promote symbolic-length Phase C/D leaves. Fb3 docs unlock this
+  path; Fb4 (index-bounded `AccessAddr`) remains locked.
 - **Pure-int i64 oracles** — `builtin.pure_int.binary_i64` v2 (`add_i64` /
   `sub_i64` / `min_i64` / `max_i64` / `add_then_double`; wrapping arithmetic;
   stricter `add`/`sum` token matching so nested-call names are not

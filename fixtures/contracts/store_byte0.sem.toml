@@ -1,0 +1,36 @@
+contract_version = "0.1"
+
+[function]
+name = "store_byte0"
+summary = "Store value at buffer+0 in a fixed 1-byte cell; return the stored value (concrete bounds)"
+
+[[function.parameters]]
+name = "buffer"
+type = "ptr<u8>"
+role = "input"
+
+[[function.parameters]]
+name = "value"
+type = "u8"
+role = "input"
+
+[[function.returns]]
+name = "stored"
+type = "usize"
+
+[[function.effects]]
+kind = "memory_write"
+region = "buffer[0..1]"
+
+[function.memory]
+
+[[function.memory.regions]]
+name = "cell"
+base = "buffer"
+length = "1"
+access = "write"
+
+[function.constraints]
+no_heap = true
+no_recursion = true
+bounded_stack_bytes = 64

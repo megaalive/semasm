@@ -122,6 +122,12 @@ pub fn synthesize_vectors(contract: &CheckedContract) -> Vec<TestVector> {
     if let Some(op) = pure_int_unary_i64_shape(contract) {
         return synthesize_pure_int_unary_i64_vectors(op);
     }
+    if cell_load_shape(contract) {
+        return synthesize_cell_load_vectors();
+    }
+    if cell_store_shape(contract) {
+        return synthesize_cell_store_vectors();
+    }
     Vec::new()
 }
 
@@ -174,6 +180,14 @@ pub const ORACLE_PURE_INT_UNARY_I64: &str = "builtin.pure_int.unary_i64";
 /// Profile version for [`ORACLE_PURE_INT_UNARY_I64`] (v3: +Phase-E `double` /
 /// `inc` / `add_base100`).
 pub const ORACLE_PURE_INT_UNARY_I64_VERSION: u32 = 3;
+/// Builtin oracle id for concrete 1-byte cell load (`load_byte0`).
+pub const ORACLE_BUFFER_LOAD_BYTE0: &str = "builtin.buffer.load_byte0";
+/// Profile version for [`ORACLE_BUFFER_LOAD_BYTE0`].
+pub const ORACLE_BUFFER_LOAD_BYTE0_VERSION: u32 = 1;
+/// Builtin oracle id for concrete 1-byte cell store (`store_byte0`).
+pub const ORACLE_BUFFER_STORE_BYTE0: &str = "builtin.buffer.store_byte0";
+/// Profile version for [`ORACLE_BUFFER_STORE_BYTE0`].
+pub const ORACLE_BUFFER_STORE_BYTE0_VERSION: u32 = 1;
 
 /// Recognized binary pure-integer operation for `(usize, usize) -> usize`.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -386,6 +400,21 @@ pub fn recognize_behavior_oracle(contract: &CheckedContract) -> Option<Recognize
             claim: op.claim(),
         });
     }
+    if cell_load_shape(contract) {
+        return Some(RecognizedOracle {
+            id: ORACLE_BUFFER_LOAD_BYTE0,
+            version: ORACLE_BUFFER_LOAD_BYTE0_VERSION,
+            claim: "result equals the zero-extended byte at buffer[0] (fixed 1-byte cell)",
+        });
+    }
+    if cell_store_shape(contract) {
+        return Some(RecognizedOracle {
+            id: ORACLE_BUFFER_STORE_BYTE0,
+            version: ORACLE_BUFFER_STORE_BYTE0_VERSION,
+            claim:
+                "stores value at buffer[0] (fixed 1-byte cell) and returns the zero-extended value",
+        });
+    }
     None
 }
 
@@ -393,6 +422,12 @@ pub fn recognize_behavior_oracle(contract: &CheckedContract) -> Option<Recognize
 /// pure-integer shapes that do not declare `memory_write`.
 #[must_use]
 pub fn is_read_only_buffer_scan(contract: &CheckedContract) -> bool {
+    if cell_load_shape(contract) {
+        return true;
+    }
+    if cell_store_shape(contract) {
+        return false;
+    }
     if pure_int_shape(contract).is_some()
         || pure_int_i64_shape(contract).is_some()
         || pure_int_unary_i64_shape(contract).is_some()
@@ -547,7 +582,8 @@ pub fn resolve_harness_shape(
     // dual-buffer layout.
     let compatible = detected == expected
         || (expected == HarnessShape::Memset && detected == HarnessShape::BufferScan)
-        || (expected == HarnessShape::Memcpy && detected == HarnessShape::MemCmp);
+        || (expected == HarnessShape::Memcpy && detected == HarnessShape::MemCmp)
+        || (expected == HarnessShape::CellStore && detected == HarnessShape::I64Sum);
     if !compatible {
         return Err(format!(
             "oracle `{}` expects {:?} vectors but harness detected {:?}",
@@ -570,6 +606,8 @@ fn oracle_expected_shape(oracle_id: &str) -> Result<HarnessShape, String> {
         ORACLE_BUFFER_WRAPPING_SUM_I64 => Ok(HarnessShape::I64Sum),
         ORACLE_PURE_INT_BINARY_USIZE | ORACLE_PURE_INT_BINARY_I64 => Ok(HarnessShape::PureInt),
         ORACLE_PURE_INT_UNARY_I64 => Ok(HarnessShape::PureIntUnary),
+        ORACLE_BUFFER_LOAD_BYTE0 => Ok(HarnessShape::CellLoad),
+        ORACLE_BUFFER_STORE_BYTE0 => Ok(HarnessShape::CellStore),
         other => Err(format!("unrecognized oracle id `{other}`")),
     }
 }
@@ -602,6 +640,11 @@ pub enum HarnessShape {
     PureInt,
     /// `(i64) -> i64` — `return_i64` / `abs_i64`.
     PureIntUnary,
+    /// `(ptr<const u8>) -> usize` — concrete 1-byte cell load (`load_byte0`).
+    CellLoad,
+    /// `(ptr<u8>, u8) -> usize` — concrete 1-byte cell store (`store_byte0`);
+    /// shares wire layout with [`HarnessShape::I64Sum`] (array + number).
+    CellStore,
 }
 
 /// Detect harness shape from the first test vector's input layout.
@@ -651,12 +694,20 @@ fn detect_harness_shape(vectors: &[TestVector]) -> Result<HarnessShape, String> 
         1 if first.inputs.iter().all(serde_json::Value::is_number) => {
             Ok(HarnessShape::PureIntUnary)
         }
+        1 if matches!(
+            first.inputs.first(),
+            Some(serde_json::Value::Null | serde_json::Value::Array(_))
+        ) =>
+        {
+            Ok(HarnessShape::CellLoad)
+        }
         n => Err(format!(
             "unsupported test vector shape ({n} inputs); \
              expected buffer-scan (3: array/null + two numbers), replace-byte \
              (4: array/null + three numbers), memcmp \
              (3: two arrays/null + length), i64-sum (2: array/null + length), \
-             pure-int (2 numeric), or pure-int-unary (1 numeric)"
+             pure-int (2 numeric), pure-int-unary (1 numeric), or cell-load \
+             (1: array/null)"
         )),
     }
 }
@@ -1279,9 +1330,7 @@ fn synthesize_pure_int_unary_i64_vectors(op: PureIntUnaryI64Op) -> Vec<TestVecto
             ("negative", -3),
             ("minus_one", -1),
         ],
-        PureIntUnaryI64Op::Double
-        | PureIntUnaryI64Op::Inc
-        | PureIntUnaryI64Op::AddBase100 => vec![
+        PureIntUnaryI64Op::Double | PureIntUnaryI64Op::Inc | PureIntUnaryI64Op::AddBase100 => vec![
             ("zero", 0),
             ("positive", 5),
             ("negative", -5),
@@ -1357,7 +1406,10 @@ fn pure_int_i64_op_from_name(name: &str) -> Option<PureIntI64Op> {
     }
 
     let matches: Vec<PureIntI64Op> = [
-        (name_token_hit(&lower, "add") || name_token_hit(&lower, "sum"), PureIntI64Op::Add),
+        (
+            name_token_hit(&lower, "add") || name_token_hit(&lower, "sum"),
+            PureIntI64Op::Add,
+        ),
         (name_token_hit(&lower, "sub"), PureIntI64Op::Sub),
         (name_token_hit(&lower, "min"), PureIntI64Op::Min),
         (name_token_hit(&lower, "max"), PureIntI64Op::Max),
@@ -1452,6 +1504,36 @@ fn pure_int_unary_i64_types(contract: &CheckedContract) -> bool {
         .returns
         .iter()
         .any(|r| matches!(r.ty, SemType::Int { bits: 64 }))
+}
+
+fn cell_load_shape(contract: &CheckedContract) -> bool {
+    contract.name.to_ascii_lowercase().contains("load_byte0")
+}
+
+fn cell_store_shape(contract: &CheckedContract) -> bool {
+    contract.name.to_ascii_lowercase().contains("store_byte0")
+}
+
+fn synthesize_cell_load_vectors() -> Vec<TestVector> {
+    [0u64, 1, 0x41, 0xff]
+        .into_iter()
+        .map(|b| TestVector {
+            name: format!("cell byte {b:#x}"),
+            inputs: vec![serde_json::json!([b])],
+            expected: serde_json::json!(b),
+        })
+        .collect()
+}
+
+fn synthesize_cell_store_vectors() -> Vec<TestVector> {
+    [(0u64, 7u64), (0xff, 0), (0x11, 0x22), (0, 0xff)]
+        .into_iter()
+        .map(|(initial, value)| TestVector {
+            name: format!("store {value:#x} over {initial:#x}"),
+            inputs: vec![serde_json::json!([initial]), serde_json::json!(value)],
+            expected: serde_json::json!(value),
+        })
+        .collect()
 }
 
 /// Three distinct bytes that are not equal to `needle`.
@@ -2284,6 +2366,12 @@ pub fn generate_harness(
             routine_symbol,
             vectors,
         )),
+        (Abi::SysVAmd64, HarnessShape::CellLoad) => {
+            Ok(generate_sysv_cell_load_harness(routine_symbol, vectors))
+        }
+        (Abi::SysVAmd64, HarnessShape::CellStore) => {
+            Ok(generate_sysv_cell_store_harness(routine_symbol, vectors))
+        }
         (Abi::WindowsX64, HarnessShape::BufferScan) => {
             Ok(generate_win64_buffer_harness(routine_symbol, vectors))
         }
@@ -2305,9 +2393,16 @@ pub fn generate_harness(
         (Abi::WindowsX64, HarnessShape::PureInt) => {
             Ok(generate_win64_pure_int_harness(routine_symbol, vectors))
         }
-        (Abi::WindowsX64, HarnessShape::PureIntUnary) => Ok(
-            generate_win64_pure_int_unary_harness(routine_symbol, vectors),
-        ),
+        (Abi::WindowsX64, HarnessShape::PureIntUnary) => Ok(generate_win64_pure_int_unary_harness(
+            routine_symbol,
+            vectors,
+        )),
+        (Abi::WindowsX64, HarnessShape::CellLoad) => {
+            Ok(generate_win64_cell_load_harness(routine_symbol, vectors))
+        }
+        (Abi::WindowsX64, HarnessShape::CellStore) => {
+            Ok(generate_win64_cell_store_harness(routine_symbol, vectors))
+        }
         (Abi::Aapcs64, HarnessShape::BufferScan) => {
             Ok(generate_aapcs64_buffer_harness(routine_symbol, vectors))
         }
@@ -2359,7 +2454,141 @@ pub fn generate_harness(
             routine_symbol,
             vectors,
         )),
+        (_, HarnessShape::CellLoad | HarnessShape::CellStore) => Err(format!(
+            "concrete cell harness not supported for ABI {abi:?} (x86 SysV/Win64 only in v1)"
+        )),
     }
+}
+
+fn emit_cell_load_vector_data(out: &mut String, vectors: &[TestVector]) {
+    out.push_str("section .data\n");
+    for (i, v) in vectors.iter().enumerate() {
+        let bytes = vector_buffer_bytes(v);
+        if bytes.is_empty() {
+            let _ = writeln!(out, "align 8\nvec{i}_buf:\n    db 0");
+        } else {
+            let _ = writeln!(out, "align 8\nvec{i}_buf:\n    db {}", bytes.join(", "));
+        }
+    }
+}
+
+fn emit_cell_store_vector_data(out: &mut String, vectors: &[TestVector]) {
+    out.push_str("section .data\n");
+    for (i, v) in vectors.iter().enumerate() {
+        let bytes = vector_buffer_bytes(v);
+        let value = v
+            .inputs
+            .get(1)
+            .and_then(serde_json::Value::as_u64)
+            .unwrap_or(0)
+            & 0xff;
+        if bytes.is_empty() {
+            let _ = writeln!(out, "align 8\nvec{i}_buf:\n    db 0");
+        } else {
+            let _ = writeln!(out, "align 8\nvec{i}_buf:\n    db {}", bytes.join(", "));
+        }
+        let _ = writeln!(out, "vec{i}_value:\n    db {value}");
+    }
+}
+
+fn generate_sysv_cell_load_harness(routine_symbol: &str, vectors: &[TestVector]) -> String {
+    let mut out = String::new();
+    out.push_str("BITS 64\nDEFAULT REL\n\n");
+    emit_cell_load_vector_data(&mut out, vectors);
+    out.push_str("\nsection .bss\n");
+    let _ = writeln!(out, "results: resb {}", vectors.len() * 8);
+    out.push_str("\nsection .text\n");
+    let _ = writeln!(out, "extern {routine_symbol}");
+    out.push_str("global _start\n_start:\n");
+    for (i, v) in vectors.iter().enumerate() {
+        let _ = writeln!(out, "    ; vector {i}: {}", v.name);
+        let _ = writeln!(out, "    lea rdi, [vec{i}_buf]");
+        let _ = writeln!(out, "    call {routine_symbol}");
+        let _ = writeln!(out, "    mov [results + {i}*8], rax");
+    }
+    out.push_str("    mov eax, 1\n    mov edi, 1\n    lea rsi, [results]\n");
+    let _ = writeln!(out, "    mov edx, {}", vectors.len() * 8);
+    out.push_str("    syscall\n    mov eax, 60\n    xor edi, edi\n    syscall\n");
+    out
+}
+
+fn generate_sysv_cell_store_harness(routine_symbol: &str, vectors: &[TestVector]) -> String {
+    let mut out = String::new();
+    out.push_str("BITS 64\nDEFAULT REL\n\n");
+    emit_cell_store_vector_data(&mut out, vectors);
+    out.push_str("\nsection .bss\n");
+    let _ = writeln!(out, "results: resb {}", vectors.len() * 8);
+    out.push_str("\nsection .text\n");
+    let _ = writeln!(out, "extern {routine_symbol}");
+    out.push_str("global _start\n_start:\n");
+    for (i, v) in vectors.iter().enumerate() {
+        let _ = writeln!(out, "    ; vector {i}: {}", v.name);
+        let _ = writeln!(out, "    lea rdi, [vec{i}_buf]");
+        let _ = writeln!(out, "    movzx esi, byte [vec{i}_value]");
+        let _ = writeln!(out, "    call {routine_symbol}");
+        let _ = writeln!(out, "    mov [results + {i}*8], rax");
+    }
+    out.push_str("    mov eax, 1\n    mov edi, 1\n    lea rsi, [results]\n");
+    let _ = writeln!(out, "    mov edx, {}", vectors.len() * 8);
+    out.push_str("    syscall\n    mov eax, 60\n    xor edi, edi\n    syscall\n");
+    out
+}
+
+fn generate_win64_cell_load_harness(routine_symbol: &str, vectors: &[TestVector]) -> String {
+    let mut out = String::new();
+    out.push_str("BITS 64\nDEFAULT REL\n\n");
+    out.push_str("EXTERN GetStdHandle\nEXTERN WriteFile\nEXTERN ExitProcess\n\n");
+    emit_cell_load_vector_data(&mut out, vectors);
+    out.push_str("\nsection .bss\n");
+    let _ = writeln!(out, "results: resb {}", vectors.len() * 8);
+    out.push_str("written: resq 1\n\nsection .text\n");
+    let _ = writeln!(out, "extern {routine_symbol}");
+    out.push_str("global main\nmain:\n");
+    for (i, v) in vectors.iter().enumerate() {
+        let _ = writeln!(out, "    ; vector {i}: {}", v.name);
+        out.push_str("    sub rsp, 40\n");
+        let _ = writeln!(out, "    lea rcx, [vec{i}_buf]");
+        let _ = writeln!(out, "    call {routine_symbol}");
+        out.push_str("    add rsp, 40\n");
+        let _ = writeln!(out, "    mov [results + {i}*8], rax");
+    }
+    out.push_str("    sub rsp, 40\n    mov ecx, -11\n    call GetStdHandle\n");
+    out.push_str("    mov rcx, rax\n    lea rdx, [results]\n");
+    let _ = writeln!(out, "    mov r8d, {}", vectors.len() * 8);
+    out.push_str(
+        "    lea r9, [written]\n    mov qword [rsp + 32], 0\n    call WriteFile\n    add rsp, 40\n",
+    );
+    out.push_str("    sub rsp, 40\n    xor ecx, ecx\n    call ExitProcess\n");
+    out
+}
+
+fn generate_win64_cell_store_harness(routine_symbol: &str, vectors: &[TestVector]) -> String {
+    let mut out = String::new();
+    out.push_str("BITS 64\nDEFAULT REL\n\n");
+    out.push_str("EXTERN GetStdHandle\nEXTERN WriteFile\nEXTERN ExitProcess\n\n");
+    emit_cell_store_vector_data(&mut out, vectors);
+    out.push_str("\nsection .bss\n");
+    let _ = writeln!(out, "results: resb {}", vectors.len() * 8);
+    out.push_str("written: resq 1\n\nsection .text\n");
+    let _ = writeln!(out, "extern {routine_symbol}");
+    out.push_str("global main\nmain:\n");
+    for (i, v) in vectors.iter().enumerate() {
+        let _ = writeln!(out, "    ; vector {i}: {}", v.name);
+        out.push_str("    sub rsp, 40\n");
+        let _ = writeln!(out, "    lea rcx, [vec{i}_buf]");
+        let _ = writeln!(out, "    movzx edx, byte [vec{i}_value]");
+        let _ = writeln!(out, "    call {routine_symbol}");
+        out.push_str("    add rsp, 40\n");
+        let _ = writeln!(out, "    mov [results + {i}*8], rax");
+    }
+    out.push_str("    sub rsp, 40\n    mov ecx, -11\n    call GetStdHandle\n");
+    out.push_str("    mov rcx, rax\n    lea rdx, [results]\n");
+    let _ = writeln!(out, "    mov r8d, {}", vectors.len() * 8);
+    out.push_str(
+        "    lea r9, [written]\n    mov qword [rsp + 32], 0\n    call WriteFile\n    add rsp, 40\n",
+    );
+    out.push_str("    sub rsp, 40\n    xor ecx, ecx\n    call ExitProcess\n");
+    out
 }
 
 fn emit_vector_data(out: &mut String, vectors: &[TestVector]) {
@@ -3903,10 +4132,7 @@ fn generate_aapcs64_pure_int_harness(routine_symbol: &str, vectors: &[TestVector
 }
 
 /// Generate GNU as source for an AArch64 unary pure-integer `_start` harness.
-fn generate_aapcs64_pure_int_unary_harness(
-    routine_symbol: &str,
-    vectors: &[TestVector],
-) -> String {
+fn generate_aapcs64_pure_int_unary_harness(routine_symbol: &str, vectors: &[TestVector]) -> String {
     let mut out = String::new();
     let results_len = vectors.len() * 8;
 
@@ -4339,7 +4565,9 @@ pub fn evaluate(stdout: &[u8], vectors: &[TestVector], shape: HarnessShape) -> H
         | HarnessShape::MemCmp
         | HarnessShape::I64Sum
         | HarnessShape::PureInt
-        | HarnessShape::PureIntUnary => evaluate_words_only(stdout, vectors),
+        | HarnessShape::PureIntUnary
+        | HarnessShape::CellLoad
+        | HarnessShape::CellStore => evaluate_words_only(stdout, vectors),
     }
 }
 
@@ -5526,7 +5754,10 @@ type = "i64"
     fn pure_int_i64_resolves_shared_pure_int_shape() {
         let c = add_i64_contract();
         let v = synthesize_vectors(&c);
-        assert_eq!(resolve_harness_shape(&c, &v).unwrap(), HarnessShape::PureInt);
+        assert_eq!(
+            resolve_harness_shape(&c, &v).unwrap(),
+            HarnessShape::PureInt
+        );
 
         let u = abs_i64_contract();
         let uv = synthesize_vectors(&u);
@@ -5541,8 +5772,7 @@ type = "i64"
     fn pure_int_i64_data_emits_twos_complement_bits() {
         let c = add_i64_contract();
         let v = synthesize_vectors(&c);
-        let src =
-            generate_harness("add_i64", &v, Abi::SysVAmd64, HarnessShape::PureInt).unwrap();
+        let src = generate_harness("add_i64", &v, Abi::SysVAmd64, HarnessShape::PureInt).unwrap();
         // -3 as raw two's-complement bits, not clamped to 0.
         assert!(src.contains(&format!("dq {}", (-3i64) as u64)));
     }
@@ -5563,9 +5793,13 @@ type = "i64"
     fn pure_int_unary_win64_harness_loads_single_register() {
         let c = return_i64_contract();
         let v = synthesize_vectors(&c);
-        let src =
-            generate_harness("return_i64", &v, Abi::WindowsX64, HarnessShape::PureIntUnary)
-                .unwrap();
+        let src = generate_harness(
+            "return_i64",
+            &v,
+            Abi::WindowsX64,
+            HarnessShape::PureIntUnary,
+        )
+        .unwrap();
         assert!(src.contains("global main"));
         assert!(src.contains("mov rcx, [vec0_a]"));
         assert!(!src.contains("vec0_b"));

@@ -1,0 +1,31 @@
+contract_version = "0.1"
+
+[function]
+name = "load_byte0"
+summary = "Load the byte at buffer+0 from a fixed 1-byte cell (concrete bounds)"
+
+[[function.parameters]]
+name = "buffer"
+type = "ptr<const u8>"
+role = "input"
+
+[[function.returns]]
+name = "value"
+type = "usize"
+
+[[function.effects]]
+kind = "memory_read"
+region = "buffer[0..1]"
+
+[function.memory]
+
+[[function.memory.regions]]
+name = "cell"
+base = "buffer"
+length = "1"
+access = "read"
+
+[function.constraints]
+no_heap = true
+no_recursion = true
+bounded_stack_bytes = 64
