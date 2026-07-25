@@ -28,6 +28,39 @@ pub(crate) fn parse_base(s: &str) -> Result<u64, String> {
     }
 }
 
+/// Guard ABI raw-blob inputs.
+///
+/// Returns an error (exit 1) when zero instructions decoded, so an ABI check
+/// can never pass vacuously on the wrong input (e.g. an empty or text file).
+/// Additionally warns on stderr when the bytes are almost entirely printable
+/// ASCII — the usual sign that assembly *source* was passed instead of a raw
+/// machine-code blob. The warning does not change the exit code because raw
+/// code can legitimately be printable.
+#[cfg(feature = "capstone")]
+fn check_raw_blob_input(path: &Path, code: &[u8], decoded: usize, isa: &str) -> Result<(), ()> {
+    let printable = code
+        .iter()
+        .filter(|b| b.is_ascii_graphic() || matches!(b, b' ' | b'\t' | b'\r' | b'\n'))
+        .count();
+    if !code.is_empty() && printable * 100 / code.len() >= 95 {
+        eprintln!(
+            "{}: warning: input is almost entirely printable text; \
+             this command expects a raw {isa} machine-code blob \
+             (assembly source must be assembled first)",
+            path.display()
+        );
+    }
+    if decoded == 0 {
+        eprintln!(
+            "{}: error: no {isa} instructions decoded; refusing a vacuous ABI pass \
+             (expected a raw {isa} machine-code blob)",
+            path.display()
+        );
+        return Err(());
+    }
+    Ok(())
+}
+
 /// Disassemble a raw binary blob and emit normalised physical instructions.
 #[cfg(feature = "capstone")]
 pub(crate) fn do_decode_inspect(path: &Path, base: u64, format: OutputFormat) -> ExitCode {
@@ -239,6 +272,10 @@ pub(crate) fn do_abi_inspect(
         }
     };
 
+    if check_raw_blob_input(path, &code, instrs.len(), "x86-64").is_err() {
+        return ExitCode::from(1);
+    }
+
     let (lowered, unsupported) = lower_x86_with_evidence(&instrs);
 
     let report = semasm_x86::abi::analyze(&lowered);
@@ -403,6 +440,10 @@ pub(crate) fn do_win64_abi_inspect(
         }
     };
 
+    if check_raw_blob_input(path, &code, instrs.len(), "x86-64").is_err() {
+        return ExitCode::from(1);
+    }
+
     let (lowered, unsupported) = lower_x86_with_evidence(&instrs);
 
     let report = semasm_x86::abi_win64::analyze(&lowered);
@@ -495,6 +536,10 @@ pub(crate) fn do_aarch64_abi_inspect(
         }
     };
 
+    if check_raw_blob_input(path, &code, instrs.len(), "AArch64").is_err() {
+        return ExitCode::from(1);
+    }
+
     let (lowered, unsupported) = lower_aarch64_with_evidence(&instrs);
 
     let report = semasm_aarch64::abi::analyze(&lowered);
@@ -544,5 +589,31 @@ pub(crate) fn do_aarch64_abi_inspect(
             }
             analysis_exit_code(report.is_clean(), unsupported.is_empty(), allow_incomplete)
         }
+    }
+}
+
+#[cfg(all(test, feature = "capstone"))]
+mod raw_blob_guard_tests {
+    use super::check_raw_blob_input;
+    use std::path::Path;
+
+    #[test]
+    fn rejects_zero_decoded_instructions() {
+        let err = check_raw_blob_input(Path::new("empty.bin"), &[], 0, "x86-64");
+        assert!(err.is_err(), "zero decoded must not pass vacuously");
+    }
+
+    #[test]
+    fn rejects_text_file_that_decodes_nothing() {
+        let asm_text = b"global count_byte\ncount_byte:\n  ret\n";
+        let err = check_raw_blob_input(Path::new("src.asm"), asm_text, 0, "AArch64");
+        assert!(err.is_err());
+    }
+
+    #[test]
+    fn accepts_binary_blob_with_decoded_instructions() {
+        let code = [0xc3u8, 0x90, 0x00, 0xff]; // ret; nop; junk bytes
+        let ok = check_raw_blob_input(Path::new("code.bin"), &code, 2, "x86-64");
+        assert!(ok.is_ok());
     }
 }
