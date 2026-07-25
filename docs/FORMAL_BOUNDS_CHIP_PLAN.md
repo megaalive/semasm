@@ -27,12 +27,13 @@ Forbidden: SMT; proving arbitrary `ensures`; claiming general memory safety.
 | **Fb7** | Post-test counted-loop induction (`access; inc; cmp; jb`) → `proven_inside` | **done** |
 | **Fb8** | Countdown induction (`mov N; dec; access; jnz`) → `proven_inside` | **done** |
 | **Fb9a** | CFG-confirmed structured pre-test induction | **done** |
-| **Fb9b** | Arbitrary loop invariant inference | **locked** |
+| **Fb9b** | CFG-confirmed post-test count-up induction | **done** |
+| **Fb9c** | Arbitrary loop invariant inference | **locked** |
 
 ## Non-goals
 
 - Promoting symbolic-length `verified_under_preconditions` → `verified`
-- Arbitrary loop invariant inference (Fb9b)
+- Arbitrary loop invariant inference (Fb9c)
 - Changing VAA profile names for affine leaves
 - Claiming symbolic / unguarded indexed accesses are statically inside
 
@@ -72,5 +73,8 @@ register has parameter affinity. Collectors no longer collapse these to
   `xor idx,idx; header: cmp idx,N; jae exit; access; inc idx; jmp header`.
   Physical branch destinations must resolve to the header/exit instruction
   addresses and no other body instruction may write `idx`. This is
-  CFG-confirmed for that narrow shape; arbitrary invariant inference remains
-  Fb9b locked.
+  CFG-confirmed for that narrow shape.
+- **With** `index_max_exclusive` (Fb9b): CFG-confirmed post-test
+  `xor idx,idx; header: access; inc idx; cmp idx,N; jb header` where the
+  conditional back-edge resolves to the access. Arbitrary invariant
+  inference remains Fb9c locked.

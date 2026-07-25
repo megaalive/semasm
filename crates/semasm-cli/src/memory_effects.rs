@@ -58,6 +58,9 @@ pub fn collect_memory_effects_with_cfg(
     for (k, v) in discover_cfg_pre_test_inductions(lowered, physical) {
         inductions.entry(k).or_insert(v);
     }
+    for (k, v) in discover_cfg_post_test_inductions(lowered, physical) {
+        inductions.entry(k).or_insert(v);
+    }
     seed_param_affinity(&mut affinity, contract, abi);
 
     let mut out = Vec::new();
@@ -81,7 +84,7 @@ pub fn collect_memory_effects_with_cfg(
 ///
 /// Both branch destinations must resolve to physical instruction addresses,
 /// and the body must not otherwise write the index. This is structured-loop
-/// evidence only, not arbitrary invariant inference (Fb9b).
+/// evidence only, not arbitrary invariant inference (Fb9c).
 fn discover_cfg_pre_test_inductions(
     lowered: &[LoweredInstr],
     physical: &[PhysicalInstruction],
@@ -176,6 +179,107 @@ fn branch_target_index(
     let raw = raw.strip_prefix("0x").unwrap_or(raw);
     let target = u64::from_str_radix(raw, 16).ok()?;
     by_address.get(&target).copied()
+}
+
+/// Fb9b: CFG-confirmed post-test count-up:
+/// `xor idx,idx; header: access; inc idx; cmp idx,N; jb header`.
+///
+/// The conditional back-edge must resolve to the access instruction, and no
+/// other body write may touch `idx`. Complements Fb9a; arbitrary invariant
+/// inference remains Fb9c locked.
+fn discover_cfg_post_test_inductions(
+    lowered: &[LoweredInstr],
+    physical: &[PhysicalInstruction],
+) -> HashMap<usize, (Gp, u64)> {
+    let mut out = HashMap::new();
+    if physical.len() != lowered.len() {
+        return out;
+    }
+    let by_address: HashMap<u64, usize> = physical
+        .iter()
+        .enumerate()
+        .map(|(idx, instr)| (instr.address, idx))
+        .collect();
+
+    for access_at in 0..lowered.len().saturating_sub(3) {
+        let access = &lowered[access_at];
+        let Some(idx_gp) = indexed_gp_in_access(access) else {
+            continue;
+        };
+        if !index_was_zero_initialized(lowered, access_at, idx_gp) {
+            continue;
+        }
+
+        let mut at = access_at + 1;
+        // Allow a short stretch of non-index-writing ops before the inc.
+        while at < lowered.len() && !writes_gp(&lowered[at], idx_gp) {
+            if at - access_at > 4 {
+                break;
+            }
+            at += 1;
+        }
+        if at >= lowered.len() {
+            continue;
+        }
+        let inc = &lowered[at];
+        let is_inc = inc.mnemonic.eq_ignore_ascii_case("inc")
+            && matches!(
+                inc.operands.first(),
+                Some(Operand::Reg(r)) if r.storage == Storage::Gp(idx_gp)
+            );
+        let is_add1 = inc.mnemonic.eq_ignore_ascii_case("add")
+            && matches!(
+                (inc.operands.first(), inc.operands.get(1)),
+                (Some(Operand::Reg(r)), Some(Operand::Imm(1)))
+                    if r.storage == Storage::Gp(idx_gp)
+            );
+        if !is_inc && !is_add1 {
+            continue;
+        }
+
+        let cmp_at = at + 1;
+        let br_at = at + 2;
+        if br_at >= lowered.len() {
+            continue;
+        }
+        let cmp = &lowered[cmp_at];
+        if !cmp.mnemonic.eq_ignore_ascii_case("cmp") {
+            continue;
+        }
+        let (Some(Operand::Reg(reg)), Some(Operand::Imm(bound))) =
+            (cmp.operands.first(), cmp.operands.get(1))
+        else {
+            continue;
+        };
+        if reg.storage != Storage::Gp(idx_gp) || *bound <= 0 {
+            continue;
+        }
+        let br = &lowered[br_at];
+        if !matches!(
+            br.mnemonic.to_ascii_lowercase().as_str(),
+            "jb" | "jnae" | "jl" | "jnge"
+        ) {
+            continue;
+        }
+        if branch_target_index(&physical[br_at], &by_address) != Some(access_at) {
+            continue;
+        }
+        out.insert(access_at, (idx_gp, *bound as u64));
+    }
+    out
+}
+
+fn indexed_gp_in_access(instr: &LoweredInstr) -> Option<Gp> {
+    for op in &instr.operands {
+        let Operand::Mem(mem) = op else {
+            continue;
+        };
+        let index = mem.index?;
+        if let Storage::Gp(gp) = index.storage {
+            return Some(gp);
+        }
+    }
+    None
 }
 
 /// Fb7: detect post-test counted loops of the form
@@ -329,7 +433,7 @@ fn post_test_bound_after(lowered: &[LoweredInstr], from: usize, gp: Gp) -> Optio
 /// where N > 0 is a literal. After `dec`, idx ∈ [0, N) at the access.
 ///
 /// Honesty: linear countdown pattern ≠ CFG-sound arbitrary loop induction
-/// (Fb9). Complements Fb7 count-up post-test induction.
+/// (Fb9c). Complements Fb7 count-up post-test induction.
 fn discover_countdown_inductions(lowered: &[LoweredInstr]) -> HashMap<usize, (Gp, u64)> {
     let mut out = HashMap::new();
     for (idx, instr) in lowered.iter().enumerate() {
@@ -1283,5 +1387,79 @@ access = "read"
             })
             .collect();
         assert!(discover_cfg_pre_test_inductions(&lowered, &physical).is_empty());
+    }
+
+    #[test]
+    fn cfg_post_test_loop_attaches_index_max_exclusive() {
+        // xor; header: load; inc; cmp 8; jb header
+        let contract = semasm_contract::check_str(
+            r#"
+contract_version = "0.1"
+[function]
+name = "load_post_test_cfg"
+[[function.parameters]]
+name = "buffer"
+type = "ptr<const u8>"
+[[function.returns]]
+name = "value"
+type = "usize"
+[[function.memory.regions]]
+name = "cell"
+base = "buffer"
+length = "8"
+access = "read"
+"#,
+        )
+        .contract
+        .expect("contract");
+        let physical = vec![
+            phys_at(0x1000, "xor", &["eax", "eax"]),
+            phys_at(0x1002, "movzx", &["ecx", "byte ptr [rdi + rax*1]"]),
+            phys_at(0x1006, "inc", &["eax"]),
+            phys_at(0x1008, "cmp", &["eax", "8"]),
+            phys_at(0x100b, "jb", &["0x1002"]),
+            phys_at(0x100d, "ret", &[]),
+        ];
+        let lowered: Vec<_> = physical
+            .iter()
+            .filter_map(|p| match lower(p) {
+                semasm_x86::lower::Lowering::Lowered(l) => Some(l),
+                semasm_x86::lower::Lowering::Unsupported { .. } => None,
+            })
+            .collect();
+        let effects =
+            collect_memory_effects_with_cfg(&lowered, &physical, &contract, AbiConvention::SysV);
+        assert!(
+            effects.iter().any(|e| matches!(
+                &e.addr,
+                AccessAddr::Indexed {
+                    base_param,
+                    index_const: None,
+                    index_max_exclusive: Some(8),
+                    ..
+                } if base_param == "buffer"
+            )),
+            "expected Fb9b CFG-confirmed post-test bound: {effects:?}"
+        );
+    }
+
+    #[test]
+    fn cfg_post_test_loop_rejects_wrong_back_edge() {
+        let physical = vec![
+            phys_at(0x1000, "xor", &["eax", "eax"]),
+            phys_at(0x1002, "movzx", &["ecx", "byte ptr [rdi + rax*1]"]),
+            phys_at(0x1006, "inc", &["eax"]),
+            phys_at(0x1008, "cmp", &["eax", "8"]),
+            phys_at(0x100b, "jb", &["0x1000"]),
+            phys_at(0x100d, "ret", &[]),
+        ];
+        let lowered: Vec<_> = physical
+            .iter()
+            .filter_map(|p| match lower(p) {
+                semasm_x86::lower::Lowering::Lowered(l) => Some(l),
+                semasm_x86::lower::Lowering::Unsupported { .. } => None,
+            })
+            .collect();
+        assert!(discover_cfg_post_test_inductions(&lowered, &physical).is_empty());
     }
 }

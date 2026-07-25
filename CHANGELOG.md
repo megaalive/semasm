@@ -8,10 +8,15 @@ follow [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Added
 
+- **Fb9b CFG-confirmed post-test induction** — physical `jb`/`jl` back-edge
+  must target the access site of
+  `xor idx,idx; access; inc idx; cmp idx,N; jb header` before attaching
+  `index_max_exclusive = N`. Complements Fb9a; arbitrary invariants remain
+  Fb9c locked. Symbolic-length Phase C/D are not promoted.
 - **Fb9a CFG-confirmed pre-test induction** — physical branch targets confirm
   `xor idx,idx; cmp idx,N; jae exit; access; inc idx; jmp header` before
   attaching `index_max_exclusive = N`. Structured shape only; arbitrary loop
-  invariant inference remains Fb9b locked. Symbolic-length Phase C/D are not
+  invariant inference remains Fb9c locked. Symbolic-length Phase C/D are not
   promoted.
 - **Fb8 countdown induction → proven_inside** — linear pattern
   `mov idx,N; dec idx; access [base+idx]; jnz/jns` attaches
