@@ -31,7 +31,12 @@ Stabilization through Rel-0.2.1 is closed on `main`. Tip tag: **`v0.2.1`**
 (A64/RV `control`), Mm (A64/RV read-only `memory`), and VAA Gate pin (Vd) are
 **done**. Sample CI coverage != full-ISA / CFG/CFI / region-precise store proof.
 
-**In progress:** **Sei** - next = VAA Evidence Requirement Profiles (pin tip).
+**Sei closed on SemASM side** (P0 + Ra0-Ra6); VAA Evidence Requirement Profiles
+(P1/P1b) already landed on VAA — pin tip after consumer waves. Formal Bounds
+chip Fb0-Fb9b done; **Fb9c** (arbitrary loop invariant) stays locked.
+**Next:** narrow SemASM chips (e.g. inspect `--target`), EchoAsm C/D
+honesty-bound leaves, or non-compare repair diagnostics — not product-claim
+expansions (`void`/hosted-program harness / Windows cross-assembler).
 **Done (Sei Ra0-Ra6):** Region Access Evidence v1 (ADR 0011;
 [REGION_ACCESS_EVIDENCE_V1_PLAN.md](REGION_ACCESS_EVIDENCE_V1_PLAN.md)); x86
 corpus green; A64/RV observational. **Done (Sei P0):** ADR 0010 +
@@ -100,7 +105,7 @@ ceremony** (next landable after Da CI green at tip `a85deae`).
 | **Tw** | A64/RV adversarial twins (write-shape / MemCmp / min) | **done** (`c0655f1`) |
 | **Ff** | A64/RV `find_first_byte` / `find_last_byte` | **done** (`3876277`) |
 | **Ab** | `abi_analysis` -> `verified_in_ci` (primary four) | **done** (`0e35029`) |
-| **Sei** | Semantic Evidence Integrity (P0 alias/obligation -> region access -> VAA profiles) | **in progress** - P0 + Ra0-Ra6 done; VAA P1 next; [SEMANTIC_EVIDENCE_INTEGRITY_PLAN.md](SEMANTIC_EVIDENCE_INTEGRITY_PLAN.md) |
+| **Sei** | Semantic Evidence Integrity (P0 alias/obligation -> region access -> VAA profiles) | **done** (SemASM P0+Ra; VAA P1/P1b landed) - [SEMANTIC_EVIDENCE_INTEGRITY_PLAN.md](SEMANTIC_EVIDENCE_INTEGRITY_PLAN.md) |
 
 ### A64/RV Decode/Lower Bump (Da0?Da5) ? done
 

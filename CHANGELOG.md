@@ -8,6 +8,11 @@ follow [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Added
 
+- **`decode` / `cfg` / `analyze` `--target`** — raw-blob inspect commands
+  accept a known target triple to select the ISA decoder (default remains
+  `x86_64-unknown-linux-gnu`, preserving historical behaviour). `decode` and
+  `cfg` support x86-64 / AArch64 / RISC-V 64; `analyze` stays x86-64-only and
+  fails closed on non-x86 targets. Unknown triples exit 2.
 - **ABI raw-blob input guard** — `abi` / `win64-abi` / `aarch64-abi` now
   error when zero instructions decode (no vacuous "clean" on the wrong
   input) and warn when the input is almost entirely printable text

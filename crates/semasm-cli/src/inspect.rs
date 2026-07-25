@@ -4,12 +4,61 @@ use std::path::Path;
 use std::process::ExitCode;
 
 use semasm_decode::DecodeError;
+use semasm_target::{Isa, TargetIdentity};
 
 use crate::output::{
     json_aarch64_abi_report, json_abi_report, json_analysis_report, json_win64_abi_report,
     print_analysis_terminal, unsupported_instruction, UnsupportedInstruction,
 };
 use crate::OutputFormat;
+
+/// Default inspect target when `--target` is omitted (preserves historical
+/// x86-64-only behaviour of `decode` / `cfg` / `analyze`).
+const DEFAULT_INSPECT_TARGET: &str = "x86_64-unknown-linux-gnu";
+
+/// Resolve `--target` for raw-blob inspect commands.
+///
+/// `None` keeps the historical default (x86-64). Unknown triples fail closed.
+#[cfg(feature = "capstone")]
+pub(crate) fn resolve_inspect_target(target: Option<&str>) -> Result<TargetIdentity, String> {
+    let name = target.unwrap_or(DEFAULT_INSPECT_TARGET);
+    TargetIdentity::parse_known(name).map_err(|e| e.to_string())
+}
+
+#[cfg(feature = "capstone")]
+fn decode_raw_for_isa(
+    code: &[u8],
+    base: u64,
+    isa: Isa,
+) -> Result<Vec<semasm_decode::PhysicalInstruction>, DecodeError> {
+    match isa {
+        Isa::X86_64 => semasm_decode::decode_x86_64(code, base),
+        Isa::AArch64 => semasm_decode::decode_aarch64(code, base),
+        Isa::Riscv64 => semasm_decode::decode_riscv64(code, base),
+        Isa::Riscv32 => Err(DecodeError::Unsupported(
+            "riscv32 raw-blob inspect is not supported; use riscv64gc-unknown-linux-gnu".into(),
+        )),
+    }
+}
+
+#[cfg(feature = "capstone")]
+fn isa_label(isa: Isa) -> &'static str {
+    match isa {
+        Isa::X86_64 => "x86-64",
+        Isa::AArch64 => "AArch64",
+        Isa::Riscv64 => "RISC-V 64",
+        Isa::Riscv32 => "RISC-V 32",
+    }
+}
+
+#[cfg(feature = "capstone")]
+fn decode_feature_hint(isa: Isa) -> &'static str {
+    match isa {
+        Isa::X86_64 => "x86-64",
+        Isa::AArch64 => "AArch64",
+        Isa::Riscv64 | Isa::Riscv32 => "RISC-V",
+    }
+}
 
 /// Parse a `--base` value, accepting decimal or `0x`-prefixed hex.
 #[cfg(feature = "capstone")]
@@ -63,7 +112,20 @@ fn check_raw_blob_input(path: &Path, code: &[u8], decoded: usize, isa: &str) -> 
 
 /// Disassemble a raw binary blob and emit normalised physical instructions.
 #[cfg(feature = "capstone")]
-pub(crate) fn do_decode_inspect(path: &Path, base: u64, format: OutputFormat) -> ExitCode {
+pub(crate) fn do_decode_inspect(
+    path: &Path,
+    base: u64,
+    format: OutputFormat,
+    target: Option<&str>,
+) -> ExitCode {
+    let identity = match resolve_inspect_target(target) {
+        Ok(id) => id,
+        Err(e) => {
+            eprintln!("error: {e}");
+            return ExitCode::from(2);
+        }
+    };
+
     let code = match std::fs::read(path) {
         Ok(b) => b,
         Err(e) => {
@@ -72,12 +134,13 @@ pub(crate) fn do_decode_inspect(path: &Path, base: u64, format: OutputFormat) ->
         }
     };
 
-    let instrs = match semasm_decode::decode_x86_64(&code, base) {
+    let instrs = match decode_raw_for_isa(&code, base, identity.isa) {
         Ok(i) => i,
         Err(DecodeError::Unsupported(_)) => {
             eprintln!(
-                "error: x86-64 decoding is not compiled into this build; \
-                 rebuild `semasm-cli` with the `capstone` feature"
+                "error: {} decoding is not compiled into this build; \
+                 rebuild `semasm-cli` with the `capstone` feature",
+                decode_feature_hint(identity.isa)
             );
             return ExitCode::from(1);
         }
@@ -124,7 +187,20 @@ pub(crate) fn do_decode_inspect(path: &Path, base: u64, format: OutputFormat) ->
 
 /// Build a control-flow graph from a raw binary blob and emit it.
 #[cfg(feature = "capstone")]
-pub(crate) fn do_cfg_inspect(path: &Path, base: u64, format: OutputFormat) -> ExitCode {
+pub(crate) fn do_cfg_inspect(
+    path: &Path,
+    base: u64,
+    format: OutputFormat,
+    target: Option<&str>,
+) -> ExitCode {
+    let identity = match resolve_inspect_target(target) {
+        Ok(id) => id,
+        Err(e) => {
+            eprintln!("error: {e}");
+            return ExitCode::from(2);
+        }
+    };
+
     let code = match std::fs::read(path) {
         Ok(b) => b,
         Err(e) => {
@@ -133,12 +209,13 @@ pub(crate) fn do_cfg_inspect(path: &Path, base: u64, format: OutputFormat) -> Ex
         }
     };
 
-    let instrs = match semasm_decode::decode_x86_64(&code, base) {
+    let instrs = match decode_raw_for_isa(&code, base, identity.isa) {
         Ok(i) => i,
         Err(DecodeError::Unsupported(_)) => {
             eprintln!(
-                "error: x86-64 decoding is not compiled into this build; \
-                 rebuild `semasm-cli` with the `capstone` feature"
+                "error: {} decoding is not compiled into this build; \
+                 rebuild `semasm-cli` with the `capstone` feature",
+                decode_feature_hint(identity.isa)
             );
             return ExitCode::from(1);
         }
@@ -339,8 +416,34 @@ pub(crate) fn do_abi_inspect(
 
 /// Decode a raw binary blob, lower it, build a control-flow graph, and run
 /// the forward data-flow analysis (ANALYSIS-001).
+///
+/// Forward data-flow analysis is currently x86-64 only. Non-x86 `--target`
+/// values fail closed with an explicit error (decode/cfg still support them).
 #[cfg(feature = "capstone")]
-pub(crate) fn do_analyze_inspect(path: &Path, base: u64, format: OutputFormat) -> ExitCode {
+pub(crate) fn do_analyze_inspect(
+    path: &Path,
+    base: u64,
+    format: OutputFormat,
+    target: Option<&str>,
+) -> ExitCode {
+    let identity = match resolve_inspect_target(target) {
+        Ok(id) => id,
+        Err(e) => {
+            eprintln!("error: {e}");
+            return ExitCode::from(2);
+        }
+    };
+    if identity.isa != Isa::X86_64 {
+        eprintln!(
+            "error: `analyze` forward data-flow is x86-64 only; \
+             refused target `{}` (ISA {}) — use `decode`/`cfg` for {}",
+            identity.name,
+            identity.isa,
+            isa_label(identity.isa)
+        );
+        return ExitCode::from(2);
+    }
+
     let code = match std::fs::read(path) {
         Ok(b) => b,
         Err(e) => {
@@ -349,12 +452,13 @@ pub(crate) fn do_analyze_inspect(path: &Path, base: u64, format: OutputFormat) -
         }
     };
 
-    let instrs = match semasm_decode::decode_x86_64(&code, base) {
+    let instrs = match decode_raw_for_isa(&code, base, identity.isa) {
         Ok(i) => i,
         Err(DecodeError::Unsupported(_)) => {
             eprintln!(
-                "error: x86-64 decoding is not compiled into this build; \
-                 rebuild `semasm-cli` with the `capstone` feature"
+                "error: {} decoding is not compiled into this build; \
+                 rebuild `semasm-cli` with the `capstone` feature",
+                decode_feature_hint(identity.isa)
             );
             return ExitCode::from(1);
         }
@@ -594,7 +698,8 @@ pub(crate) fn do_aarch64_abi_inspect(
 
 #[cfg(all(test, feature = "capstone"))]
 mod raw_blob_guard_tests {
-    use super::check_raw_blob_input;
+    use super::{check_raw_blob_input, resolve_inspect_target};
+    use semasm_target::Isa;
     use std::path::Path;
 
     #[test]
@@ -615,5 +720,24 @@ mod raw_blob_guard_tests {
         let code = [0xc3u8, 0x90, 0x00, 0xff]; // ret; nop; junk bytes
         let ok = check_raw_blob_input(Path::new("code.bin"), &code, 2, "x86-64");
         assert!(ok.is_ok());
+    }
+
+    #[test]
+    fn resolve_inspect_target_defaults_to_x86_64() {
+        let id = resolve_inspect_target(None).expect("default target");
+        assert_eq!(id.isa, Isa::X86_64);
+        assert_eq!(id.name, "x86_64-unknown-linux-gnu");
+    }
+
+    #[test]
+    fn resolve_inspect_target_accepts_aarch64() {
+        let id = resolve_inspect_target(Some("aarch64-unknown-linux-gnu")).expect("aarch64");
+        assert_eq!(id.isa, Isa::AArch64);
+    }
+
+    #[test]
+    fn resolve_inspect_target_rejects_unknown() {
+        let err = resolve_inspect_target(Some("avr-unknown-none"));
+        assert!(err.is_err());
     }
 }

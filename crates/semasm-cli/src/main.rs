@@ -125,6 +125,9 @@ enum Commands {
         /// Base address assigned to the first byte (default: 0; `0x` hex ok).
         #[arg(long, default_value = "0")]
         base: String,
+        /// Target triple selecting the ISA decoder (default: x86_64-unknown-linux-gnu).
+        #[arg(long)]
+        target: Option<String>,
         /// Output format.
         #[arg(long, value_enum, default_value_t = OutputFormat::Terminal)]
         format: OutputFormat,
@@ -137,6 +140,9 @@ enum Commands {
         /// Base address assigned to the first byte (default:0; `0x` hex ok).
         #[arg(long, default_value = "0")]
         base: String,
+        /// Target triple selecting the ISA decoder (default: x86_64-unknown-linux-gnu).
+        #[arg(long)]
+        target: Option<String>,
         /// Output format.
         #[arg(long, value_enum, default_value_t = OutputFormat::Terminal)]
         format: OutputFormat,
@@ -159,6 +165,8 @@ enum Commands {
     },
     /// Forward data-flow analysis over a function body (decode + lower +
     /// control-flow graph + abstract interpretation).
+    ///
+    /// x86-64 only today; non-x86 `--target` values fail closed.
     #[cfg(feature = "capstone")]
     Analyze {
         /// Path to a raw binary blob containing one function body.
@@ -166,6 +174,9 @@ enum Commands {
         /// Base address assigned to the first byte (default:0; `0x` hex ok).
         #[arg(long, default_value = "0")]
         base: String,
+        /// Target triple (must be an x86-64 identity; default: x86_64-unknown-linux-gnu).
+        #[arg(long)]
+        target: Option<String>,
         /// Output format.
         #[arg(long, value_enum, default_value_t = OutputFormat::Terminal)]
         format: OutputFormat,
@@ -410,7 +421,12 @@ fn main() -> ExitCode {
             format,
         }) => do_obj_inspect(&path, target.as_deref(), format),
         #[cfg(feature = "capstone")]
-        Some(Commands::Decode { path, base, format }) => {
+        Some(Commands::Decode {
+            path,
+            base,
+            target,
+            format,
+        }) => {
             let base = match parse_base(&base) {
                 Ok(b) => b,
                 Err(e) => {
@@ -418,10 +434,15 @@ fn main() -> ExitCode {
                     return ExitCode::from(2);
                 }
             };
-            do_decode_inspect(&path, base, format)
+            do_decode_inspect(&path, base, format, target.as_deref())
         }
         #[cfg(feature = "capstone")]
-        Some(Commands::Cfg { path, base, format }) => {
+        Some(Commands::Cfg {
+            path,
+            base,
+            target,
+            format,
+        }) => {
             let base = match parse_base(&base) {
                 Ok(b) => b,
                 Err(e) => {
@@ -429,7 +450,7 @@ fn main() -> ExitCode {
                     return ExitCode::from(2);
                 }
             };
-            do_cfg_inspect(&path, base, format)
+            do_cfg_inspect(&path, base, format, target.as_deref())
         }
         #[cfg(feature = "capstone")]
         Some(Commands::Abi {
@@ -448,7 +469,12 @@ fn main() -> ExitCode {
             do_abi_inspect(&path, base, format, allow_incomplete)
         }
         #[cfg(feature = "capstone")]
-        Some(Commands::Analyze { path, base, format }) => {
+        Some(Commands::Analyze {
+            path,
+            base,
+            target,
+            format,
+        }) => {
             let base = match parse_base(&base) {
                 Ok(b) => b,
                 Err(e) => {
@@ -456,7 +482,7 @@ fn main() -> ExitCode {
                     return ExitCode::from(2);
                 }
             };
-            do_analyze_inspect(&path, base, format)
+            do_analyze_inspect(&path, base, format, target.as_deref())
         }
         #[cfg(feature = "capstone")]
         Some(Commands::Win64Abi {
