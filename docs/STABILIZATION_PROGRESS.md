@@ -34,9 +34,12 @@ Stabilization through Rel-0.2.1 is closed on `main`. Tip tag: **`v0.2.1`**
 **Sei closed on SemASM side** (P0 + Ra0-Ra6); VAA Evidence Requirement Profiles
 (P1/P1b) already landed on VAA — pin tip after consumer waves. Formal Bounds
 chip Fb0-Fb9b done; **Fb9c** (arbitrary loop invariant) stays locked.
-**Next:** narrow SemASM chips (e.g. inspect `--target`), EchoAsm C/D
-honesty-bound leaves, or non-compare repair diagnostics — not product-claim
-expansions (`void`/hosted-program harness / Windows cross-assembler).
+**Done (consumer waves):** inspect `--target` (`67cba2a`); EchoAsm C/D
+honesty-bound leaves; non-compare ABI live repair (Win64+SysV
+stack-balance / callee-saved — VAA Gates 7k–7n).
+**Next:** Fb9c stays locked; no rushed product-claim expansions
+(`void`/hosted-program harness / Windows cross-assembler) until a new
+narrow SemASM chip exists.
 **Done (Sei Ra0-Ra6):** Region Access Evidence v1 (ADR 0011;
 [REGION_ACCESS_EVIDENCE_V1_PLAN.md](REGION_ACCESS_EVIDENCE_V1_PLAN.md)); x86
 corpus green; A64/RV observational. **Done (Sei P0):** ADR 0010 +
