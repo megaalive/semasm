@@ -25,12 +25,13 @@ Forbidden: SMT; proving arbitrary `ensures`; claiming general memory safety.
 | **Fb5** | Static constant-index → `proven_inside` | **done** |
 | **Fb6** | Range-guard index (`cmp`+`jae`/`jge` fall-through) → `proven_inside` | **done** |
 | **Fb7** | Post-test counted-loop induction (`access; inc; cmp; jb`) → `proven_inside` | **done** |
-| **Fb8** | CFG-sound / arbitrary loop invariant induction | **locked** |
+| **Fb8** | Countdown induction (`mov N; dec; access; jnz`) → `proven_inside` | **done** |
+| **Fb9** | CFG-sound / arbitrary loop invariant induction | **locked** |
 
 ## Non-goals
 
 - Promoting symbolic-length `verified_under_preconditions` → `verified`
-- CFG-sound arbitrary loop invariant inference (Fb8)
+- CFG-sound arbitrary loop invariant inference (Fb9)
 - Changing VAA profile names for affine leaves
 - Claiming symbolic / unguarded indexed accesses are statically inside
 
@@ -43,7 +44,7 @@ This does **not** promote symbolic-length Phase C/D leaves
 (`length = "length"` + `length <= N` obligations). VAA profile
 `memory-leaf-concrete-v1` rejects caller-obligation demotion.
 
-## Indexed addresses (Fb4–Fb7 honesty)
+## Indexed addresses (Fb4–Fb8 honesty)
 
 `AccessAddr::Indexed { base_param, scale, displacement, index_const,
 index_max_exclusive }` models `[base + index*scale + disp]` when the base
@@ -60,8 +61,9 @@ register has parameter affinity. Collectors no longer collapse these to
   upper bound after `cmp reg, imm` + `jae`/`jnb`/`jge`. Bounds require both
   ends of `[disp, (max-1)*scale+disp]` inside a **literal** region. Writes
   that change the index (e.g. `inc`) clear the live Fb6 bound.
-- **With** `index_max_exclusive` (Fb7): post-test counted loops of the form
-  `xor idx,idx; … access [base+idx]; inc idx; cmp idx,N; jb …` attach the
-  same exclusive bound via a linear pattern match (zero-init + single step +
-  below back-edge). This is **not** CFG-sound arbitrary induction (Fb8
-  locked).
+- **With** `index_max_exclusive` (Fb7): post-test count-up loops
+  `xor idx,idx; … access; inc; cmp idx,N; jb …`.
+- **With** `index_max_exclusive` (Fb8): countdown loops
+  `mov idx,N; …; dec idx; access; …; jnz/jns …` so after `dec`,
+  `idx ∈ [0,N)`. Linear pattern match — **not** CFG-sound arbitrary
+  induction (Fb9 locked).

@@ -8,9 +8,14 @@ follow [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Added
 
+- **Fb8 countdown induction → proven_inside** — linear pattern
+  `mov idx,N; dec idx; access [base+idx]; jnz/jns` attaches
+  `index_max_exclusive = N`. Complements Fb7 count-up. CFG-sound
+  arbitrary induction (Fb9) locked. Does **not** promote symbolic-length
+  Phase C/D leaves.
 - **Fb7 post-test loop induction → proven_inside** — linear pattern
   `xor idx,idx; access [base+idx]; inc idx; cmp idx,N; jb` attaches
-  `index_max_exclusive`. CFG-sound arbitrary induction (Fb8) locked.
+  `index_max_exclusive`. Countdown is Fb8; CFG-sound (Fb9) locked.
   Does **not** promote symbolic-length Phase C/D leaves.
 - **Fb6 range-guard index → proven_inside** — `AccessAddr::Indexed.index_max_exclusive`
   from x86 `cmp reg,imm` + `jae`/`jnb`/`jge` fall-through; worst-case

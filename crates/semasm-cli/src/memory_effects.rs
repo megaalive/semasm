@@ -35,9 +35,12 @@ pub fn collect_memory_effects(
     // Fb6: exclusive upper bounds from `cmp`+`jae`/`jge` fall-through guards.
     let mut uppers: HashMap<Gp, u64> = HashMap::new();
     let mut pending_cmp: Option<(Gp, u64)> = None;
-    // Fb7: post-test counted-loop induction (access before cmp+jb back-edge).
+    // Fb7: post-test count-up induction. Fb8: countdown (dec) induction.
     // Maps instruction index → (index GP, exclusive upper bound).
-    let inductions = discover_post_test_inductions(lowered);
+    let mut inductions = discover_post_test_inductions(lowered);
+    for (k, v) in discover_countdown_inductions(lowered) {
+        inductions.entry(k).or_insert(v);
+    }
     seed_param_affinity(&mut affinity, contract, abi);
 
     let mut out = Vec::new();
@@ -200,6 +203,136 @@ fn post_test_bound_after(lowered: &[LoweredInstr], from: usize, gp: Gp) -> Optio
         }
     }
     None
+}
+
+/// Fb8: detect countdown loops of the form
+/// `mov idx, N; …; dec idx; access [base+idx]; …; jnz/jns …`
+/// where N > 0 is a literal. After `dec`, idx ∈ [0, N) at the access.
+///
+/// Honesty: linear countdown pattern ≠ CFG-sound arbitrary loop induction
+/// (Fb9). Complements Fb7 count-up post-test induction.
+fn discover_countdown_inductions(lowered: &[LoweredInstr]) -> HashMap<usize, (Gp, u64)> {
+    let mut out = HashMap::new();
+    for (idx, instr) in lowered.iter().enumerate() {
+        for op in &instr.operands {
+            let Operand::Mem(mem) = op else {
+                continue;
+            };
+            let Some(index) = mem.index else {
+                continue;
+            };
+            let Storage::Gp(idx_gp) = index.storage else {
+                continue;
+            };
+            let Some(bound) = countdown_bound_for_access(lowered, idx, idx_gp) else {
+                continue;
+            };
+            out.insert(idx, (idx_gp, bound));
+        }
+    }
+    out
+}
+
+fn countdown_bound_for_access(lowered: &[LoweredInstr], access_at: usize, gp: Gp) -> Option<u64> {
+    // Immediately before the access (allowing only non-gp-writing ops), require `dec gp`.
+    let mut dec_at = None;
+    for i in (0..access_at).rev() {
+        let instr = &lowered[i];
+        let mnemonic = instr.mnemonic.to_ascii_lowercase();
+        if mnemonic == "dec" {
+            if let Some(Operand::Reg(dst)) = instr.operands.first() {
+                if let Storage::Gp(d) = dst.storage {
+                    if d == gp {
+                        dec_at = Some(i);
+                        break;
+                    }
+                }
+            }
+        }
+        if writes_gp(instr, gp) {
+            return None;
+        }
+        // Skip a few non-writing ops between dec and access.
+        if access_at - i > 4 {
+            return None;
+        }
+    }
+    let dec_at = dec_at?;
+
+    // After the access, require jnz/jns (continue while non-zero / non-negative).
+    let mut saw_back = false;
+    for instr in &lowered[access_at + 1..] {
+        let mnemonic = instr.mnemonic.to_ascii_lowercase();
+        if matches!(mnemonic.as_str(), "jnz" | "jne" | "jns") {
+            saw_back = true;
+            break;
+        }
+        if writes_gp(instr, gp) || matches!(mnemonic.as_str(), "jmp" | "ret" | "jae" | "jge" | "je")
+        {
+            break;
+        }
+        // Bound the lookahead.
+        if !matches!(
+            mnemonic.as_str(),
+            "nop" | "test" | "cmp" | "and" | "or" | "xor" | "mov" | "movzx"
+        ) {
+            // Allow a short unrelated stretch; stop on other control flow.
+            if matches!(
+                mnemonic.as_str(),
+                "call" | "ja" | "jb" | "jg" | "jl" | "jle" | "jbe"
+            ) {
+                break;
+            }
+        }
+    }
+    if !saw_back {
+        return None;
+    }
+
+    // Before the dec, require `mov gp, Imm(N)` with N > 0 (and no other writes).
+    for i in (0..dec_at).rev() {
+        let instr = &lowered[i];
+        let mnemonic = instr.mnemonic.to_ascii_lowercase();
+        match mnemonic.as_str() {
+            "mov" | "movabs" => {
+                if let (Some(Operand::Reg(dst)), Some(Operand::Imm(imm))) =
+                    (instr.operands.first(), instr.operands.get(1))
+                {
+                    if let Storage::Gp(d) = dst.storage {
+                        if d == gp {
+                            if *imm > 0 {
+                                return Some(*imm as u64);
+                            }
+                            return None;
+                        }
+                    }
+                }
+                if writes_gp(instr, gp) {
+                    return None;
+                }
+            }
+            _ if writes_gp(instr, gp) => return None,
+            _ => {}
+        }
+    }
+    None
+}
+
+fn writes_gp(instr: &LoweredInstr, gp: Gp) -> bool {
+    let mnemonic = instr.mnemonic.to_ascii_lowercase();
+    match mnemonic.as_str() {
+        "mov" | "movabs" | "movzx" | "movsx" | "movsxd" | "lea" | "pop" | "xor" | "and" | "or"
+        | "add" | "sub" | "adc" | "sbb" | "inc" | "dec" | "neg" | "not" | "imul" | "mul" | "shl"
+        | "shr" | "sal" | "sar" | "rol" | "ror" => {
+            if let Some(Operand::Reg(dst)) = instr.operands.first() {
+                if let Storage::Gp(d) = dst.storage {
+                    return d == gp;
+                }
+            }
+            false
+        }
+        _ => false,
+    }
 }
 
 fn seed_param_affinity(
@@ -893,6 +1026,60 @@ access = "read"
                 } if base_param == "buffer"
             )),
             "expected Fb7 post-test induction index_max_exclusive=8: {effects:?}"
+        );
+    }
+
+    #[test]
+    fn countdown_loop_induction_attaches_index_max_exclusive() {
+        // mov eax, 8; dec eax; movzx ecx, byte [rdi+rax]; jnz loop
+        let contract = semasm_contract::check_str(
+            r#"
+contract_version = "0.1"
+[function]
+name = "load_countdown"
+[[function.parameters]]
+name = "buffer"
+type = "ptr<const u8>"
+[[function.returns]]
+name = "value"
+type = "usize"
+[[function.memory.regions]]
+name = "cell"
+base = "buffer"
+length = "8"
+access = "read"
+"#,
+        )
+        .contract
+        .expect("contract");
+
+        let instrs = [
+            phys("mov", &["eax", "8"]),
+            phys("dec", &["eax"]),
+            phys("movzx", &["ecx", "byte ptr [rdi + rax*1]"]),
+            phys("jnz", &["0x10"]),
+            phys("ret", &[]),
+        ];
+        let lowered: Vec<_> = instrs
+            .iter()
+            .filter_map(|p| match lower(p) {
+                semasm_x86::lower::Lowering::Lowered(l) => Some(l),
+                semasm_x86::lower::Lowering::Unsupported { .. } => None,
+            })
+            .collect();
+        let effects = collect_memory_effects(&lowered, &contract, AbiConvention::SysV);
+        assert!(
+            effects.iter().any(|e| matches!(
+                &e.addr,
+                AccessAddr::Indexed {
+                    base_param,
+                    scale: 1,
+                    displacement: 0,
+                    index_const: None,
+                    index_max_exclusive: Some(8),
+                } if base_param == "buffer"
+            )),
+            "expected Fb8 countdown induction index_max_exclusive=8: {effects:?}"
         );
     }
 }
