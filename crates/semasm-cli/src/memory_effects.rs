@@ -30,12 +30,14 @@ pub fn collect_memory_effects(
 ) -> Vec<ObservedMemoryAccess> {
     let mut affinity: HashMap<Gp, String> = HashMap::new();
     let mut stack_slots: HashMap<FrameSlot, String> = HashMap::new();
+    // Fb5: GP registers known to hold a constant (mov imm / xor-zero).
+    let mut consts: HashMap<Gp, u64> = HashMap::new();
     seed_param_affinity(&mut affinity, contract, abi);
 
     let mut out = Vec::new();
     for instr in lowered {
-        record_accesses(instr, &affinity, &mut out);
-        update_affinity(instr, &mut affinity, &mut stack_slots);
+        record_accesses(instr, &affinity, &consts, &mut out);
+        update_affinity(instr, &mut affinity, &mut stack_slots, &mut consts);
     }
     out
 }
@@ -62,6 +64,7 @@ fn seed_param_affinity(
 fn record_accesses(
     instr: &LoweredInstr,
     affinity: &HashMap<Gp, String>,
+    consts: &HashMap<Gp, u64>,
     out: &mut Vec<ObservedMemoryAccess>,
 ) {
     let mnemonic = instr.mnemonic.to_ascii_lowercase();
@@ -75,7 +78,7 @@ fn record_accesses(
         out.push(ObservedMemoryAccess {
             mode,
             width_bytes: width_bytes(mem.width),
-            addr: classify_addr(mem, affinity),
+            addr: classify_addr(mem, affinity, consts),
             mnemonic: mnemonic.clone(),
             instruction_offset: 0,
         });
@@ -114,7 +117,11 @@ fn access_mode(mnemonic: &str, operand_index: usize, instr: &LoweredInstr) -> Op
     }
 }
 
-fn classify_addr(mem: &MemOperand, affinity: &HashMap<Gp, String>) -> AccessAddr {
+fn classify_addr(
+    mem: &MemOperand,
+    affinity: &HashMap<Gp, String>,
+    consts: &HashMap<Gp, u64>,
+) -> AccessAddr {
     if is_stack_frame(mem) {
         return AccessAddr::StackFrame;
     }
@@ -128,11 +135,17 @@ fn classify_addr(mem: &MemOperand, affinity: &HashMap<Gp, String>) -> AccessAddr
         return AccessAddr::Unknown;
     };
     // Fb4: model indexed form instead of collapsing to Unknown.
-    if mem.index.is_some() {
+    // Fb5: attach index_const when the index GP holds a known constant.
+    if let Some(index) = mem.index {
+        let index_const = match index.storage {
+            Storage::Gp(idx_gp) => consts.get(&idx_gp).copied(),
+            _ => None,
+        };
         return AccessAddr::Indexed {
             base_param: param.clone(),
             scale: mem.scale.max(1),
             displacement: mem.disp,
+            index_const,
         };
     }
     AccessAddr::Affine {
@@ -168,6 +181,7 @@ fn update_affinity(
     instr: &LoweredInstr,
     affinity: &mut HashMap<Gp, String>,
     stack_slots: &mut HashMap<FrameSlot, String>,
+    consts: &mut HashMap<Gp, u64>,
 ) {
     let mnemonic = instr.mnemonic.to_ascii_lowercase();
     match mnemonic.as_str() {
@@ -183,7 +197,7 @@ fn update_affinity(
                         }
                     }
                 }
-                // Reload / copy: mov reg, …
+                // Reload / copy / imm: mov reg, …
                 (Some(Operand::Reg(dst)), src) => {
                     let Storage::Gp(dst_gp) = dst.storage else {
                         return;
@@ -196,12 +210,23 @@ fn update_affinity(
                                 } else {
                                     affinity.remove(&dst_gp);
                                 }
+                                if let Some(c) = consts.get(&src_gp).copied() {
+                                    consts.insert(dst_gp, c);
+                                } else {
+                                    consts.remove(&dst_gp);
+                                }
                             } else {
                                 affinity.remove(&dst_gp);
+                                consts.remove(&dst_gp);
                             }
+                        }
+                        Some(Operand::Imm(imm)) => {
+                            affinity.remove(&dst_gp);
+                            consts.insert(dst_gp, *imm as u64);
                         }
                         Some(Operand::Mem(mem)) => {
                             // Reload spilled pointer params from the frame.
+                            consts.remove(&dst_gp);
                             if let Some(slot) = frame_slot(mem) {
                                 if let Some(name) = stack_slots.get(&slot).cloned() {
                                     affinity.insert(dst_gp, name);
@@ -212,6 +237,7 @@ fn update_affinity(
                         }
                         _ => {
                             affinity.remove(&dst_gp);
+                            consts.remove(&dst_gp);
                         }
                     }
                 }
@@ -225,24 +251,56 @@ fn update_affinity(
             let Storage::Gp(dst_gp) = dst.storage else {
                 return;
             };
+            consts.remove(&dst_gp);
             if let Some(Operand::Mem(mem)) = instr.operands.get(1) {
-                if let AccessAddr::Affine { base_param, .. } = classify_addr(mem, affinity) {
+                if let AccessAddr::Affine { base_param, .. } =
+                    classify_addr(mem, affinity, consts)
+                {
                     affinity.insert(dst_gp, base_param);
                     return;
                 }
             }
             affinity.remove(&dst_gp);
         }
-        "xor" | "pop" | "movzx" | "movsx" | "movsxd" | "and" | "or" | "imul" | "mul" | "div"
-        | "idiv" | "neg" | "not" => {
-            if let Some(Operand::Reg(dst)) = instr.operands.first() {
+        "xor" => {
+            // xor reg,reg → constant 0 (Fb5); other xor clears both maps.
+            if let (Some(Operand::Reg(dst)), Some(Operand::Reg(src))) =
+                (instr.operands.first(), instr.operands.get(1))
+            {
+                if let (Storage::Gp(dst_gp), Storage::Gp(src_gp)) = (dst.storage, src.storage) {
+                    if dst_gp == src_gp {
+                        affinity.remove(&dst_gp);
+                        consts.insert(dst_gp, 0);
+                        return;
+                    }
+                    affinity.remove(&dst_gp);
+                    consts.remove(&dst_gp);
+                }
+            } else if let Some(Operand::Reg(dst)) = instr.operands.first() {
                 if let Storage::Gp(dst_gp) = dst.storage {
                     affinity.remove(&dst_gp);
+                    consts.remove(&dst_gp);
                 }
             }
         }
-        // inc/dec/add/sub/adc/sbb and other ops: keep existing param affinity
-        // (pointer arithmetic does not change region identity in v1).
+        "pop" | "movzx" | "movsx" | "movsxd" | "and" | "or" | "imul" | "mul" | "div" | "idiv"
+        | "neg" | "not" => {
+            if let Some(Operand::Reg(dst)) = instr.operands.first() {
+                if let Storage::Gp(dst_gp) = dst.storage {
+                    affinity.remove(&dst_gp);
+                    consts.remove(&dst_gp);
+                }
+            }
+        }
+        // Pointer arithmetic keeps param affinity but loses constant knowledge.
+        "inc" | "dec" | "add" | "sub" | "adc" | "sbb" | "shl" | "shr" | "sal" | "sar" | "rol"
+        | "ror" => {
+            if let Some(Operand::Reg(dst)) = instr.operands.first() {
+                if let Storage::Gp(dst_gp) = dst.storage {
+                    consts.remove(&dst_gp);
+                }
+            }
+        }
         _ => {}
     }
 }
@@ -442,5 +500,56 @@ require = "equal"
         assert!(effects
             .iter()
             .any(|e| matches!(e.addr, AccessAddr::Unknown)));
+    }
+
+    #[test]
+    fn constant_index_attaches_index_const() {
+        // mov eax, 3; movzx ecx, byte [rdi + rax]  (SysV: rdi = buffer)
+        let contract = semasm_contract::check_str(
+            r#"
+contract_version = "0.1"
+[function]
+name = "load_at_3"
+[[function.parameters]]
+name = "buffer"
+type = "ptr<const u8>"
+[[function.returns]]
+name = "value"
+type = "usize"
+[[function.memory.regions]]
+name = "cell"
+base = "buffer"
+length = "8"
+access = "read"
+"#,
+        )
+        .contract
+        .expect("contract");
+
+        let instrs = [
+            phys("mov", &["eax", "3"]),
+            phys("movzx", &["ecx", "byte ptr [rdi + rax*1]"]),
+            phys("ret", &[]),
+        ];
+        let lowered: Vec<_> = instrs
+            .iter()
+            .filter_map(|p| match lower(p) {
+                semasm_x86::lower::Lowering::Lowered(l) => Some(l),
+                semasm_x86::lower::Lowering::Unsupported { .. } => None,
+            })
+            .collect();
+        let effects = collect_memory_effects(&lowered, &contract, AbiConvention::SysV);
+        assert!(
+            effects.iter().any(|e| matches!(
+                &e.addr,
+                AccessAddr::Indexed {
+                    base_param,
+                    scale: 1,
+                    displacement: 0,
+                    index_const: Some(3),
+                } if base_param == "buffer"
+            )),
+            "expected Indexed with index_const=3: {effects:?}"
+        );
     }
 }

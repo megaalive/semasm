@@ -228,7 +228,19 @@ fn judge_access(memory: &CheckedMemory, access: &ObservedMemoryAccess) -> Memory
             base_param,
             scale,
             displacement,
-        } => judge_indexed_access(memory, access, base_param, *scale, *displacement),
+            index_const,
+        } => {
+            if let Some(c) = index_const {
+                // Fb5: constant index folds to affine offset for bounds.
+                let offset = i64::try_from(*c)
+                    .unwrap_or(i64::MAX)
+                    .saturating_mul(i64::from(*scale))
+                    .saturating_add(*displacement);
+                judge_affine_access(memory, access, base_param, offset)
+            } else {
+                judge_indexed_access(memory, access, base_param, *scale, *displacement)
+            }
+        }
     }
 }
 
@@ -644,6 +656,7 @@ mod tests {
                 base_param: "p".into(),
                 scale: 1,
                 displacement: 0,
+                index_const: None,
             },
             mnemonic: "mov".into(),
             instruction_offset: 0,
@@ -656,5 +669,35 @@ mod tests {
             RelationEvidenceBasis::DeclaredPrecondition
         );
         assert_ne!(report.accesses[0].bounds, BoundsStatus::ProvenInside);
+    }
+
+    #[test]
+    fn indexed_constant_index_can_be_proven_inside() {
+        let memory = CheckedMemory {
+            regions: vec![region(
+                "buf",
+                "p",
+                0,
+                LengthSpec::Literal(8),
+                RegionAccess::Read,
+            )],
+            relations: vec![],
+        };
+        let accesses = vec![ObservedMemoryAccess {
+            mode: AccessMode::Load,
+            width_bytes: 1,
+            addr: AccessAddr::Indexed {
+                base_param: "p".into(),
+                scale: 1,
+                displacement: 0,
+                index_const: Some(3),
+            },
+            mnemonic: "mov".into(),
+            instruction_offset: 0,
+        }];
+        let report = evaluate_region_access(&memory, &accesses);
+        assert_eq!(report.status, RegionAccessStatus::Passed);
+        assert_eq!(report.accesses[0].bounds, BoundsStatus::ProvenInside);
+        assert_eq!(report.accesses_proven_inside, 1);
     }
 }

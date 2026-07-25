@@ -137,9 +137,11 @@ pub enum AccessAddr {
     },
     /// Indexed form `base + index*scale + disp` (Fb4).
     ///
-    /// Base is a named pointer parameter. Index bounds are **not** proven
-    /// statically in Fb4 — region_access treats these as may-escape /
-    /// under_preconditions (not unconditional `proven_inside`).
+    /// When [`Self::Indexed::index_const`] is set (Fb5), the index was a
+    /// statically known constant and bounds may be judged like affine
+    /// `base+(index_const*scale+displacement)`. Otherwise region_access
+    /// treats these as may-escape / under_preconditions (not unconditional
+    /// `proven_inside`).
     Indexed {
         /// Parameter name used as base.
         base_param: String,
@@ -147,6 +149,9 @@ pub enum AccessAddr {
         scale: u8,
         /// Constant displacement.
         displacement: i64,
+        /// Statically known index register value (Fb5 constant-index fold).
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        index_const: Option<u64>,
     },
     /// Frame / stack spill (ignored for region/alias evidence).
     StackFrame,
