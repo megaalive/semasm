@@ -8,6 +8,12 @@ follow [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Added
 
+- **ABI raw-blob input guard** — `abi` / `win64-abi` / `aarch64-abi` now
+  error when zero instructions decode (no vacuous "clean" on the wrong
+  input) and warn when the input is almost entirely printable text
+  (assembly source passed instead of a machine-code blob). Warning does
+  not change the exit code; a decoded-but-unsupported input still exits 1
+  via the existing incomplete-analysis path.
 - **Fb9b CFG-confirmed post-test induction** — physical `jb`/`jl` back-edge
   must target the access site of
   `xor idx,idx; access; inc idx; cmp idx,N; jb header` before attaching
