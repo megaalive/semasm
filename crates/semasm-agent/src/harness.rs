@@ -116,6 +116,12 @@ pub fn synthesize_vectors(contract: &CheckedContract) -> Vec<TestVector> {
     if let Some(op) = pure_int_shape(contract) {
         return synthesize_pure_int_vectors(op);
     }
+    if let Some(op) = pure_int_i64_shape(contract) {
+        return synthesize_pure_int_i64_vectors(op);
+    }
+    if let Some(op) = pure_int_unary_i64_shape(contract) {
+        return synthesize_pure_int_unary_i64_vectors(op);
+    }
     Vec::new()
 }
 
@@ -155,6 +161,16 @@ pub const ORACLE_BUFFER_MEMCPY_VERSION: u32 = 1;
 pub const ORACLE_PURE_INT_BINARY_USIZE: &str = "builtin.pure_int.binary_usize";
 /// Profile version for [`ORACLE_PURE_INT_BINARY_USIZE`].
 pub const ORACLE_PURE_INT_BINARY_USIZE_VERSION: u32 = 2;
+/// Builtin oracle id for pure two-`i64` integer shapes (`add_i64` / `sub_i64` /
+/// `min_i64` / `max_i64`); add/sub use two's-complement wrapping semantics.
+pub const ORACLE_PURE_INT_BINARY_I64: &str = "builtin.pure_int.binary_i64";
+/// Profile version for [`ORACLE_PURE_INT_BINARY_I64`].
+pub const ORACLE_PURE_INT_BINARY_I64_VERSION: u32 = 1;
+/// Builtin oracle id for pure one-`i64` integer shapes (`return_i64` / `abs_i64`);
+/// abs uses two's-complement wrapping semantics (`abs(i64::MIN) == i64::MIN`).
+pub const ORACLE_PURE_INT_UNARY_I64: &str = "builtin.pure_int.unary_i64";
+/// Profile version for [`ORACLE_PURE_INT_UNARY_I64`].
+pub const ORACLE_PURE_INT_UNARY_I64_VERSION: u32 = 1;
 
 /// Recognized binary pure-integer operation for `(usize, usize) -> usize`.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -175,6 +191,66 @@ impl PureIntOp {
         match self {
             Self::Min => a.min(b),
             Self::Max => a.max(b),
+        }
+    }
+}
+
+/// Recognized binary pure-integer operation for `(i64, i64) -> i64`.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum PureIntI64Op {
+    Add,
+    Sub,
+    Min,
+    Max,
+}
+
+impl PureIntI64Op {
+    fn claim(self) -> &'static str {
+        match self {
+            Self::Add => {
+                "result equals a.wrapping_add(b) for the recognized two-i64 pure-integer shape"
+            }
+            Self::Sub => {
+                "result equals a.wrapping_sub(b) for the recognized two-i64 pure-integer shape"
+            }
+            Self::Min => "result equals min(a, b) for the recognized two-i64 pure-integer shape",
+            Self::Max => "result equals max(a, b) for the recognized two-i64 pure-integer shape",
+        }
+    }
+
+    fn reduce(self, a: i64, b: i64) -> i64 {
+        match self {
+            Self::Add => a.wrapping_add(b),
+            Self::Sub => a.wrapping_sub(b),
+            Self::Min => a.min(b),
+            Self::Max => a.max(b),
+        }
+    }
+}
+
+/// Recognized unary pure-integer operation for `(i64) -> i64`.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum PureIntUnaryI64Op {
+    Identity,
+    Abs,
+}
+
+impl PureIntUnaryI64Op {
+    fn claim(self) -> &'static str {
+        match self {
+            Self::Identity => {
+                "result equals x for the recognized one-i64 pure-integer shape"
+            }
+            Self::Abs => {
+                "result equals x.wrapping_abs() for the recognized one-i64 pure-integer shape"
+            }
+        }
+    }
+
+    fn reduce(self, x: i64) -> i64 {
+        match self {
+            Self::Identity => x,
+            Self::Abs => x.wrapping_abs(),
         }
     }
 }
@@ -257,6 +333,20 @@ pub fn recognize_behavior_oracle(contract: &CheckedContract) -> Option<Recognize
             claim: op.claim(),
         });
     }
+    if let Some(op) = pure_int_i64_shape(contract) {
+        return Some(RecognizedOracle {
+            id: ORACLE_PURE_INT_BINARY_I64,
+            version: ORACLE_PURE_INT_BINARY_I64_VERSION,
+            claim: op.claim(),
+        });
+    }
+    if let Some(op) = pure_int_unary_i64_shape(contract) {
+        return Some(RecognizedOracle {
+            id: ORACLE_PURE_INT_UNARY_I64,
+            version: ORACLE_PURE_INT_UNARY_I64_VERSION,
+            claim: op.claim(),
+        });
+    }
     None
 }
 
@@ -264,7 +354,10 @@ pub fn recognize_behavior_oracle(contract: &CheckedContract) -> Option<Recognize
 /// pure-integer shapes that do not declare `memory_write`.
 #[must_use]
 pub fn is_read_only_buffer_scan(contract: &CheckedContract) -> bool {
-    if pure_int_shape(contract).is_some() {
+    if pure_int_shape(contract).is_some()
+        || pure_int_i64_shape(contract).is_some()
+        || pure_int_unary_i64_shape(contract).is_some()
+    {
         return !contract
             .effects
             .iter()
@@ -436,7 +529,8 @@ fn oracle_expected_shape(oracle_id: &str) -> Result<HarnessShape, String> {
         ORACLE_BUFFER_MEMCPY => Ok(HarnessShape::Memcpy),
         ORACLE_BUFFER_MEMCMP_I8 => Ok(HarnessShape::MemCmp),
         ORACLE_BUFFER_WRAPPING_SUM_I64 => Ok(HarnessShape::I64Sum),
-        ORACLE_PURE_INT_BINARY_USIZE => Ok(HarnessShape::PureInt),
+        ORACLE_PURE_INT_BINARY_USIZE | ORACLE_PURE_INT_BINARY_I64 => Ok(HarnessShape::PureInt),
+        ORACLE_PURE_INT_UNARY_I64 => Ok(HarnessShape::PureIntUnary),
         other => Err(format!("unrecognized oracle id `{other}`")),
     }
 }
@@ -463,8 +557,12 @@ pub enum HarnessShape {
     Memcpy,
     /// `(ptr<const i64>, usize) -> i64` — wrapping sum.
     I64Sum,
-    /// `(usize, usize) -> usize` — `min_usize` / `max_usize`.
+    /// `(usize, usize) -> usize` — `min_usize` / `max_usize` — or
+    /// `(i64, i64) -> i64` — `add_i64` / `sub_i64` / `min_i64` / `max_i64`
+    /// (identical wire layout: two integer registers in, one out).
     PureInt,
+    /// `(i64) -> i64` — `return_i64` / `abs_i64`.
+    PureIntUnary,
 }
 
 /// Detect harness shape from the first test vector's input layout.
@@ -511,12 +609,15 @@ fn detect_harness_shape(vectors: &[TestVector]) -> Result<HarnessShape, String> 
             Ok(HarnessShape::I64Sum)
         }
         2 if first.inputs.iter().all(serde_json::Value::is_number) => Ok(HarnessShape::PureInt),
+        1 if first.inputs.iter().all(serde_json::Value::is_number) => {
+            Ok(HarnessShape::PureIntUnary)
+        }
         n => Err(format!(
             "unsupported test vector shape ({n} inputs); \
              expected buffer-scan (3: array/null + two numbers), replace-byte \
              (4: array/null + three numbers), memcmp \
              (3: two arrays/null + length), i64-sum (2: array/null + length), \
-             or pure-int (2 numeric)"
+             pure-int (2 numeric), or pure-int-unary (1 numeric)"
         )),
     }
 }
@@ -1089,6 +1190,158 @@ fn pure_int_op_from_ensures(contract: &CheckedContract) -> Option<PureIntOp> {
         (false, true) => Some(PureIntOp::Max),
         _ => None,
     }
+}
+
+/// Synthesise canonical signed pure-integer test vectors for `(i64, i64) -> i64`.
+///
+/// Add/sub expectations use two's-complement wrapping semantics, matching the
+/// hardware behaviour of `add`/`sub` on x86-64/AArch64/RISC-V.
+fn synthesize_pure_int_i64_vectors(op: PureIntI64Op) -> Vec<TestVector> {
+    let cases: [(&str, i64, i64); 8] = [
+        ("both zero", 0, 0),
+        ("both positive", 5, 3),
+        ("mixed signs", -3, 7),
+        ("both negative", -5, -2),
+        ("equal negative", -7, -7),
+        ("wide spread", 1_000_000, -50),
+        ("max wraps", i64::MAX, 1),
+        ("min wraps", i64::MIN, -1),
+    ];
+
+    cases
+        .into_iter()
+        .map(|(name, a, b)| TestVector {
+            name: name.into(),
+            inputs: vec![serde_json::json!(a), serde_json::json!(b)],
+            expected: serde_json::json!(op.reduce(a, b)),
+        })
+        .collect()
+}
+
+/// Synthesise canonical signed pure-integer test vectors for `(i64) -> i64`.
+///
+/// Abs expectations use `wrapping_abs` (`abs(i64::MIN) == i64::MIN`), matching
+/// two's-complement negation on real hardware.
+fn synthesize_pure_int_unary_i64_vectors(op: PureIntUnaryI64Op) -> Vec<TestVector> {
+    let cases: [(&str, i64); 5] = [
+        ("zero", 0),
+        ("positive", 5),
+        ("negative", -5),
+        ("max", i64::MAX),
+        ("min wraps", i64::MIN),
+    ];
+
+    cases
+        .into_iter()
+        .map(|(name, x)| TestVector {
+            name: name.into(),
+            inputs: vec![serde_json::json!(x)],
+            expected: serde_json::json!(op.reduce(x)),
+        })
+        .collect()
+}
+
+/// Detect the `(i64, i64) -> i64` pure-integer shape and which binary op.
+///
+/// Discriminator (fail-closed when ambiguous or conflicting):
+/// - function name containing exactly one of `add` / `sub` / `min` / `max`
+///   (case-insensitive), and/or
+/// - for min/max, weak ensures `result <= a` + `result <= b` (min) vs
+///   `result >= a` + `result >= b` (max), which must agree with the name.
+fn pure_int_i64_shape(contract: &CheckedContract) -> Option<PureIntI64Op> {
+    if !pure_int_i64_types(contract) {
+        return None;
+    }
+
+    let by_name = pure_int_i64_op_from_name(&contract.name);
+    let by_ensures = pure_int_i64_op_from_ensures(contract);
+
+    match (by_name, by_ensures) {
+        (Some(a), Some(b)) if a == b => Some(a),
+        (Some(a), None) => Some(a),
+        (None, Some(b)) => Some(b),
+        (Some(_), Some(_)) | (None, None) => None,
+    }
+}
+
+fn pure_int_i64_types(contract: &CheckedContract) -> bool {
+    if contract.parameters.len() != 2 {
+        return false;
+    }
+    let i64_count = contract
+        .parameters
+        .iter()
+        .filter(|p| matches!(p.ty, SemType::Int { bits: 64 }))
+        .count();
+    if i64_count != 2 {
+        return false;
+    }
+
+    contract
+        .returns
+        .iter()
+        .any(|r| matches!(r.ty, SemType::Int { bits: 64 }))
+}
+
+fn pure_int_i64_op_from_name(name: &str) -> Option<PureIntI64Op> {
+    let lower = name.to_ascii_lowercase();
+    let matches: Vec<PureIntI64Op> = [
+        ("add", PureIntI64Op::Add),
+        ("sub", PureIntI64Op::Sub),
+        ("min", PureIntI64Op::Min),
+        ("max", PureIntI64Op::Max),
+    ]
+    .into_iter()
+    .filter(|(needle, _)| lower.contains(needle))
+    .map(|(_, op)| op)
+    .collect();
+
+    match matches.as_slice() {
+        [op] => Some(*op),
+        _ => None,
+    }
+}
+
+fn pure_int_i64_op_from_ensures(contract: &CheckedContract) -> Option<PureIntI64Op> {
+    // Only min/max are derivable from weak ensures; add/sub equality is proven
+    // by the oracle vectors alone.
+    pure_int_op_from_ensures(contract).map(|op| match op {
+        PureIntOp::Min => PureIntI64Op::Min,
+        PureIntOp::Max => PureIntI64Op::Max,
+    })
+}
+
+/// Detect the `(i64) -> i64` pure-integer shape and which unary op.
+///
+/// Discriminator (fail-closed when ambiguous): function name containing
+/// `abs` (absolute value) xor `return` / `identity` (identity).
+fn pure_int_unary_i64_shape(contract: &CheckedContract) -> Option<PureIntUnaryI64Op> {
+    if !pure_int_unary_i64_types(contract) {
+        return None;
+    }
+
+    let lower = contract.name.to_ascii_lowercase();
+    let has_abs = lower.contains("abs");
+    let has_identity = lower.contains("return") || lower.contains("identity");
+    match (has_abs, has_identity) {
+        (true, false) => Some(PureIntUnaryI64Op::Abs),
+        (false, true) => Some(PureIntUnaryI64Op::Identity),
+        _ => None,
+    }
+}
+
+fn pure_int_unary_i64_types(contract: &CheckedContract) -> bool {
+    if contract.parameters.len() != 1 {
+        return false;
+    }
+    if !matches!(contract.parameters[0].ty, SemType::Int { bits: 64 }) {
+        return false;
+    }
+
+    contract
+        .returns
+        .iter()
+        .any(|r| matches!(r.ty, SemType::Int { bits: 64 }))
 }
 
 /// Three distinct bytes that are not equal to `needle`.
@@ -1888,6 +2141,7 @@ fn int_value(expr: &Expr) -> Option<i64> {
 /// - [`Abi::WindowsX64`]: NASM `main`, args in `rcx`/`rdx`/`r8`, Win32 I/O
 /// - [`Abi::Aapcs64`]: GNU as `_start`, args in `x0`/`x1`/`x2`, Linux `svc`
 /// - [`Abi::Riscv`]: GNU as `_start`, args in `a0`/`a1`/`a2`, Linux `ecall`
+#[allow(clippy::too_many_lines)] // flat ABI × shape dispatch table
 pub fn generate_harness(
     routine_symbol: &str,
     vectors: &[TestVector],
@@ -1916,6 +2170,10 @@ pub fn generate_harness(
         (Abi::SysVAmd64, HarnessShape::PureInt) => {
             Ok(generate_sysv_pure_int_harness(routine_symbol, vectors))
         }
+        (Abi::SysVAmd64, HarnessShape::PureIntUnary) => Ok(generate_sysv_pure_int_unary_harness(
+            routine_symbol,
+            vectors,
+        )),
         (Abi::WindowsX64, HarnessShape::BufferScan) => {
             Ok(generate_win64_buffer_harness(routine_symbol, vectors))
         }
@@ -1937,6 +2195,9 @@ pub fn generate_harness(
         (Abi::WindowsX64, HarnessShape::PureInt) => {
             Ok(generate_win64_pure_int_harness(routine_symbol, vectors))
         }
+        (Abi::WindowsX64, HarnessShape::PureIntUnary) => Ok(
+            generate_win64_pure_int_unary_harness(routine_symbol, vectors),
+        ),
         (Abi::Aapcs64, HarnessShape::BufferScan) => {
             Ok(generate_aapcs64_buffer_harness(routine_symbol, vectors))
         }
@@ -1971,6 +2232,10 @@ pub fn generate_harness(
         (Abi::Aapcs64, HarnessShape::PureInt) => {
             Ok(generate_aapcs64_pure_int_harness(routine_symbol, vectors))
         }
+        (Abi::Aapcs64, HarnessShape::PureIntUnary) => Ok(generate_aapcs64_pure_int_unary_harness(
+            routine_symbol,
+            vectors,
+        )),
         (Abi::Riscv, HarnessShape::BufferScan) => {
             Ok(generate_riscv_buffer_harness(routine_symbol, vectors))
         }
@@ -1980,6 +2245,10 @@ pub fn generate_harness(
         (Abi::Riscv, HarnessShape::PureInt) => {
             Ok(generate_riscv_pure_int_harness(routine_symbol, vectors))
         }
+        (Abi::Riscv, HarnessShape::PureIntUnary) => Ok(generate_riscv_pure_int_unary_harness(
+            routine_symbol,
+            vectors,
+        )),
     }
 }
 
@@ -2303,6 +2572,13 @@ fn emit_pure_int_vector_data(out: &mut String, vectors: &[TestVector]) {
     }
 }
 
+fn emit_pure_int_unary_vector_data(out: &mut String, vectors: &[TestVector]) {
+    out.push_str("section .data\n");
+    for (i, v) in vectors.iter().enumerate() {
+        let _ = writeln!(out, "vec{i}_a: dq {}", vector_int_input(v, 0));
+    }
+}
+
 fn emit_i64_sum_vector_data(out: &mut String, vectors: &[TestVector]) {
     out.push_str("section .data\n");
     for (i, v) in vectors.iter().enumerate() {
@@ -2380,6 +2656,14 @@ fn emit_gas_pure_int_vector_data(out: &mut String, vectors: &[TestVector]) {
         let _ = writeln!(out, "vec{i}_a:\n    .quad {}", vector_int_input(v, 0));
         out.push_str(".align 3\n");
         let _ = writeln!(out, "vec{i}_b:\n    .quad {}", vector_int_input(v, 1));
+    }
+}
+
+fn emit_gas_pure_int_unary_vector_data(out: &mut String, vectors: &[TestVector]) {
+    out.push_str(".section .data\n");
+    for (i, v) in vectors.iter().enumerate() {
+        out.push_str(".align 3\n");
+        let _ = writeln!(out, "vec{i}_a:\n    .quad {}", vector_int_input(v, 0));
     }
 }
 
@@ -2488,6 +2772,43 @@ fn generate_sysv_pure_int_harness(routine_symbol: &str, vectors: &[TestVector]) 
         let _ = writeln!(out, "    ; vector {i}: {}", vectors[i].name);
         let _ = writeln!(out, "    mov rdi, [vec{i}_a]");
         let _ = writeln!(out, "    mov rsi, [vec{i}_b]");
+        let _ = writeln!(out, "    call {routine_symbol}");
+        let _ = writeln!(out, "    mov [results + {i}*8], rax");
+    }
+
+    out.push_str("    ; write(results, len)\n");
+    out.push_str("    mov eax, 1          ; sys_write\n");
+    out.push_str("    mov edi, 1          ; stdout\n");
+    let _ = writeln!(out, "    lea rsi, [results]");
+    let _ = writeln!(out, "    mov edx, {}", vectors.len() * 8);
+    out.push_str("    syscall\n");
+    out.push_str("    mov eax, 60         ; sys_exit\n");
+    out.push_str("    xor edi, edi\n");
+    out.push_str("    syscall\n");
+
+    out
+}
+
+/// Generate NASM source for a SysV unary pure-integer `_start` harness.
+fn generate_sysv_pure_int_unary_harness(routine_symbol: &str, vectors: &[TestVector]) -> String {
+    let mut out = String::new();
+
+    out.push_str("BITS 64\n");
+    out.push_str("DEFAULT REL\n\n");
+
+    emit_pure_int_unary_vector_data(&mut out, vectors);
+
+    out.push_str("\nsection .bss\n");
+    let _ = writeln!(out, "results: resb {}", vectors.len() * 8);
+
+    out.push_str("\nsection .text\n");
+    let _ = writeln!(out, "extern {routine_symbol}");
+    out.push_str("global _start\n");
+    out.push_str("_start:\n");
+
+    for (i, _v) in vectors.iter().enumerate() {
+        let _ = writeln!(out, "    ; vector {i}: {}", vectors[i].name);
+        let _ = writeln!(out, "    mov rdi, [vec{i}_a]");
         let _ = writeln!(out, "    call {routine_symbol}");
         let _ = writeln!(out, "    mov [results + {i}*8], rax");
     }
@@ -2830,6 +3151,55 @@ fn generate_win64_pure_int_harness(routine_symbol: &str, vectors: &[TestVector])
         out.push_str("    sub rsp, 40\n");
         let _ = writeln!(out, "    mov rcx, [vec{i}_a]");
         let _ = writeln!(out, "    mov rdx, [vec{i}_b]");
+        let _ = writeln!(out, "    call {routine_symbol}");
+        out.push_str("    add rsp, 40\n");
+        let _ = writeln!(out, "    mov [results + {i}*8], rax");
+    }
+
+    out.push_str("    ; WriteFile(stdout, results, len, &written, NULL)\n");
+    out.push_str("    sub rsp, 40\n");
+    out.push_str("    mov ecx, -11        ; STD_OUTPUT_HANDLE\n");
+    out.push_str("    call GetStdHandle\n");
+    out.push_str("    mov rcx, rax\n");
+    out.push_str("    lea rdx, [results]\n");
+    let _ = writeln!(out, "    mov r8d, {}", vectors.len() * 8);
+    out.push_str("    lea r9, [written]\n");
+    out.push_str("    mov qword [rsp + 32], 0\n");
+    out.push_str("    call WriteFile\n");
+    out.push_str("    add rsp, 40\n");
+
+    out.push_str("    sub rsp, 40\n");
+    out.push_str("    xor ecx, ecx\n");
+    out.push_str("    call ExitProcess\n");
+
+    out
+}
+
+/// Generate NASM source for a Win64 unary pure-integer `main` harness.
+fn generate_win64_pure_int_unary_harness(routine_symbol: &str, vectors: &[TestVector]) -> String {
+    let mut out = String::new();
+
+    out.push_str("BITS 64\n");
+    out.push_str("DEFAULT REL\n\n");
+    out.push_str("EXTERN GetStdHandle\n");
+    out.push_str("EXTERN WriteFile\n");
+    out.push_str("EXTERN ExitProcess\n\n");
+
+    emit_pure_int_unary_vector_data(&mut out, vectors);
+
+    out.push_str("\nsection .bss\n");
+    let _ = writeln!(out, "results: resb {}", vectors.len() * 8);
+    out.push_str("written: resq 1\n");
+
+    out.push_str("\nsection .text\n");
+    let _ = writeln!(out, "extern {routine_symbol}");
+    out.push_str("global main\n");
+    out.push_str("main:\n");
+
+    for (i, _v) in vectors.iter().enumerate() {
+        let _ = writeln!(out, "    ; vector {i}: {}", vectors[i].name);
+        out.push_str("    sub rsp, 40\n");
+        let _ = writeln!(out, "    mov rcx, [vec{i}_a]");
         let _ = writeln!(out, "    call {routine_symbol}");
         out.push_str("    add rsp, 40\n");
         let _ = writeln!(out, "    mov [results + {i}*8], rax");
@@ -3422,6 +3792,48 @@ fn generate_aapcs64_pure_int_harness(routine_symbol: &str, vectors: &[TestVector
     out
 }
 
+/// Generate GNU as source for an AArch64 unary pure-integer `_start` harness.
+fn generate_aapcs64_pure_int_unary_harness(
+    routine_symbol: &str,
+    vectors: &[TestVector],
+) -> String {
+    let mut out = String::new();
+    let results_len = vectors.len() * 8;
+
+    emit_gas_pure_int_unary_vector_data(&mut out, vectors);
+
+    out.push_str("\n.section .bss\n");
+    out.push_str(".align 3\n");
+    out.push_str("results:\n");
+    let _ = writeln!(out, "    .space {results_len}");
+
+    out.push_str("\n.section .text\n");
+    out.push_str(".global _start\n");
+    out.push_str("_start:\n");
+
+    for (i, _v) in vectors.iter().enumerate() {
+        let _ = writeln!(out, "    // vector {i}: {}", vectors[i].name);
+        let _ = writeln!(out, "    ldr x0, =vec{i}_a");
+        out.push_str("    ldr x0, [x0]\n");
+        let _ = writeln!(out, "    bl {routine_symbol}");
+        out.push_str("    ldr x2, =results\n");
+        let _ = writeln!(out, "    str x0, [x2, #{offset}]", offset = i * 8);
+    }
+
+    out.push_str("    // write(1, results, len)\n");
+    out.push_str("    mov x0, #1\n");
+    out.push_str("    ldr x1, =results\n");
+    let _ = writeln!(out, "    mov x2, #{results_len}");
+    out.push_str("    mov x8, #64\n");
+    out.push_str("    svc #0\n");
+    out.push_str("    // exit(0)\n");
+    out.push_str("    mov x0, #0\n");
+    out.push_str("    mov x8, #93\n");
+    out.push_str("    svc #0\n");
+
+    out
+}
+
 /// Generate GNU as source for an AArch64 i64 wrapping-sum `_start` harness.
 fn generate_aapcs64_i64_sum_harness(routine_symbol: &str, vectors: &[TestVector]) -> String {
     let mut out = String::new();
@@ -3555,6 +3967,50 @@ fn generate_riscv_pure_int_harness(routine_symbol: &str, vectors: &[TestVector])
     out
 }
 
+/// Generate GNU as source for a RISC-V unary pure-integer `_start` harness.
+fn generate_riscv_pure_int_unary_harness(routine_symbol: &str, vectors: &[TestVector]) -> String {
+    let mut out = String::new();
+    let results_len = vectors.len() * 8;
+
+    out.push_str(".option norelax\n");
+    emit_gas_pure_int_unary_vector_data(&mut out, vectors);
+
+    out.push_str("\n.section .bss\n");
+    out.push_str(".align 4\n");
+    out.push_str("results:\n");
+    let _ = writeln!(out, "    .space {results_len}");
+    out.push_str(".align 4\n");
+    out.push_str("    .space 16384\n");
+    out.push_str("__stack_top:\n");
+
+    out.push_str("\n.section .text\n");
+    out.push_str(".global _start\n");
+    out.push_str("_start:\n");
+    out.push_str("    la sp, __stack_top\n");
+
+    for (i, _v) in vectors.iter().enumerate() {
+        let _ = writeln!(out, "    # vector {i}: {}", vectors[i].name);
+        let _ = writeln!(out, "    la a0, vec{i}_a");
+        out.push_str("    ld a0, 0(a0)\n");
+        let _ = writeln!(out, "    jal {routine_symbol}");
+        out.push_str("    la t0, results\n");
+        let _ = writeln!(out, "    sd a0, {offset}(t0)", offset = i * 8);
+    }
+
+    out.push_str("    # write(1, results, len)\n");
+    out.push_str("    li a0, 1\n");
+    out.push_str("    la a1, results\n");
+    let _ = writeln!(out, "    li a2, {results_len}");
+    out.push_str("    li a7, 64\n");
+    out.push_str("    ecall\n");
+    out.push_str("    # exit(0)\n");
+    out.push_str("    li a0, 0\n");
+    out.push_str("    li a7, 93\n");
+    out.push_str("    ecall\n");
+
+    out
+}
+
 /// Generate GNU as source for a RISC-V i64 wrapping-sum `_start` harness.
 fn generate_riscv_i64_sum_harness(routine_symbol: &str, vectors: &[TestVector]) -> String {
     let mut out = String::new();
@@ -3653,11 +4109,15 @@ fn format_expected(expected: &serde_json::Value) -> String {
 }
 
 /// Extract a numeric input for a pure-integer vector.
+#[allow(clippy::cast_sign_loss)] // signed inputs are passed as raw two's-complement bits
 fn vector_int_input(v: &TestVector, index: usize) -> u64 {
-    v.inputs
-        .get(index)
-        .and_then(serde_json::Value::as_u64)
-        .unwrap_or(0)
+    let value = v.inputs.get(index);
+    if let Some(u) = value.and_then(serde_json::Value::as_u64) {
+        return u;
+    }
+    value
+        .and_then(serde_json::Value::as_i64)
+        .map_or(0, |i| i as u64)
 }
 
 /// Extract the buffer bytes for a vector's first input (a JSON array).
@@ -3768,7 +4228,8 @@ pub fn evaluate(stdout: &[u8], vectors: &[TestVector], shape: HarnessShape) -> H
         HarnessShape::BufferScan
         | HarnessShape::MemCmp
         | HarnessShape::I64Sum
-        | HarnessShape::PureInt => evaluate_words_only(stdout, vectors),
+        | HarnessShape::PureInt
+        | HarnessShape::PureIntUnary => evaluate_words_only(stdout, vectors),
     }
 }
 
@@ -3983,6 +4444,36 @@ expression = "count <= length"
 
     fn sum_i64_contract() -> CheckedContract {
         let toml = include_str!("../../../fixtures/contracts/sum_i64.sem.toml");
+        check_contract(toml)
+    }
+
+    fn add_i64_contract() -> CheckedContract {
+        let toml = include_str!("../../../fixtures/contracts/add_i64.sem.toml");
+        check_contract(toml)
+    }
+
+    fn sub_i64_contract() -> CheckedContract {
+        let toml = include_str!("../../../fixtures/contracts/sub_i64.sem.toml");
+        check_contract(toml)
+    }
+
+    fn min_i64_contract() -> CheckedContract {
+        let toml = include_str!("../../../fixtures/contracts/min_i64.sem.toml");
+        check_contract(toml)
+    }
+
+    fn max_i64_contract() -> CheckedContract {
+        let toml = include_str!("../../../fixtures/contracts/max_i64.sem.toml");
+        check_contract(toml)
+    }
+
+    fn abs_i64_contract() -> CheckedContract {
+        let toml = include_str!("../../../fixtures/contracts/abs_i64.sem.toml");
+        check_contract(toml)
+    }
+
+    fn return_i64_contract() -> CheckedContract {
+        let toml = include_str!("../../../fixtures/contracts/return_i64.sem.toml");
         check_contract(toml)
     }
 
@@ -4655,21 +5146,218 @@ bounded_stack_bytes = 64
     }
 
     #[test]
-    fn detect_harness_shape_rejects_unsupported_vector_shape() {
-        let mixed = vec![
-            TestVector {
-                name: "bad".into(),
-                inputs: vec![serde_json::json!(1u64)],
-                expected: serde_json::json!(1u64),
-            },
-            TestVector {
-                name: "also bad".into(),
-                inputs: vec![serde_json::json!(2u64), serde_json::json!(3u64)],
-                expected: serde_json::json!(2u64),
-            },
+    fn pure_int_i64_recognizes_binary_ops() {
+        let cases = [
+            (add_i64_contract(), "wrapping_add"),
+            (sub_i64_contract(), "wrapping_sub"),
+            (min_i64_contract(), "min(a, b)"),
+            (max_i64_contract(), "max(a, b)"),
         ];
+        for (contract, claim_fragment) in cases {
+            let oracle = recognize_behavior_oracle(&contract).expect("binary i64 shape");
+            assert_eq!(oracle.id, ORACLE_PURE_INT_BINARY_I64);
+            assert_eq!(oracle.version, ORACLE_PURE_INT_BINARY_I64_VERSION);
+            assert!(
+                oracle.claim.contains(claim_fragment),
+                "claim `{}` missing `{claim_fragment}`",
+                oracle.claim
+            );
+            assert!(is_read_only_buffer_scan(&contract));
+        }
+    }
+
+    #[test]
+    fn pure_int_unary_i64_recognizes_ops() {
+        let abs = recognize_behavior_oracle(&abs_i64_contract()).expect("abs shape");
+        assert_eq!(abs.id, ORACLE_PURE_INT_UNARY_I64);
+        assert_eq!(abs.version, ORACLE_PURE_INT_UNARY_I64_VERSION);
+        assert!(abs.claim.contains("wrapping_abs"));
+
+        let identity = recognize_behavior_oracle(&return_i64_contract()).expect("identity shape");
+        assert_eq!(identity.id, ORACLE_PURE_INT_UNARY_I64);
+        assert!(identity.claim.contains("result equals x"));
+    }
+
+    #[test]
+    fn pure_int_i64_usize_contract_does_not_match_i64_oracle() {
+        // min_usize must stay on the usize oracle even though its name says "min".
+        let oracle = recognize_behavior_oracle(&min_usize_contract()).expect("usize shape");
+        assert_eq!(oracle.id, ORACLE_PURE_INT_BINARY_USIZE);
+    }
+
+    #[test]
+    fn pure_int_i64_vectors_cover_signed_edges_and_wrapping() {
+        let vectors = synthesize_vectors(&add_i64_contract());
+        assert_eq!(vectors.len(), 8);
+        let wrap = vectors
+            .iter()
+            .find(|v| v.name == "max wraps")
+            .expect("wrap vector");
+        assert_eq!(wrap.inputs[0].as_i64(), Some(i64::MAX));
+        assert_eq!(wrap.expected.as_i64(), Some(i64::MIN));
+        assert!(
+            vectors
+                .iter()
+                .any(|v| v.inputs.iter().any(|x| x.as_i64().is_some_and(|i| i < 0))),
+            "must exercise negative inputs"
+        );
+
+        let sub = synthesize_vectors(&sub_i64_contract());
+        let mixed = sub
+            .iter()
+            .find(|v| v.name == "mixed signs")
+            .expect("mixed vector");
+        assert_eq!(mixed.expected.as_i64(), Some(-10)); // -3 - 7
+
+        let min = synthesize_vectors(&min_i64_contract());
+        let negatives = min
+            .iter()
+            .find(|v| v.name == "both negative")
+            .expect("negative vector");
+        assert_eq!(negatives.expected.as_i64(), Some(-5)); // signed min(-5, -2)
+    }
+
+    #[test]
+    fn pure_int_unary_i64_abs_wraps_at_min() {
+        let vectors = synthesize_vectors(&abs_i64_contract());
+        assert_eq!(vectors.len(), 5);
+        let wrap = vectors
+            .iter()
+            .find(|v| v.name == "min wraps")
+            .expect("wrap vector");
+        assert_eq!(wrap.expected.as_i64(), Some(i64::MIN));
+        let negative = vectors
+            .iter()
+            .find(|v| v.name == "negative")
+            .expect("negative vector");
+        assert_eq!(negative.expected.as_i64(), Some(5));
+
+        let identity = synthesize_vectors(&return_i64_contract());
+        let neg = identity
+            .iter()
+            .find(|v| v.name == "negative")
+            .expect("negative vector");
+        assert_eq!(neg.expected.as_i64(), Some(-5));
+    }
+
+    #[test]
+    fn pure_int_i64_ambiguous_name_fails_closed() {
+        let toml = r#"
+contract_version = "0.1"
+[function]
+name = "add_min_i64"
+[[function.parameters]]
+name = "a"
+type = "i64"
+[[function.parameters]]
+name = "b"
+type = "i64"
+[[function.returns]]
+name = "result"
+type = "i64"
+"#;
+        let contract = check_contract(toml);
+        assert!(recognize_behavior_oracle(&contract).is_none());
+        assert!(synthesize_vectors(&contract).is_empty());
+    }
+
+    #[test]
+    fn pure_int_i64_resolves_shared_pure_int_shape() {
+        let c = add_i64_contract();
+        let v = synthesize_vectors(&c);
+        assert_eq!(resolve_harness_shape(&c, &v).unwrap(), HarnessShape::PureInt);
+
+        let u = abs_i64_contract();
+        let uv = synthesize_vectors(&u);
+        assert_eq!(
+            resolve_harness_shape(&u, &uv).unwrap(),
+            HarnessShape::PureIntUnary
+        );
+    }
+
+    #[test]
+    #[allow(clippy::cast_sign_loss)] // asserting the raw two's-complement bit pattern
+    fn pure_int_i64_data_emits_twos_complement_bits() {
+        let c = add_i64_contract();
+        let v = synthesize_vectors(&c);
+        let src =
+            generate_harness("add_i64", &v, Abi::SysVAmd64, HarnessShape::PureInt).unwrap();
+        // -3 as raw two's-complement bits, not clamped to 0.
+        assert!(src.contains(&format!("dq {}", (-3i64) as u64)));
+    }
+
+    #[test]
+    fn pure_int_unary_sysv_harness_loads_single_register() {
+        let c = abs_i64_contract();
+        let v = synthesize_vectors(&c);
+        let src =
+            generate_harness("abs_i64", &v, Abi::SysVAmd64, HarnessShape::PureIntUnary).unwrap();
+        assert!(src.contains("extern abs_i64"));
+        assert!(src.contains("mov rdi, [vec0_a]"));
+        assert!(!src.contains("vec0_b"));
+        assert!(!src.contains("mov rsi"));
+    }
+
+    #[test]
+    fn pure_int_unary_win64_harness_loads_single_register() {
+        let c = return_i64_contract();
+        let v = synthesize_vectors(&c);
+        let src =
+            generate_harness("return_i64", &v, Abi::WindowsX64, HarnessShape::PureIntUnary)
+                .unwrap();
+        assert!(src.contains("global main"));
+        assert!(src.contains("mov rcx, [vec0_a]"));
+        assert!(!src.contains("vec0_b"));
+        assert!(src.contains("WriteFile"));
+    }
+
+    #[test]
+    fn pure_int_unary_aarch64_and_riscv_harnesses_load_single_register() {
+        let c = abs_i64_contract();
+        let v = synthesize_vectors(&c);
+        let aarch64 =
+            generate_harness("abs_i64", &v, Abi::Aapcs64, HarnessShape::PureIntUnary).unwrap();
+        assert!(aarch64.contains("bl abs_i64"));
+        assert!(aarch64.contains("vec0_a"));
+        assert!(!aarch64.contains("vec0_b"));
+
+        let riscv =
+            generate_harness("abs_i64", &v, Abi::Riscv, HarnessShape::PureIntUnary).unwrap();
+        assert!(riscv.contains("jal abs_i64"));
+        assert!(riscv.contains("vec0_a"));
+        assert!(!riscv.contains("vec0_b"));
+    }
+
+    #[test]
+    fn detect_harness_shape_rejects_unsupported_vector_shape() {
+        let mixed = vec![TestVector {
+            name: "bad".into(),
+            inputs: vec![serde_json::json!("text")],
+            expected: serde_json::json!(1u64),
+        }];
         let err = detect_harness_shape(&mixed).unwrap_err();
         assert!(err.contains("unsupported test vector shape"));
+
+        let too_many = vec![TestVector {
+            name: "also bad".into(),
+            inputs: vec![serde_json::json!(1u64); 5],
+            expected: serde_json::json!(1u64),
+        }];
+        let err = detect_harness_shape(&too_many).unwrap_err();
+        assert!(err.contains("unsupported test vector shape"));
+    }
+
+    #[test]
+    fn detect_harness_shape_accepts_single_numeric_input_as_pure_int_unary() {
+        let unary = vec![TestVector {
+            name: "unary".into(),
+            inputs: vec![serde_json::json!(-5i64)],
+            expected: serde_json::json!(5i64),
+        }];
+        assert_eq!(
+            detect_harness_shape(&unary).unwrap(),
+            HarnessShape::PureIntUnary
+        );
     }
 
     #[test]

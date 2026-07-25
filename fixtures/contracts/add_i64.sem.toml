@@ -1,0 +1,24 @@
+contract_version = "0.1"
+
+[function]
+name = "add_i64"
+summary = "Return the wrapping sum of two signed 64-bit integers"
+
+[[function.parameters]]
+name = "a"
+type = "i64"
+role = "input"
+
+[[function.parameters]]
+name = "b"
+type = "i64"
+role = "input"
+
+[[function.returns]]
+name = "result"
+type = "i64"
+
+[function.constraints]
+no_heap = true
+no_recursion = true
+bounded_stack_bytes = 64
