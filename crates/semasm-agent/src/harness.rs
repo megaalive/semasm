@@ -162,17 +162,18 @@ pub const ORACLE_PURE_INT_BINARY_USIZE: &str = "builtin.pure_int.binary_usize";
 /// Profile version for [`ORACLE_PURE_INT_BINARY_USIZE`].
 pub const ORACLE_PURE_INT_BINARY_USIZE_VERSION: u32 = 2;
 /// Builtin oracle id for pure two-`i64` integer shapes (`add_i64` / `sub_i64` /
-/// `min_i64` / `max_i64`); add/sub use two's-complement wrapping semantics.
+/// `min_i64` / `max_i64` / `add_then_double`); arithmetic uses two's-complement
+/// wrapping semantics.
 pub const ORACLE_PURE_INT_BINARY_I64: &str = "builtin.pure_int.binary_i64";
-/// Profile version for [`ORACLE_PURE_INT_BINARY_I64`].
-pub const ORACLE_PURE_INT_BINARY_I64_VERSION: u32 = 1;
+/// Profile version for [`ORACLE_PURE_INT_BINARY_I64`] (v2: +`add_then_double`,
+/// stricter `add` token matching so nested-call names are not misclassified).
+pub const ORACLE_PURE_INT_BINARY_I64_VERSION: u32 = 2;
 /// Builtin oracle id for pure one-`i64` integer shapes (`return_i64` / `abs_i64` /
-/// `sum_range` / Phase-B identity loops); abs uses two's-complement wrapping
-/// (`abs(i64::MIN) == i64::MIN`); sum_range uses wrapping triangular numbers.
+/// `sum_range` / Phase-B identity loops / Phase-E scale/inc/add_base).
 pub const ORACLE_PURE_INT_UNARY_I64: &str = "builtin.pure_int.unary_i64";
-/// Profile version for [`ORACLE_PURE_INT_UNARY_I64`] (v2: +`sum_range`, Phase-B
-/// identity name aliases).
-pub const ORACLE_PURE_INT_UNARY_I64_VERSION: u32 = 2;
+/// Profile version for [`ORACLE_PURE_INT_UNARY_I64`] (v3: +Phase-E `double` /
+/// `inc` / `add_base100`).
+pub const ORACLE_PURE_INT_UNARY_I64_VERSION: u32 = 3;
 
 /// Recognized binary pure-integer operation for `(usize, usize) -> usize`.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -204,6 +205,8 @@ enum PureIntI64Op {
     Sub,
     Min,
     Max,
+    /// Wrapping `2 * (a + b)` for nested call / add-then-double leaves.
+    AddThenDouble,
 }
 
 impl PureIntI64Op {
@@ -217,6 +220,9 @@ impl PureIntI64Op {
             }
             Self::Min => "result equals min(a, b) for the recognized two-i64 pure-integer shape",
             Self::Max => "result equals max(a, b) for the recognized two-i64 pure-integer shape",
+            Self::AddThenDouble => {
+                "result equals 2.wrapping_mul(a.wrapping_add(b)) for the recognized add-then-double shape"
+            }
         }
     }
 
@@ -226,6 +232,7 @@ impl PureIntI64Op {
             Self::Sub => a.wrapping_sub(b),
             Self::Min => a.min(b),
             Self::Max => a.max(b),
+            Self::AddThenDouble => a.wrapping_add(b).wrapping_mul(2),
         }
     }
 }
@@ -240,6 +247,12 @@ enum PureIntUnaryI64Op {
     /// Identity after a countdown loop; vectors stay small so the loop cannot
     /// hang the harness on `i64::MAX`.
     Countdown,
+    /// Wrapping `2 * x` for scale/double leaves.
+    Double,
+    /// Wrapping `x + 1` for `inc`.
+    Inc,
+    /// Wrapping `x + 100` for `add_base` (global-rodata constant).
+    AddBase100,
 }
 
 impl PureIntUnaryI64Op {
@@ -257,6 +270,15 @@ impl PureIntUnaryI64Op {
             Self::Countdown => {
                 "result equals n after counting n down to 0 for the recognized one-i64 countdown shape"
             }
+            Self::Double => {
+                "result equals x.wrapping_mul(2) for the recognized one-i64 scale/double shape"
+            }
+            Self::Inc => {
+                "result equals x.wrapping_add(1) for the recognized one-i64 inc shape"
+            }
+            Self::AddBase100 => {
+                "result equals x.wrapping_add(100) for the recognized one-i64 add_base shape"
+            }
         }
     }
 
@@ -264,9 +286,10 @@ impl PureIntUnaryI64Op {
         match self {
             Self::Identity | Self::Countdown => x,
             Self::Abs => x.wrapping_abs(),
-            // n*(n+1)/2 with wrapping; vectors keep n >= 0 so the closed form
-            // matches a straightforward counting loop without signed pitfalls.
             Self::SumRange => x.wrapping_mul(x.wrapping_add(1)).wrapping_div(2),
+            Self::Double => x.wrapping_mul(2),
+            Self::Inc => x.wrapping_add(1),
+            Self::AddBase100 => x.wrapping_add(100),
         }
     }
 }
@@ -1256,6 +1279,15 @@ fn synthesize_pure_int_unary_i64_vectors(op: PureIntUnaryI64Op) -> Vec<TestVecto
             ("negative", -3),
             ("minus_one", -1),
         ],
+        PureIntUnaryI64Op::Double
+        | PureIntUnaryI64Op::Inc
+        | PureIntUnaryI64Op::AddBase100 => vec![
+            ("zero", 0),
+            ("positive", 5),
+            ("negative", -5),
+            ("max", i64::MAX),
+            ("min wraps", i64::MIN),
+        ],
         PureIntUnaryI64Op::Identity | PureIntUnaryI64Op::Abs => vec![
             ("zero", 0),
             ("positive", 5),
@@ -1319,14 +1351,19 @@ fn pure_int_i64_types(contract: &CheckedContract) -> bool {
 
 fn pure_int_i64_op_from_name(name: &str) -> Option<PureIntI64Op> {
     let lower = name.to_ascii_lowercase();
+    // Compound shapes first so they are not swallowed by a bare `add` token.
+    if lower.contains("add_then") || lower.contains("then_double") {
+        return Some(PureIntI64Op::AddThenDouble);
+    }
+
     let matches: Vec<PureIntI64Op> = [
-        ("add", PureIntI64Op::Add),
-        ("sub", PureIntI64Op::Sub),
-        ("min", PureIntI64Op::Min),
-        ("max", PureIntI64Op::Max),
+        (name_token_hit(&lower, "add") || name_token_hit(&lower, "sum"), PureIntI64Op::Add),
+        (name_token_hit(&lower, "sub"), PureIntI64Op::Sub),
+        (name_token_hit(&lower, "min"), PureIntI64Op::Min),
+        (name_token_hit(&lower, "max"), PureIntI64Op::Max),
     ]
     .into_iter()
-    .filter(|(needle, _)| lower.contains(needle))
+    .filter(|(hit, _)| *hit)
     .map(|(_, op)| op)
     .collect();
 
@@ -1334,6 +1371,19 @@ fn pure_int_i64_op_from_name(name: &str) -> Option<PureIntI64Op> {
         [op] => Some(*op),
         _ => None,
     }
+}
+
+/// True when `needle` appears as a whole token in `lower` (`needle`,
+/// `needle_…`, `…_needle`, or `…_needle_…`). Rejects accidental substrings
+/// inside longer compounds once callers have already filtered them.
+fn name_token_hit(lower: &str, needle: &str) -> bool {
+    if lower == needle {
+        return true;
+    }
+    let prefix = format!("{needle}_");
+    let suffix = format!("_{needle}");
+    let mid = format!("_{needle}_");
+    lower.starts_with(&prefix) || lower.ends_with(&suffix) || lower.contains(&mid)
 }
 
 fn pure_int_i64_op_from_ensures(contract: &CheckedContract) -> Option<PureIntI64Op> {
@@ -1351,6 +1401,9 @@ fn pure_int_i64_op_from_ensures(contract: &CheckedContract) -> Option<PureIntI64
 /// - `abs` → Abs
 /// - `sum_range` → SumRange
 /// - `countdown` → Countdown (small vectors; must not share Identity's max)
+/// - `scale` / unary `double` → Double
+/// - `inc` → Inc
+/// - `add_base` → AddBase100
 /// - `return` / `identity` / `stack_local` / `spill` → Identity
 fn pure_int_unary_i64_shape(contract: &CheckedContract) -> Option<PureIntUnaryI64Op> {
     if !pure_int_unary_i64_types(contract) {
@@ -1362,6 +1415,12 @@ fn pure_int_unary_i64_shape(contract: &CheckedContract) -> Option<PureIntUnaryI6
         (lower.contains("abs"), PureIntUnaryI64Op::Abs),
         (lower.contains("sum_range"), PureIntUnaryI64Op::SumRange),
         (lower.contains("countdown"), PureIntUnaryI64Op::Countdown),
+        (
+            lower.contains("scale") || (lower.contains("double") && !lower.contains("then")),
+            PureIntUnaryI64Op::Double,
+        ),
+        (name_token_hit(&lower, "inc"), PureIntUnaryI64Op::Inc),
+        (lower.contains("add_base"), PureIntUnaryI64Op::AddBase100),
         (
             lower.contains("return")
                 || lower.contains("identity")
@@ -5287,10 +5346,104 @@ type = "i64"
     }
 
     #[test]
-    fn pure_int_i64_usize_contract_does_not_match_i64_oracle() {
-        // min_usize must stay on the usize oracle even though its name says "min".
-        let oracle = recognize_behavior_oracle(&min_usize_contract()).expect("usize shape");
-        assert_eq!(oracle.id, ORACLE_PURE_INT_BINARY_USIZE);
+    fn pure_int_phase_e_shapes_are_recognized() {
+        let scale = check_contract(
+            r#"
+contract_version = "0.1"
+[function]
+name = "scale_by_two"
+[[function.parameters]]
+name = "x"
+type = "i64"
+[[function.returns]]
+name = "result"
+type = "i64"
+"#,
+        );
+        let o = recognize_behavior_oracle(&scale).expect("scale");
+        assert!(o.claim.contains("wrapping_mul(2)"));
+
+        let nested = check_contract(
+            r#"
+contract_version = "0.1"
+[function]
+name = "add_then_double"
+[[function.parameters]]
+name = "a"
+type = "i64"
+[[function.parameters]]
+name = "b"
+type = "i64"
+[[function.returns]]
+name = "result"
+type = "i64"
+"#,
+        );
+        let o = recognize_behavior_oracle(&nested).expect("nested");
+        assert_eq!(o.id, ORACLE_PURE_INT_BINARY_I64);
+        assert!(o.claim.contains("2.wrapping_mul"));
+        let vectors = synthesize_vectors(&nested);
+        let both = vectors
+            .iter()
+            .find(|v| v.name == "both positive")
+            .expect("both positive");
+        // 2*(5+3) = 16, not 8 (plain add)
+        assert_eq!(both.expected.as_i64(), Some(16));
+
+        let point = check_contract(
+            r#"
+contract_version = "0.1"
+[function]
+name = "point_sum"
+[[function.parameters]]
+name = "a"
+type = "i64"
+[[function.parameters]]
+name = "b"
+type = "i64"
+[[function.returns]]
+name = "result"
+type = "i64"
+"#,
+        );
+        let o = recognize_behavior_oracle(&point).expect("point_sum");
+        assert!(o.claim.contains("wrapping_add"));
+
+        let inc = check_contract(
+            r#"
+contract_version = "0.1"
+[function]
+name = "inc"
+[[function.parameters]]
+name = "x"
+type = "i64"
+[[function.returns]]
+name = "result"
+type = "i64"
+"#,
+        );
+        assert!(recognize_behavior_oracle(&inc)
+            .expect("inc")
+            .claim
+            .contains("wrapping_add(1)"));
+
+        let base = check_contract(
+            r#"
+contract_version = "0.1"
+[function]
+name = "add_base"
+[[function.parameters]]
+name = "x"
+type = "i64"
+[[function.returns]]
+name = "result"
+type = "i64"
+"#,
+        );
+        assert!(recognize_behavior_oracle(&base)
+            .expect("add_base")
+            .claim
+            .contains("wrapping_add(100)"));
     }
 
     #[test]

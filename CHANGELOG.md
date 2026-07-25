@@ -8,17 +8,18 @@ follow [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Added
 
-- **Pure-int i64 oracles** — `builtin.pure_int.binary_i64` v1 (`add_i64` /
-  `sub_i64` / `min_i64` / `max_i64`, add/sub wrapping two's-complement) and
-  `builtin.pure_int.unary_i64` v2 (`return_i64` identity, `abs_i64`
-  `wrapping_abs`, `sum_range` wrapping triangular `0+1+…+n`, plus Phase-B
-  identity name aliases `countdown` / `stack_local` / `spill`). New
-  `PureIntUnary` harness shape (single integer register)
+- **Pure-int i64 oracles** — `builtin.pure_int.binary_i64` v2 (`add_i64` /
+  `sub_i64` / `min_i64` / `max_i64` / `add_then_double`; wrapping arithmetic;
+  stricter `add`/`sum` token matching so nested-call names are not
+  misclassified as plain add) and `builtin.pure_int.unary_i64` v3
+  (`return_i64` identity, `abs_i64` `wrapping_abs`, `sum_range` wrapping
+  triangular `0+1+…+n`, Phase-B identity aliases `countdown` /
+  `stack_local` / `spill`, Phase-E `scale`/`double` / `inc` / `add_base`).
+  New `PureIntUnary` harness shape (single integer register)
   on SysV/Win64/AAPCS64/RISC-V; signed vector inputs are passed as raw
   two's-complement bits (`vector_int_input` no longer clamps negatives to 0).
   Recognition fail-closed: ambiguous names (`add_min_i64`) synthesize no
-  vectors. Enables HlaX64 backend corpus Phase A named-i64 and Phase B
-  stack/loop Gate.
+  vectors. Enables HlaX64 backend corpus Phase A–E Gate where shapes fit.
 - **Region access `passed_under_preconditions`** — matched affine accesses into
   symbolic-length regions (permission allowed) are no longer Incomplete
   silence: slice status `passed_under_preconditions`, `accesses_unknown=0`,
