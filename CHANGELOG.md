@@ -8,11 +8,15 @@ follow [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Added
 
+- **Fb7 post-test loop induction → proven_inside** — linear pattern
+  `xor idx,idx; access [base+idx]; inc idx; cmp idx,N; jb` attaches
+  `index_max_exclusive`. CFG-sound arbitrary induction (Fb8) locked.
+  Does **not** promote symbolic-length Phase C/D leaves.
 - **Fb6 range-guard index → proven_inside** — `AccessAddr::Indexed.index_max_exclusive`
   from x86 `cmp reg,imm` + `jae`/`jnb`/`jge` fall-through; worst-case
   `[0,max)` offsets must both be inside a literal region. Clears on
-  `inc`/writes. Full loop induction (Fb7) locked. Does **not** promote
-  symbolic-length Phase C/D leaves.
+  `inc`/writes. Post-test induction is Fb7; CFG-sound loops (Fb8) locked.
+  Does **not** promote symbolic-length Phase C/D leaves.
 - **Fb5 constant-index → proven_inside** — `AccessAddr::Indexed.index_const`
   folds known GP constants (`mov imm` / `xor-zero` on x86) into affine-style
   bounds; literal-length regions can reach `proven_inside`. Symbolic /

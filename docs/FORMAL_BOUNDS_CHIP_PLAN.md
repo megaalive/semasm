@@ -24,12 +24,13 @@ Forbidden: SMT; proving arbitrary `ensures`; claiming general memory safety.
 | **Fb4** | Index-bounded `AccessAddr` (base+index) modeled | **done** |
 | **Fb5** | Static constant-index → `proven_inside` | **done** |
 | **Fb6** | Range-guard index (`cmp`+`jae`/`jge` fall-through) → `proven_inside` | **done** |
-| **Fb7** | Full loop-invariant / induction index proof | **locked** |
+| **Fb7** | Post-test counted-loop induction (`access; inc; cmp; jb`) → `proven_inside` | **done** |
+| **Fb8** | CFG-sound / arbitrary loop invariant induction | **locked** |
 
 ## Non-goals
 
 - Promoting symbolic-length `verified_under_preconditions` → `verified`
-- Full loop invariant inference (Fb7)
+- CFG-sound arbitrary loop invariant inference (Fb8)
 - Changing VAA profile names for affine leaves
 - Claiming symbolic / unguarded indexed accesses are statically inside
 
@@ -42,7 +43,7 @@ This does **not** promote symbolic-length Phase C/D leaves
 (`length = "length"` + `length <= N` obligations). VAA profile
 `memory-leaf-concrete-v1` rejects caller-obligation demotion.
 
-## Indexed addresses (Fb4 / Fb5 / Fb6 honesty)
+## Indexed addresses (Fb4–Fb7 honesty)
 
 `AccessAddr::Indexed { base_param, scale, displacement, index_const,
 index_max_exclusive }` models `[base + index*scale + disp]` when the base
@@ -58,5 +59,9 @@ register has parameter affinity. Collectors no longer collapse these to
 - **With** `index_max_exclusive` (Fb6): x86 collectors arm a fall-through
   upper bound after `cmp reg, imm` + `jae`/`jnb`/`jge`. Bounds require both
   ends of `[disp, (max-1)*scale+disp]` inside a **literal** region. Writes
-  that change the index (e.g. `inc`) clear the bound. This is a linear
-  range-guard heuristic — **not** CFG-sound loop induction (Fb7 locked).
+  that change the index (e.g. `inc`) clear the live Fb6 bound.
+- **With** `index_max_exclusive` (Fb7): post-test counted loops of the form
+  `xor idx,idx; … access [base+idx]; inc idx; cmp idx,N; jb …` attach the
+  same exclusive bound via a linear pattern match (zero-init + single step +
+  below back-edge). This is **not** CFG-sound arbitrary induction (Fb8
+  locked).

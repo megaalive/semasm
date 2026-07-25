@@ -35,11 +35,15 @@ pub fn collect_memory_effects(
     // Fb6: exclusive upper bounds from `cmp`+`jae`/`jge` fall-through guards.
     let mut uppers: HashMap<Gp, u64> = HashMap::new();
     let mut pending_cmp: Option<(Gp, u64)> = None;
+    // Fb7: post-test counted-loop induction (access before cmp+jb back-edge).
+    // Maps instruction index → (index GP, exclusive upper bound).
+    let inductions = discover_post_test_inductions(lowered);
     seed_param_affinity(&mut affinity, contract, abi);
 
     let mut out = Vec::new();
-    for instr in lowered {
-        record_accesses(instr, &affinity, &consts, &uppers, &mut out);
+    for (idx, instr) in lowered.iter().enumerate() {
+        let induction = inductions.get(&idx).copied();
+        record_accesses(instr, &affinity, &consts, &uppers, induction, &mut out);
         update_affinity(
             instr,
             &mut affinity,
@@ -50,6 +54,152 @@ pub fn collect_memory_effects(
         );
     }
     out
+}
+
+/// Fb7: detect post-test counted loops of the form
+/// `… access [base+idx] …; inc idx; cmp idx, N; jb/jl …`
+/// where `idx` was zero-initialized earlier.
+///
+/// Maps instruction index of the memory access → (index GP, exclusive upper bound N).
+/// Honesty: linear pattern match ≠ CFG-sound arbitrary loop induction.
+fn discover_post_test_inductions(lowered: &[LoweredInstr]) -> HashMap<usize, (Gp, u64)> {
+    let mut out = HashMap::new();
+    for (idx, instr) in lowered.iter().enumerate() {
+        for op in &instr.operands {
+            let Operand::Mem(mem) = op else {
+                continue;
+            };
+            let Some(index) = mem.index else {
+                continue;
+            };
+            let Storage::Gp(idx_gp) = index.storage else {
+                continue;
+            };
+            if !index_was_zero_initialized(lowered, idx, idx_gp) {
+                continue;
+            }
+            if let Some(bound) = post_test_bound_after(lowered, idx + 1, idx_gp) {
+                out.insert(idx, (idx_gp, bound));
+            }
+        }
+    }
+    out
+}
+
+fn index_was_zero_initialized(lowered: &[LoweredInstr], before: usize, gp: Gp) -> bool {
+    for instr in lowered[..before].iter().rev() {
+        let mnemonic = instr.mnemonic.to_ascii_lowercase();
+        match mnemonic.as_str() {
+            "xor" => {
+                if let (Some(Operand::Reg(dst)), Some(Operand::Reg(src))) =
+                    (instr.operands.first(), instr.operands.get(1))
+                {
+                    if let (Storage::Gp(d), Storage::Gp(s)) = (dst.storage, src.storage) {
+                        if d == gp && s == gp {
+                            return true;
+                        }
+                        if d == gp {
+                            return false;
+                        }
+                    }
+                }
+            }
+            "mov" | "movabs" => {
+                if let Some(Operand::Reg(dst)) = instr.operands.first() {
+                    if let Storage::Gp(d) = dst.storage {
+                        if d == gp {
+                            return matches!(instr.operands.get(1), Some(Operand::Imm(0)));
+                        }
+                    }
+                }
+            }
+            "inc" | "dec" | "add" | "sub" | "adc" | "sbb" | "pop" | "movzx" | "movsx" | "movsxd"
+            | "and" | "or" | "lea" | "imul" | "mul" | "neg" | "not" | "shl" | "shr" => {
+                if let Some(Operand::Reg(dst)) = instr.operands.first() {
+                    if let Storage::Gp(d) = dst.storage {
+                        if d == gp {
+                            return false;
+                        }
+                    }
+                }
+            }
+            _ => {}
+        }
+    }
+    false
+}
+
+fn post_test_bound_after(lowered: &[LoweredInstr], from: usize, gp: Gp) -> Option<u64> {
+    let mut saw_inc = false;
+    for (offset, instr) in lowered[from..].iter().enumerate() {
+        let at = from + offset;
+        let mnemonic = instr.mnemonic.to_ascii_lowercase();
+        match mnemonic.as_str() {
+            "inc" => {
+                if let Some(Operand::Reg(dst)) = instr.operands.first() {
+                    if let Storage::Gp(d) = dst.storage {
+                        if d == gp {
+                            if saw_inc {
+                                return None;
+                            }
+                            saw_inc = true;
+                            continue;
+                        }
+                    }
+                }
+            }
+            "add" => {
+                if let (Some(Operand::Reg(dst)), Some(Operand::Imm(1))) =
+                    (instr.operands.first(), instr.operands.get(1))
+                {
+                    if let Storage::Gp(d) = dst.storage {
+                        if d == gp {
+                            if saw_inc {
+                                return None;
+                            }
+                            saw_inc = true;
+                            continue;
+                        }
+                    }
+                }
+                if let Some(Operand::Reg(dst)) = instr.operands.first() {
+                    if let Storage::Gp(d) = dst.storage {
+                        if d == gp {
+                            return None;
+                        }
+                    }
+                }
+            }
+            "cmp" if saw_inc => {
+                if let (Some(Operand::Reg(reg)), Some(Operand::Imm(imm))) =
+                    (instr.operands.first(), instr.operands.get(1))
+                {
+                    if let Storage::Gp(r) = reg.storage {
+                        if r == gp && *imm > 0 {
+                            let next = lowered.get(at + 1)?;
+                            let br = next.mnemonic.to_ascii_lowercase();
+                            // jb/jl: continue while index < bound after the inc.
+                            if matches!(br.as_str(), "jb" | "jnae" | "jl" | "jnge") {
+                                return Some(*imm as u64);
+                            }
+                        }
+                    }
+                }
+                return None;
+            }
+            "dec" | "sub" | "mov" | "movabs" | "xor" | "pop" | "lea" | "movzx" | "and" | "or" => {
+                if let Some(Operand::Reg(dst)) = instr.operands.first() {
+                    if let Storage::Gp(d) = dst.storage {
+                        if d == gp {
+                            return None;
+                        }
+                    }
+                }
+            }
+            _ => {}
+        }
+    }
+    None
 }
 
 fn seed_param_affinity(
@@ -76,6 +226,7 @@ fn record_accesses(
     affinity: &HashMap<Gp, String>,
     consts: &HashMap<Gp, u64>,
     uppers: &HashMap<Gp, u64>,
+    induction: Option<(Gp, u64)>,
     out: &mut Vec<ObservedMemoryAccess>,
 ) {
     let mnemonic = instr.mnemonic.to_ascii_lowercase();
@@ -89,7 +240,7 @@ fn record_accesses(
         out.push(ObservedMemoryAccess {
             mode,
             width_bytes: width_bytes(mem.width),
-            addr: classify_addr(mem, affinity, consts, uppers),
+            addr: classify_addr(mem, affinity, consts, uppers, induction),
             mnemonic: mnemonic.clone(),
             instruction_offset: 0,
         });
@@ -133,6 +284,7 @@ fn classify_addr(
     affinity: &HashMap<Gp, String>,
     consts: &HashMap<Gp, u64>,
     uppers: &HashMap<Gp, u64>,
+    induction: Option<(Gp, u64)>,
 ) -> AccessAddr {
     if is_stack_frame(mem) {
         return AccessAddr::StackFrame;
@@ -149,16 +301,26 @@ fn classify_addr(
     // Fb4: model indexed form instead of collapsing to Unknown.
     // Fb5: attach index_const when the index GP holds a known constant.
     // Fb6: else attach index_max_exclusive from an active range guard.
+    // Fb7: else attach induction max from a post-test counted-loop pattern.
     if let Some(index) = mem.index {
         let (index_const, index_max_exclusive) = match index.storage {
             Storage::Gp(idx_gp) => {
-                let c = consts.get(&idx_gp).copied();
-                let u = if c.is_some() {
-                    None
+                // Fb7 post-test induction at this site subsumes a live Fb5
+                // constant (often 0 from xor-zero before the first iteration):
+                // the same access is reached with idx ∈ [0, N).
+                if let Some((igp, bound)) = induction {
+                    if igp == idx_gp {
+                        (None, Some(bound))
+                    } else if let Some(c) = consts.get(&idx_gp).copied() {
+                        (Some(c), None)
+                    } else {
+                        (None, uppers.get(&idx_gp).copied())
+                    }
+                } else if let Some(c) = consts.get(&idx_gp).copied() {
+                    (Some(c), None)
                 } else {
-                    uppers.get(&idx_gp).copied()
-                };
-                (c, u)
+                    (None, uppers.get(&idx_gp).copied())
+                }
             }
             _ => (None, None),
         };
@@ -314,7 +476,7 @@ fn update_affinity(
             uppers.remove(&dst_gp);
             if let Some(Operand::Mem(mem)) = instr.operands.get(1) {
                 if let AccessAddr::Affine { base_param, .. } =
-                    classify_addr(mem, affinity, consts, uppers)
+                    classify_addr(mem, affinity, consts, uppers, None)
                 {
                     affinity.insert(dst_gp, base_param);
                     return;
@@ -676,6 +838,61 @@ access = "read"
                 } if base_param == "buffer"
             )),
             "expected Indexed with index_max_exclusive=8: {effects:?}"
+        );
+    }
+
+    #[test]
+    fn post_test_loop_induction_attaches_index_max_exclusive() {
+        // xor eax,eax; movzx ecx, byte [rdi+rax]; inc eax; cmp eax,8; jb loop
+        let contract = semasm_contract::check_str(
+            r#"
+contract_version = "0.1"
+[function]
+name = "load_post_test"
+[[function.parameters]]
+name = "buffer"
+type = "ptr<const u8>"
+[[function.returns]]
+name = "value"
+type = "usize"
+[[function.memory.regions]]
+name = "cell"
+base = "buffer"
+length = "8"
+access = "read"
+"#,
+        )
+        .contract
+        .expect("contract");
+
+        let instrs = [
+            phys("xor", &["eax", "eax"]),
+            phys("movzx", &["ecx", "byte ptr [rdi + rax*1]"]),
+            phys("inc", &["eax"]),
+            phys("cmp", &["eax", "8"]),
+            phys("jb", &["0x10"]),
+            phys("ret", &[]),
+        ];
+        let lowered: Vec<_> = instrs
+            .iter()
+            .filter_map(|p| match lower(p) {
+                semasm_x86::lower::Lowering::Lowered(l) => Some(l),
+                semasm_x86::lower::Lowering::Unsupported { .. } => None,
+            })
+            .collect();
+        let effects = collect_memory_effects(&lowered, &contract, AbiConvention::SysV);
+        assert!(
+            effects.iter().any(|e| matches!(
+                &e.addr,
+                AccessAddr::Indexed {
+                    base_param,
+                    scale: 1,
+                    displacement: 0,
+                    index_const: None,
+                    index_max_exclusive: Some(8),
+                } if base_param == "buffer"
+            )),
+            "expected Fb7 post-test induction index_max_exclusive=8: {effects:?}"
         );
     }
 }
