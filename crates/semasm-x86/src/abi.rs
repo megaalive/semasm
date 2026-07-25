@@ -176,6 +176,22 @@ fn is_rsp(r: Register) -> bool {
     matches!(r.storage, Storage::Gp(Gp::Rsp))
 }
 
+/// True when this is `mov rsp, rbp` (frame restore).
+///
+/// Standard framed epilogue: restores `RSP` to the post-`push rbp` depth
+/// (delta 8). HlaX64 and many compilers use this instead of `add rsp, N`.
+/// Win64 already accepted this shape; SysV must too (STACK_BALANCE_RET).
+fn is_mov_rsp_from_rbp(ins: &LoweredInstr) -> bool {
+    if !matches!(ins.mnemonic.as_str(), "mov" | "movabs") {
+        return false;
+    }
+    matches!(
+        (ins.operands.first(), ins.operands.get(1)),
+        (Some(Operand::Reg(dst)), Some(Operand::Reg(src)))
+            if is_rsp(*dst) && matches!(src.storage, Storage::Gp(Gp::Rbp))
+    )
+}
+
 /// Whether `mem` reads/writes within the red zone: base `RSP` with a
 /// non-positive displacement in `[-RED_ZONE_BYTES, 0]`.
 fn red_zone_displacement(mem: &crate::lower::MemOperand) -> Option<i64> {
@@ -370,6 +386,13 @@ pub fn analyze(instrs: &[LoweredInstr]) -> AbiReport {
     let mut max_red_zone_disp: i64 = 0;
 
     for (i, ins) in instrs.iter().enumerate() {
+        // Standard frame epilogue: `mov rsp, rbp` restores RSP to the post-`push rbp`
+        // depth (delta 8). HlaX64 and many compilers use this instead of `add rsp, N`.
+        if is_mov_rsp_from_rbp(ins) {
+            rsp_delta = 8;
+            continue;
+        }
+
         let state = StackState {
             rsp_delta,
             rsp_align: ((ENTRY_RSP_MOD + rsp_delta) % STACK_ALIGN + STACK_ALIGN) % STACK_ALIGN,
@@ -561,6 +584,28 @@ mod tests {
         ];
         let r = analyze(&body);
         assert!(r.is_clean(), "expected clean: {:?}", r.findings);
+    }
+
+    #[test]
+    fn framed_prologue_with_mov_rsp_rbp_is_balanced() {
+        // HlaX64 SysV leaf: push rbp; mov rbp,rsp; sub rsp,N; ...; mov rsp,rbp; pop rbp; ret
+        let body = vec![
+            ins("push", Kind::Store, vec![reg(Gp::Rbp)]),
+            ins("mov", Kind::Store, vec![reg(Gp::Rbp), reg(Gp::Rsp)]),
+            ins("sub", Kind::Binary, vec![reg(Gp::Rsp), imm(16)]),
+            ins("mov", Kind::Store, vec![reg(Gp::Rax), reg(Gp::Rdi)]),
+            ins("mov", Kind::Store, vec![reg(Gp::Rsp), reg(Gp::Rbp)]),
+            ins("pop", Kind::Store, vec![reg(Gp::Rbp)]),
+            ins("ret", Kind::Return, vec![]),
+        ];
+        let r = analyze(&body);
+        assert!(
+            !r.findings.iter().any(|f| f.code == "STACK_BALANCE_RET"),
+            "framed mov rsp,rbp epilogue must balance: {:?}",
+            r.findings
+        );
+        assert!(r.is_clean(), "expected clean: {:?}", r.findings);
+        assert_eq!(r.final_rsp_delta, 0);
     }
 
     // --- callee-saved preservation --------------------------------------
