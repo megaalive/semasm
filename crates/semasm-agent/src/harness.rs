@@ -166,11 +166,13 @@ pub const ORACLE_PURE_INT_BINARY_USIZE_VERSION: u32 = 2;
 pub const ORACLE_PURE_INT_BINARY_I64: &str = "builtin.pure_int.binary_i64";
 /// Profile version for [`ORACLE_PURE_INT_BINARY_I64`].
 pub const ORACLE_PURE_INT_BINARY_I64_VERSION: u32 = 1;
-/// Builtin oracle id for pure one-`i64` integer shapes (`return_i64` / `abs_i64`);
-/// abs uses two's-complement wrapping semantics (`abs(i64::MIN) == i64::MIN`).
+/// Builtin oracle id for pure one-`i64` integer shapes (`return_i64` / `abs_i64` /
+/// `sum_range` / Phase-B identity loops); abs uses two's-complement wrapping
+/// (`abs(i64::MIN) == i64::MIN`); sum_range uses wrapping triangular numbers.
 pub const ORACLE_PURE_INT_UNARY_I64: &str = "builtin.pure_int.unary_i64";
-/// Profile version for [`ORACLE_PURE_INT_UNARY_I64`].
-pub const ORACLE_PURE_INT_UNARY_I64_VERSION: u32 = 1;
+/// Profile version for [`ORACLE_PURE_INT_UNARY_I64`] (v2: +`sum_range`, Phase-B
+/// identity name aliases).
+pub const ORACLE_PURE_INT_UNARY_I64_VERSION: u32 = 2;
 
 /// Recognized binary pure-integer operation for `(usize, usize) -> usize`.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -233,6 +235,11 @@ impl PureIntI64Op {
 enum PureIntUnaryI64Op {
     Identity,
     Abs,
+    /// Wrapping triangular sum `0+1+…+n` (= `n*(n+1)/2`), for `sum_range`.
+    SumRange,
+    /// Identity after a countdown loop; vectors stay small so the loop cannot
+    /// hang the harness on `i64::MAX`.
+    Countdown,
 }
 
 impl PureIntUnaryI64Op {
@@ -244,13 +251,22 @@ impl PureIntUnaryI64Op {
             Self::Abs => {
                 "result equals x.wrapping_abs() for the recognized one-i64 pure-integer shape"
             }
+            Self::SumRange => {
+                "result equals the wrapping sum 0+1+…+n for the recognized one-i64 sum_range shape"
+            }
+            Self::Countdown => {
+                "result equals n after counting n down to 0 for the recognized one-i64 countdown shape"
+            }
         }
     }
 
     fn reduce(self, x: i64) -> i64 {
         match self {
-            Self::Identity => x,
+            Self::Identity | Self::Countdown => x,
             Self::Abs => x.wrapping_abs(),
+            // n*(n+1)/2 with wrapping; vectors keep n >= 0 so the closed form
+            // matches a straightforward counting loop without signed pitfalls.
+            Self::SumRange => x.wrapping_mul(x.wrapping_add(1)).wrapping_div(2),
         }
     }
 }
@@ -1221,15 +1237,33 @@ fn synthesize_pure_int_i64_vectors(op: PureIntI64Op) -> Vec<TestVector> {
 /// Synthesise canonical signed pure-integer test vectors for `(i64) -> i64`.
 ///
 /// Abs expectations use `wrapping_abs` (`abs(i64::MIN) == i64::MIN`), matching
-/// two's-complement negation on real hardware.
+/// two's-complement negation on real hardware. SumRange vectors stay in a
+/// small non-negative range so the triangular closed form matches a loop.
 fn synthesize_pure_int_unary_i64_vectors(op: PureIntUnaryI64Op) -> Vec<TestVector> {
-    let cases: [(&str, i64); 5] = [
-        ("zero", 0),
-        ("positive", 5),
-        ("negative", -5),
-        ("max", i64::MAX),
-        ("min wraps", i64::MIN),
-    ];
+    let cases: Vec<(&str, i64)> = match op {
+        PureIntUnaryI64Op::SumRange => vec![
+            ("zero", 0),
+            ("one", 1),
+            ("five", 5),
+            ("ten", 10),
+            ("twenty", 20),
+        ],
+        // Small signed set: countdown loops must not iterate i64::MAX times.
+        PureIntUnaryI64Op::Countdown => vec![
+            ("zero", 0),
+            ("positive", 5),
+            ("ten", 10),
+            ("negative", -3),
+            ("minus_one", -1),
+        ],
+        PureIntUnaryI64Op::Identity | PureIntUnaryI64Op::Abs => vec![
+            ("zero", 0),
+            ("positive", 5),
+            ("negative", -5),
+            ("max", i64::MAX),
+            ("min wraps", i64::MIN),
+        ],
+    };
 
     cases
         .into_iter()
@@ -1313,19 +1347,36 @@ fn pure_int_i64_op_from_ensures(contract: &CheckedContract) -> Option<PureIntI64
 
 /// Detect the `(i64) -> i64` pure-integer shape and which unary op.
 ///
-/// Discriminator (fail-closed when ambiguous): function name containing
-/// `abs` (absolute value) xor `return` / `identity` (identity).
+/// Discriminator (fail-closed when ambiguous): exactly one of
+/// - `abs` → Abs
+/// - `sum_range` → SumRange
+/// - `countdown` → Countdown (small vectors; must not share Identity's max)
+/// - `return` / `identity` / `stack_local` / `spill` → Identity
 fn pure_int_unary_i64_shape(contract: &CheckedContract) -> Option<PureIntUnaryI64Op> {
     if !pure_int_unary_i64_types(contract) {
         return None;
     }
 
     let lower = contract.name.to_ascii_lowercase();
-    let has_abs = lower.contains("abs");
-    let has_identity = lower.contains("return") || lower.contains("identity");
-    match (has_abs, has_identity) {
-        (true, false) => Some(PureIntUnaryI64Op::Abs),
-        (false, true) => Some(PureIntUnaryI64Op::Identity),
+    let matches: Vec<PureIntUnaryI64Op> = [
+        (lower.contains("abs"), PureIntUnaryI64Op::Abs),
+        (lower.contains("sum_range"), PureIntUnaryI64Op::SumRange),
+        (lower.contains("countdown"), PureIntUnaryI64Op::Countdown),
+        (
+            lower.contains("return")
+                || lower.contains("identity")
+                || lower.contains("stack_local")
+                || lower.contains("spill"),
+            PureIntUnaryI64Op::Identity,
+        ),
+    ]
+    .into_iter()
+    .filter(|(hit, _)| *hit)
+    .map(|(_, op)| op)
+    .collect();
+
+    match matches.as_slice() {
+        [op] => Some(*op),
         _ => None,
     }
 }
@@ -4477,6 +4528,11 @@ expression = "count <= length"
         check_contract(toml)
     }
 
+    fn sum_range_contract() -> CheckedContract {
+        let toml = include_str!("../../../fixtures/contracts/sum_range.sem.toml");
+        check_contract(toml)
+    }
+
     fn memcmp_contract() -> CheckedContract {
         let toml = include_str!("../../../fixtures/contracts/memcmp.sem.toml");
         check_contract(toml)
@@ -5176,6 +5232,58 @@ bounded_stack_bytes = 64
         let identity = recognize_behavior_oracle(&return_i64_contract()).expect("identity shape");
         assert_eq!(identity.id, ORACLE_PURE_INT_UNARY_I64);
         assert!(identity.claim.contains("result equals x"));
+
+        let sum = recognize_behavior_oracle(&sum_range_contract()).expect("sum_range shape");
+        assert_eq!(sum.id, ORACLE_PURE_INT_UNARY_I64);
+        assert!(sum.claim.contains("0+1+"));
+        let vectors = synthesize_vectors(&sum_range_contract());
+        assert_eq!(vectors.len(), 5);
+        let five = vectors.iter().find(|v| v.name == "five").expect("five");
+        assert_eq!(five.expected.as_i64(), Some(15)); // 0+1+2+3+4+5
+    }
+
+    #[test]
+    fn pure_int_unary_phase_b_aliases_are_identity() {
+        for name in ["stack_local_i64", "forced_register_spill"] {
+            let toml = format!(
+                r#"
+contract_version = "0.1"
+[function]
+name = "{name}"
+[[function.parameters]]
+name = "x"
+type = "i64"
+[[function.returns]]
+name = "result"
+type = "i64"
+"#
+            );
+            let contract = check_contract(&toml);
+            let oracle = recognize_behavior_oracle(&contract).expect(name);
+            assert_eq!(oracle.id, ORACLE_PURE_INT_UNARY_I64);
+            assert!(oracle.claim.contains("result equals x"), "{name}");
+        }
+
+        let toml = r#"
+contract_version = "0.1"
+[function]
+name = "countdown_loop"
+[[function.parameters]]
+name = "n"
+type = "i64"
+[[function.returns]]
+name = "result"
+type = "i64"
+"#;
+        let contract = check_contract(toml);
+        let oracle = recognize_behavior_oracle(&contract).expect("countdown");
+        assert!(oracle.claim.contains("counting n down"));
+        let vectors = synthesize_vectors(&contract);
+        assert!(vectors.iter().all(|v| {
+            v.inputs[0]
+                .as_i64()
+                .is_some_and(|n| n > i64::MIN + 100 && n < 10_000)
+        }));
     }
 
     #[test]

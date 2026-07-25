@@ -1,0 +1,19 @@
+contract_version = "0.1"
+
+[function]
+name = "sum_range"
+summary = "Return the wrapping triangular sum 0+1+…+n"
+
+[[function.parameters]]
+name = "n"
+type = "i64"
+role = "input"
+
+[[function.returns]]
+name = "result"
+type = "i64"
+
+[function.constraints]
+no_heap = true
+no_recursion = true
+bounded_stack_bytes = 128
