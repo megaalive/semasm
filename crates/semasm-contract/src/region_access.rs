@@ -229,6 +229,7 @@ fn judge_access(memory: &CheckedMemory, access: &ObservedMemoryAccess) -> Memory
             scale,
             displacement,
             index_const,
+            index_max_exclusive,
         } => {
             if let Some(c) = index_const {
                 // Fb5: constant index folds to affine offset for bounds.
@@ -237,11 +238,66 @@ fn judge_access(memory: &CheckedMemory, access: &ObservedMemoryAccess) -> Memory
                     .saturating_mul(i64::from(*scale))
                     .saturating_add(*displacement);
                 judge_affine_access(memory, access, base_param, offset)
+            } else if let Some(max_excl) = index_max_exclusive {
+                // Fb6: range guard — prove both ends of [0, max) inside.
+                judge_indexed_range_access(
+                    memory,
+                    access,
+                    base_param,
+                    *scale,
+                    *displacement,
+                    *max_excl,
+                )
             } else {
                 judge_indexed_access(memory, access, base_param, *scale, *displacement)
             }
         }
     }
+}
+
+/// Fb6: index known in `[0, max_exclusive)` via a fall-through range guard.
+///
+/// Worst-case offset is `(max_exclusive-1)*scale+displacement`. Both the
+/// low (`displacement`) and high ends must be `proven_inside` a literal
+/// region; otherwise fall back to under_preconditions / may_escape.
+fn judge_indexed_range_access(
+    memory: &CheckedMemory,
+    access: &ObservedMemoryAccess,
+    base_param: &str,
+    scale: u8,
+    displacement: i64,
+    max_exclusive: u64,
+) -> MemoryAccessEvidence {
+    if max_exclusive == 0 {
+        return judge_indexed_access(memory, access, base_param, scale, displacement);
+    }
+    let scale_i = i64::from(scale);
+    let max_index = i64::try_from(max_exclusive - 1).unwrap_or(i64::MAX);
+    let lo = displacement;
+    let hi = max_index
+        .saturating_mul(scale_i)
+        .saturating_add(displacement);
+    let lo_ev = judge_affine_access(memory, access, base_param, lo);
+    let hi_ev = judge_affine_access(memory, access, base_param, hi);
+    if lo_ev.bounds == BoundsStatus::ProvenInside
+        && hi_ev.bounds == BoundsStatus::ProvenInside
+        && lo_ev.permission == PermissionStatus::Allowed
+        && hi_ev.permission == PermissionStatus::Allowed
+    {
+        let address = format!("{base_param}+[0..{max_exclusive})*{scale}{displacement:+}");
+        return MemoryAccessEvidence {
+            instruction_offset: access.instruction_offset,
+            operation: access.mode,
+            width: access.width_bytes,
+            address,
+            region: hi_ev.region.or(lo_ev.region),
+            bounds: BoundsStatus::ProvenInside,
+            permission: PermissionStatus::Allowed,
+            evidence_basis: RelationEvidenceBasis::ProvenStatic,
+        };
+    }
+    // Range not fully inside (symbolic length, overhang, …) — Fb4 path.
+    judge_indexed_access(memory, access, base_param, scale, displacement)
 }
 
 /// Fb4: indexed `base+index*scale+disp` with known base affinity.
@@ -657,6 +713,7 @@ mod tests {
                 scale: 1,
                 displacement: 0,
                 index_const: None,
+                index_max_exclusive: None,
             },
             mnemonic: "mov".into(),
             instruction_offset: 0,
@@ -691,6 +748,38 @@ mod tests {
                 scale: 1,
                 displacement: 0,
                 index_const: Some(3),
+                index_max_exclusive: None,
+            },
+            mnemonic: "mov".into(),
+            instruction_offset: 0,
+        }];
+        let report = evaluate_region_access(&memory, &accesses);
+        assert_eq!(report.status, RegionAccessStatus::Passed);
+        assert_eq!(report.accesses[0].bounds, BoundsStatus::ProvenInside);
+        assert_eq!(report.accesses_proven_inside, 1);
+    }
+
+    #[test]
+    fn indexed_range_guard_can_be_proven_inside() {
+        let memory = CheckedMemory {
+            regions: vec![region(
+                "buf",
+                "p",
+                0,
+                LengthSpec::Literal(8),
+                RegionAccess::Read,
+            )],
+            relations: vec![],
+        };
+        let accesses = vec![ObservedMemoryAccess {
+            mode: AccessMode::Load,
+            width_bytes: 1,
+            addr: AccessAddr::Indexed {
+                base_param: "p".into(),
+                scale: 1,
+                displacement: 0,
+                index_const: None,
+                index_max_exclusive: Some(8),
             },
             mnemonic: "mov".into(),
             instruction_offset: 0,

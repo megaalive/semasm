@@ -139,9 +139,15 @@ pub enum AccessAddr {
     ///
     /// When [`Self::Indexed::index_const`] is set (Fb5), the index was a
     /// statically known constant and bounds may be judged like affine
-    /// `base+(index_const*scale+displacement)`. Otherwise region_access
-    /// treats these as may-escape / under_preconditions (not unconditional
-    /// `proven_inside`).
+    /// `base+(index_const*scale+displacement)`.
+    ///
+    /// When [`Self::Indexed::index_max_exclusive`] is set (Fb6), a linear
+    /// `cmp`+`jae`/`jge` guard proved `0 <= index < max` on the fall-through
+    /// path; bounds use the worst-case offset `(max-1)*scale+disp`. This is
+    /// **not** full loop-invariant induction (Fb7).
+    ///
+    /// Otherwise region_access treats these as may-escape / under_preconditions
+    /// (not unconditional `proven_inside`).
     Indexed {
         /// Parameter name used as base.
         base_param: String,
@@ -152,6 +158,9 @@ pub enum AccessAddr {
         /// Statically known index register value (Fb5 constant-index fold).
         #[serde(default, skip_serializing_if = "Option::is_none")]
         index_const: Option<u64>,
+        /// Exclusive upper bound on a non-negative index (Fb6 range guard).
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        index_max_exclusive: Option<u64>,
     },
     /// Frame / stack spill (ignored for region/alias evidence).
     StackFrame,

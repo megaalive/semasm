@@ -23,14 +23,15 @@ Forbidden: SMT; proving arbitrary `ensures`; claiming general memory safety.
 | **Fb3** | Caps/docs; unlock concrete-length cell path + index-bounded access spike | **done** |
 | **Fb4** | Index-bounded `AccessAddr` (base+index) modeled | **done** |
 | **Fb5** | Static constant-index → `proven_inside` | **done** |
-| **Fb6** | Loop-carried / range index proof | **locked** |
+| **Fb6** | Range-guard index (`cmp`+`jae`/`jge` fall-through) → `proven_inside` | **done** |
+| **Fb7** | Full loop-invariant / induction index proof | **locked** |
 
 ## Non-goals
 
 - Promoting symbolic-length `verified_under_preconditions` → `verified`
-- Loop invariant inference (Fb6)
+- Full loop invariant inference (Fb7)
 - Changing VAA profile names for affine leaves
-- Claiming symbolic / loop-carried indexed accesses are statically inside
+- Claiming symbolic / unguarded indexed accesses are statically inside
 
 ## Concrete cell path (Fb3 honesty)
 
@@ -41,17 +42,21 @@ This does **not** promote symbolic-length Phase C/D leaves
 (`length = "length"` + `length <= N` obligations). VAA profile
 `memory-leaf-concrete-v1` rejects caller-obligation demotion.
 
-## Indexed addresses (Fb4 / Fb5 honesty)
+## Indexed addresses (Fb4 / Fb5 / Fb6 honesty)
 
-`AccessAddr::Indexed { base_param, scale, displacement, index_const }` models
-`[base + index*scale + disp]` when the base register has parameter
-affinity. Collectors no longer collapse these to `Unknown`.
+`AccessAddr::Indexed { base_param, scale, displacement, index_const,
+index_max_exclusive }` models `[base + index*scale + disp]` when the base
+register has parameter affinity. Collectors no longer collapse these to
+`Unknown`.
 
-- **Without** `index_const`: `region_access` records `may_escape` +
-  `declared_precondition` → aggregate `passed_under_preconditions`
-  (≠ unconditional `passed` / `verified`).
+- **Without** `index_const` / `index_max_exclusive`: `region_access` records
+  `may_escape` + `declared_precondition` → aggregate
+  `passed_under_preconditions` (≠ unconditional `passed` / `verified`).
 - **With** `index_const` (Fb5): x86 collectors track GP constants
-  (`mov reg, imm`, `xor reg,reg`) and fold the access like affine
-  `base+(index_const*scale+displacement)`. On a **literal-length** region
-  that offset can be `proven_inside`. This is **not** loop-index induction
-  (Fb6 locked).
+  (`mov reg, imm`, `xor reg,reg`) and fold like affine
+  `base+(index_const*scale+displacement)`.
+- **With** `index_max_exclusive` (Fb6): x86 collectors arm a fall-through
+  upper bound after `cmp reg, imm` + `jae`/`jnb`/`jge`. Bounds require both
+  ends of `[disp, (max-1)*scale+disp]` inside a **literal** region. Writes
+  that change the index (e.g. `inc`) clear the bound. This is a linear
+  range-guard heuristic — **not** CFG-sound loop induction (Fb7 locked).

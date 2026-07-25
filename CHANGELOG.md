@@ -8,21 +8,27 @@ follow [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Added
 
+- **Fb6 range-guard index → proven_inside** — `AccessAddr::Indexed.index_max_exclusive`
+  from x86 `cmp reg,imm` + `jae`/`jnb`/`jge` fall-through; worst-case
+  `[0,max)` offsets must both be inside a literal region. Clears on
+  `inc`/writes. Full loop induction (Fb7) locked. Does **not** promote
+  symbolic-length Phase C/D leaves.
 - **Fb5 constant-index → proven_inside** — `AccessAddr::Indexed.index_const`
   folds known GP constants (`mov imm` / `xor-zero` on x86) into affine-style
   bounds; literal-length regions can reach `proven_inside`. Symbolic /
-  unknown index stays under_preconditions. Loop-carried index (Fb6) locked.
+  unknown index stays under_preconditions. Loop-carried index (Fb6 range /
+  Fb7 induction) split: Fb6 done, Fb7 locked.
   Does **not** promote symbolic-length Phase C/D leaves.
 - **Concrete 1-byte cell leaves** — `load_byte0` / `store_byte0` with literal
   region length `"1"` reach unconditional SemASM `verified`
   (`region_access.passed`). Oracles `builtin.buffer.load_byte0` /
   `builtin.buffer.store_byte0` + CellLoad/CellStore harness (SysV/Win64).
   Does **not** promote symbolic-length Phase C/D leaves. Fb3 docs unlock this
-  path; Fb4 Indexed + Fb5 constant-index done (Fb6 loop-index locked).
+  path; Fb4–Fb6 Indexed done (Fb7 loop-induction locked).
 - **Fb4 indexed AccessAddr** — `AccessAddr::Indexed` models
-  `base+index*scale+disp` (x86/A64/RV collectors). Without `index_const`,
-  region access records `may_escape` + caller obligation (≠ `proven_inside`).
-  Fb5 constant-index fold → `proven_inside` on literal regions.
+  `base+index*scale+disp` (x86/A64/RV collectors). Without const/range
+  evidence, region access records `may_escape` + caller obligation
+  (≠ `proven_inside`). Fb5/Fb6 folds → `proven_inside` on literal regions.
 - **Pure-int i64 oracles** — `builtin.pure_int.binary_i64` v2 (`add_i64` /
   `sub_i64` / `min_i64` / `max_i64` / `add_then_double`; wrapping arithmetic;
   stricter `add`/`sum` token matching so nested-call names are not

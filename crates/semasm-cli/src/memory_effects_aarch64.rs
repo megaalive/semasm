@@ -97,6 +97,7 @@ fn classify_addr(mem: &MemOperand, affinity: &HashMap<Gp, String>) -> AccessAddr
                     scale: u8::try_from(mem.scale.max(1)).unwrap_or(1),
                     displacement: mem.disp,
                     index_const: None,
+                    index_max_exclusive: None,
                 };
             }
             AccessAddr::Affine {
