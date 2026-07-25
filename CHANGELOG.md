@@ -13,7 +13,7 @@ follow [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   (`region_access.passed`). Oracles `builtin.buffer.load_byte0` /
   `builtin.buffer.store_byte0` + CellLoad/CellStore harness (SysV/Win64).
   Does **not** promote symbolic-length Phase C/D leaves. Fb3 docs unlock this
-  path; Fb4 (index-bounded `AccessAddr`) remains locked.
+  path; Fb4 Indexed modeling is done (Fb5 static index-range proof locked).
 - **Fb4 indexed AccessAddr** — `AccessAddr::Indexed` models
   `base+index*scale+disp` (x86/A64/RV collectors). Region access records
   `may_escape` + caller obligation (≠ `proven_inside`). Fb5 (static index
