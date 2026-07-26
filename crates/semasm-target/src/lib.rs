@@ -7,6 +7,7 @@
 #![forbid(unsafe_code)]
 
 pub mod abi;
+pub mod authoring_profile;
 pub mod capability;
 pub mod tools;
 

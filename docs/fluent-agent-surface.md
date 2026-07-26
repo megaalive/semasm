@@ -11,14 +11,16 @@ Canonical product roadmap (releases A–D, non-goals, honesty boundary):
 
 ## SemASM deliverables for Release A
 
-1. **Capability admission export** — evolve `capabilities.toml` so controllers
-   can obtain a versioned, digestable JSON snapshot that answers not only
-   “what pipeline maturity does this target have?” but also “what contract
-   shapes / oracles / acceptance levels are admitted?”
-2. **Stable CLI JSON** — `semasm capabilities --format json` (or equivalent
-   versioned status payload) for VAA to pin and freeze into task identity.
-3. **Target authoring profile** — generated from target kit + assembler dialect
-   + verification profile; consumed by VAA as `target-profile.json`.
+1. **Capability admission export** — `capabilities.toml` carries optional
+   `[[admission]]` rows (contract shape / oracle / authoring_level /
+   acceptance_level / required_gates / optional `leaf_names`). Controllers
+   obtain a versioned, digestable JSON snapshot via
+   `semasm capabilities --format json`.
+2. **Stable CLI JSON** — `semasm capabilities --format json` for VAA to pin
+   and freeze into task identity (`digest` field is `sha256:` + hex).
+3. **Target authoring profile** — `semasm target profile <target> --format json`
+   generated from target kit + assembler dialect + ABI facts; consumed by VAA
+   as `target-profile.json`.
 4. **Stable diagnostic codes** in verification reports so VAA can map failures
    without parsing stderr.
 
@@ -28,3 +30,5 @@ Canonical product roadmap (releases A–D, non-goals, honesty boundary):
 - Code present ≠ CI-proven support.
 - RISC-V agent-verify remains unavailable until a dedicated gate exists.
 - Agents remain untrusted proposers; SemASM remains the verifier.
+- Behavioral admission is seeded only for x86_64 NASM leaves that match the VAA
+  allowlist; do not read authoring profiles as sealed acceptance.

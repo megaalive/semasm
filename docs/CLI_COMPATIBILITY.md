@@ -35,6 +35,35 @@ opt-in where that behavior is supported.
 Consumers must tolerate additive fields. This is **not** the same vocabulary as
 VAA’s embedded agent-verify capability snapshot.
 
+## Capabilities JSON (admission export)
+
+`semasm capabilities --format json` (JSON is the default) emits a document
+derived from `capabilities.toml` with at least:
+
+- `name`, `version`, `capability_schema`
+- `workspace_crates` (array of strings)
+- `targets` (array of objects with maturity fields, plus `description`)
+- `admission` (array of admitted contract/oracle shapes with
+  `capability_id`, `targets`, `assemblers`, `parameters`, `returns`,
+  `oracles`, `authoring_level`, `acceptance_level`, `required_gates`,
+  optional `leaf_names`)
+- `digest` (`sha256:` + lowercase hex of the canonical body without `version`
+  / `digest`)
+
+Terminal mode prints target ids, admission ids, and the digest. Admission
+`acceptance_level` values are claim ceilings — controllers must not promote
+`verified_under_preconditions` to plain `verified`. RV64 sealed/behavioral
+admission is intentionally omitted.
+
+## Target authoring profile
+
+`semasm target profile <target> --format json` prints an `AuthoringProfile`
+(ABI registers, stack/shadow/red-zone, dialect, file template, modeled
+addressing, loop idioms, known incomplete patterns). Profiles are authoring
+guidance only; they do not expand acceptance claims. RISC-V profiles may be
+emitted, but VAA agent-verify remains fail-closed until a dedicated gate
+exists.
+
 ## Agent verify (`semasm agent verify`)
 
 Exit `0` only when overall status is `verified` (static gates passed and every

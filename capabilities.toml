@@ -352,3 +352,132 @@ agent_verify = "declared"
 unit_tests = ["semasm-riscv::lower", "semasm-riscv::abi"]
 fixtures = []
 ci_jobs = []
+
+# ---------------------------------------------------------------------------
+# Admission registry (VAA allowlist bridge for x86_64 NASM).
+#
+# Behavioral acceptance is admitted only for Win64/SysV leaves that match the
+# VAA agent-leaf allowlist. Do not claim RV64 sealed/behavioral admission here.
+# acceptance_level = verified is reserved for max_i64; other allowlisted leaves
+# are verified_under_preconditions (≠ plain verified).
+# ---------------------------------------------------------------------------
+
+[[admission]]
+capability_id = "pure-int-binary"
+targets = ["x86_64-pc-windows-msvc"]
+assemblers = ["nasm"]
+parameters = ["i64", "i64"]
+returns = ["i64"]
+oracles = ["builtin.pure_int.binary_i64"]
+authoring_level = "full"
+acceptance_level = "verified"
+required_gates = ["object", "decode", "lower", "abi", "capability", "control", "behavior"]
+leaf_names = ["max_i64"]
+
+[[admission]]
+capability_id = "sum_i64"
+targets = ["x86_64-pc-windows-msvc"]
+assemblers = ["nasm"]
+parameters = ["ptr<const i64>", "usize"]
+returns = ["i64"]
+oracles = ["builtin.buffer.wrapping_sum_i64"]
+authoring_level = "full"
+acceptance_level = "verified_under_preconditions"
+required_gates = ["object", "decode", "lower", "abi", "capability", "control", "memory", "behavior"]
+leaf_names = ["sum_i64"]
+
+[[admission]]
+capability_id = "count_byte"
+targets = ["x86_64-pc-windows-msvc"]
+assemblers = ["nasm"]
+parameters = ["ptr<const u8>", "usize", "u8"]
+returns = ["usize"]
+oracles = ["builtin.buffer.count_equal_u8"]
+authoring_level = "full"
+acceptance_level = "verified_under_preconditions"
+required_gates = ["object", "decode", "lower", "abi", "capability", "control", "memory", "behavior"]
+leaf_names = ["count_byte"]
+
+[[admission]]
+capability_id = "count_byte_linux"
+targets = ["x86_64-unknown-linux-gnu"]
+assemblers = ["nasm"]
+parameters = ["ptr<const u8>", "usize", "u8"]
+returns = ["usize"]
+oracles = ["builtin.buffer.count_equal_u8"]
+authoring_level = "full"
+acceptance_level = "verified_under_preconditions"
+required_gates = ["object", "decode", "lower", "abi", "capability", "control", "memory", "behavior"]
+leaf_names = ["count_byte_linux"]
+
+[[admission]]
+capability_id = "find_first_byte"
+targets = ["x86_64-pc-windows-msvc"]
+assemblers = ["nasm"]
+parameters = ["ptr<const u8>", "usize", "u8"]
+returns = ["usize"]
+oracles = ["builtin.buffer.find_first_u8"]
+authoring_level = "full"
+acceptance_level = "verified_under_preconditions"
+required_gates = ["object", "decode", "lower", "abi", "capability", "control", "memory", "behavior"]
+leaf_names = ["find_first_byte"]
+
+[[admission]]
+capability_id = "find_last_byte"
+targets = ["x86_64-pc-windows-msvc"]
+assemblers = ["nasm"]
+parameters = ["ptr<const u8>", "usize", "u8"]
+returns = ["usize"]
+oracles = ["builtin.buffer.find_last_u8"]
+authoring_level = "full"
+acceptance_level = "verified_under_preconditions"
+required_gates = ["object", "decode", "lower", "abi", "capability", "control", "memory", "behavior"]
+leaf_names = ["find_last_byte"]
+
+[[admission]]
+capability_id = "memcmp"
+targets = ["x86_64-pc-windows-msvc"]
+assemblers = ["nasm"]
+parameters = ["ptr<const u8>", "ptr<const u8>", "usize"]
+returns = ["isize"]
+oracles = ["builtin.buffer.memcmp_i8"]
+authoring_level = "full"
+acceptance_level = "verified_under_preconditions"
+required_gates = ["object", "decode", "lower", "abi", "capability", "control", "memory", "behavior"]
+leaf_names = ["memcmp"]
+
+[[admission]]
+capability_id = "memcpy"
+targets = ["x86_64-pc-windows-msvc"]
+assemblers = ["nasm"]
+parameters = ["ptr<u8>", "ptr<const u8>", "usize"]
+returns = ["usize"]
+oracles = ["builtin.buffer.memcpy"]
+authoring_level = "full"
+acceptance_level = "verified_under_preconditions"
+required_gates = ["object", "decode", "lower", "abi", "capability", "control", "memory", "behavior"]
+leaf_names = ["memcpy"]
+
+[[admission]]
+capability_id = "memset"
+targets = ["x86_64-pc-windows-msvc"]
+assemblers = ["nasm"]
+parameters = ["ptr<u8>", "usize", "u8"]
+returns = ["usize"]
+oracles = ["builtin.buffer.memset"]
+authoring_level = "full"
+acceptance_level = "verified_under_preconditions"
+required_gates = ["object", "decode", "lower", "abi", "capability", "control", "memory", "behavior"]
+leaf_names = ["memset"]
+
+[[admission]]
+capability_id = "replace_byte"
+targets = ["x86_64-pc-windows-msvc"]
+assemblers = ["nasm"]
+parameters = ["ptr<u8>", "usize", "u8", "u8"]
+returns = ["usize"]
+oracles = ["builtin.buffer.replace_byte"]
+authoring_level = "full"
+acceptance_level = "verified_under_preconditions"
+required_gates = ["object", "decode", "lower", "abi", "capability", "control", "memory", "behavior"]
+leaf_names = ["replace_byte"]

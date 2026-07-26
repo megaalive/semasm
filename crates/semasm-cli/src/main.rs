@@ -68,6 +68,12 @@ enum Commands {
         #[arg(long, value_enum, default_value_t = OutputFormat::Terminal)]
         format: OutputFormat,
     },
+    /// Export capability maturity and admission registry.
+    Capabilities {
+        /// Output format (JSON default for controller consumers).
+        #[arg(long, value_enum, default_value_t = OutputFormat::Json)]
+        format: OutputFormat,
+    },
     /// Explain a diagnostic code (same as `--explain`).
     Explain {
         /// Code such as `CTR003`.
@@ -225,6 +231,14 @@ enum TargetCmd {
         #[arg(long, value_enum, default_value_t = OutputFormat::Terminal)]
         format: OutputFormat,
     },
+    /// Print the target authoring profile (ABI, dialect, templates).
+    Profile {
+        /// Target triple (e.g. `x86_64-pc-windows-msvc`).
+        target: String,
+        /// Output format (JSON default).
+        #[arg(long, value_enum, default_value_t = OutputFormat::Json)]
+        format: OutputFormat,
+    },
 }
 
 #[derive(Debug, Subcommand)]
@@ -354,9 +368,62 @@ fn main() -> ExitCode {
                 }
             }
         }
+        Some(Commands::Capabilities { format }) => {
+            match semasm_target::capability::CapabilityManifest::parse(include_str!(
+                "../../../capabilities.toml"
+            )) {
+                Ok(manifest) => match format {
+                    OutputFormat::Terminal => {
+                        print!("{}", manifest.render_capabilities(SEMASM_VERSION));
+                        ExitCode::SUCCESS
+                    }
+                    OutputFormat::Json => {
+                        println!("{}", manifest.capabilities_json(SEMASM_VERSION));
+                        ExitCode::SUCCESS
+                    }
+                },
+                Err(error) => {
+                    eprintln!("error: failed to load embedded capability manifest: {error}");
+                    ExitCode::from(1)
+                }
+            }
+        }
         Some(Commands::Explain { code }) => do_explain(&code),
         Some(Commands::Target { action }) => match action {
             TargetCmd::Doctor { target, format } => do_target_doctor(&target, format),
+            TargetCmd::Profile { target, format } => {
+                match semasm_target::authoring_profile::AuthoringProfile::for_target(&target) {
+                    Ok(profile) => match format {
+                        OutputFormat::Json => match serde_json::to_string(&profile) {
+                            Ok(body) => {
+                                println!("{body}");
+                                ExitCode::SUCCESS
+                            }
+                            Err(error) => {
+                                eprintln!("error: failed to serialize authoring profile: {error}");
+                                ExitCode::from(1)
+                            }
+                        },
+                        OutputFormat::Terminal => {
+                            println!(
+                                "profile_id: {}\ntarget: {}\ndialect: {}\nobject_format: {}\nstack_alignment: {}\nshadow_space_bytes: {}\nred_zone_bytes: {}",
+                                profile.profile_id,
+                                profile.target,
+                                profile.dialect,
+                                profile.object_format,
+                                profile.abi.stack_alignment,
+                                profile.abi.shadow_space_bytes,
+                                profile.abi.red_zone_bytes,
+                            );
+                            ExitCode::SUCCESS
+                        }
+                    },
+                    Err(error) => {
+                        eprintln!("error: {error}");
+                        ExitCode::from(2)
+                    }
+                }
+            }
         },
         Some(Commands::Build {
             source,
