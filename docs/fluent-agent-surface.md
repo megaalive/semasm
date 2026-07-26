@@ -30,5 +30,10 @@ Canonical product roadmap (releases A–D, non-goals, honesty boundary):
 - Code present ≠ CI-proven support.
 - RISC-V agent-verify remains unavailable until a dedicated gate exists.
 - Agents remain untrusted proposers; SemASM remains the verifier.
+- Pure `i64 → i64` **is** supported when the routine name matches a recognized
+  op (`abs`, `inc`/`increment`, `max`/`min`, …). `UNSUPPORTED_SHAPE` usually
+  means the name was not recognized — not that scalars are unsupported. Hosted
+  REPL/I-O programs are outside the leaf harness; see VAA
+  `docs/leaf-vs-hosted.md`.
 - Behavioral admission is seeded only for x86_64 NASM leaves that match the VAA
   allowlist; do not read authoring profiles as sealed acceptance.

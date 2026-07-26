@@ -484,6 +484,35 @@ pub fn is_read_only_buffer_scan(contract: &CheckedContract) -> bool {
     has_read && !has_write
 }
 
+/// Human hint when vector synthesis fails ([`synthesize_vectors`] empty).
+///
+/// Explains that pure `i64` shapes *are* supported when the routine name
+/// matches a recognized op (e.g. `inc` / `increment`, `abs`, `max`/`min`),
+/// and that pointer+length buffer scans are a separate family — not the only
+/// supported shape.
+#[must_use]
+pub fn unsupported_shape_hint(contract: &CheckedContract) -> String {
+    let params: Vec<String> = contract
+        .parameters
+        .iter()
+        .map(|p| format!("{:?}", p.ty))
+        .collect();
+    let rets: Vec<String> = contract
+        .returns
+        .iter()
+        .map(|r| format!("{:?}", r.ty))
+        .collect();
+    format!(
+        "Observed parameters=[{}] returns=[{}]. Recognized pure-int unary i64 names include \
+         abs_*, inc_*/increment*, return_*/identity_*, scale_*/double_*, sum_range_*, countdown_*, \
+         add_base_*; binary i64 names include add_*/sub_*/min_*/max_*. Buffer scans need \
+         ptr+length (+ optional needle). Rename the routine to a recognized token or use an \
+         admitted leaf shape — see SemASM fixtures/contracts/.",
+        params.join(", "),
+        rets.join(", ")
+    )
+}
+
 /// Build a [`crate::verify::BehaviorOracle`] snapshot for a verification report.
 #[must_use]
 pub fn build_behavior_oracle(
@@ -1481,7 +1510,7 @@ fn pure_int_i64_op_from_ensures(contract: &CheckedContract) -> Option<PureIntI64
 /// - `sum_range` → SumRange
 /// - `countdown` → Countdown (small vectors; must not share Identity's max)
 /// - `scale` / unary `double` → Double
-/// - `inc` → Inc
+/// - `inc` / `increment` → Inc
 /// - `add_base` → AddBase100
 /// - `return` / `identity` / `stack_local` / `spill` → Identity
 fn pure_int_unary_i64_shape(contract: &CheckedContract) -> Option<PureIntUnaryI64Op> {
@@ -1498,7 +1527,10 @@ fn pure_int_unary_i64_shape(contract: &CheckedContract) -> Option<PureIntUnaryI6
             lower.contains("scale") || (lower.contains("double") && !lower.contains("then")),
             PureIntUnaryI64Op::Double,
         ),
-        (name_token_hit(&lower, "inc"), PureIntUnaryI64Op::Inc),
+        (
+            name_token_hit(&lower, "inc") || lower.contains("increment"),
+            PureIntUnaryI64Op::Inc,
+        ),
         (lower.contains("add_base"), PureIntUnaryI64Op::AddBase100),
         (
             lower.contains("return")
@@ -5554,6 +5586,30 @@ bounded_stack_bytes = 64
         assert_eq!(vectors.len(), 5);
         let five = vectors.iter().find(|v| v.name == "five").expect("five");
         assert_eq!(five.expected.as_i64(), Some(15)); // 0+1+2+3+4+5
+    }
+
+    #[test]
+    fn pure_int_unary_recognizes_increment_alias() {
+        let toml = r#"
+contract_version = "0.1"
+[function]
+name = "repl_increment"
+[[function.parameters]]
+name = "x"
+type = "i64"
+[[function.returns]]
+name = "result"
+type = "i64"
+"#;
+        let checked = semasm_contract::check_str(toml).contract.expect("ok");
+        let op = pure_int_unary_i64_shape(&checked).expect("increment alias");
+        assert_eq!(op, PureIntUnaryI64Op::Inc);
+        let vectors = synthesize_vectors(&checked);
+        assert!(!vectors.is_empty());
+        assert_eq!(
+            vectors[0].expected.as_i64(),
+            Some(op.reduce(vectors[0].inputs[0].as_i64().expect("i64 input")))
+        );
     }
 
     #[test]

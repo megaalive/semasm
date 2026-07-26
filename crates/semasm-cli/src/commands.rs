@@ -503,19 +503,21 @@ fn run_agent_verify_core(
 
     let vectors = harness::synthesize_vectors(&checked);
     if vectors.is_empty() {
+        let hint = harness::unsupported_shape_hint(&checked);
         return early_failure(
             AgentFailureEnvelope::new(
                 "UNSUPPORTED_SHAPE",
                 FailureStage::UnsupportedShape,
                 format!(
-                    "error: no test vectors synthesised for `{}`; the routine shape is not yet supported by the harness",
+                    "error: no test vectors synthesised for `{}`; the routine shape is not yet supported by the harness. {hint}",
                     checked.name
                 ),
                 Retryability::Never,
             )
             .with_target(target_str)
             .with_routine(&checked.name)
-            .with_digests(Some(contract_digest.clone()), Some(source_digest.clone())),
+            .with_digests(Some(contract_digest.clone()), Some(source_digest.clone()))
+            .with_detail(hint),
             1,
         );
     }
