@@ -3,6 +3,25 @@
 Canonical handshake for an external controller (such as VAA) that drives
 `semasm agent verify` and consumes the JSON report.
 
+## Agent claim boundary
+
+SemASM **verifies**; agents (and their controllers) **propose**. An agent never
+decides acceptance — SemASM's `status` does. Fixed boundary for any agent-facing
+surface built on SemASM:
+
+- **`incomplete` ≠ `verified`** and **`verified_under_preconditions` (VUP) ≠
+  unconditional `verified`.** Report the status verbatim; never round VUP or
+  incomplete up to "verified".
+- **Unmodeled mnemonic / shape → fail-closed.** SemASM emits an
+  `agent_failure` envelope or a non-`verified` status; controllers must stop, not
+  invent a result from stderr.
+- **Parse stdout JSON only** (see Streams below); stderr is human noise.
+
+VAA is the reference controller. Its consumer-facing charter and the list of
+shapes an agent is allowed to attempt live in VAA's repo:
+`docs/HONESTY.md` and `schemas/agent-leaf-allowlist.json`. Keep those in sync
+with this protocol; do not market SemASM as a general-purpose assembly prover.
+
 ## Canonical command
 
 ```text
