@@ -186,11 +186,16 @@ impl AgentFailureEnvelope {
     /// Attach truncated tool detail (stderr / reason).
     #[must_use]
     pub fn with_detail(mut self, detail: impl Into<String>) -> Self {
-        let mut text = detail.into();
         const MAX: usize = 4_096;
+        let mut text = detail.into();
         if text.len() > MAX {
-            text.truncate(MAX);
-            text.push_str("…");
+            // Tool stderr is arbitrary UTF-8; truncate on a char boundary.
+            let mut cut = MAX;
+            while cut > 0 && !text.is_char_boundary(cut) {
+                cut -= 1;
+            }
+            text.truncate(cut);
+            text.push('…');
         }
         self.detail = Some(text);
         self

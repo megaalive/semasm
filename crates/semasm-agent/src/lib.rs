@@ -14,8 +14,7 @@ pub mod harness;
 pub mod verify;
 
 pub use failure::{
-    AgentFailureEnvelope, FailureLocation, FailureStage, Retryability,
-    AGENT_FAILURE_SCHEMA_VERSION,
+    AgentFailureEnvelope, FailureLocation, FailureStage, Retryability, AGENT_FAILURE_SCHEMA_VERSION,
 };
 
 use semasm_contract::CheckedContract;

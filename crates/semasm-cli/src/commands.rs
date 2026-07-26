@@ -315,11 +315,12 @@ enum VerifyCore {
 
 /// Emit a structured failure envelope on stdout (stderr keeps the human line).
 fn early_failure(envelope: AgentFailureEnvelope, code: u8) -> VerifyCore {
-    eprintln!("{}", envelope.message);
     match serde_json::to_string_pretty(&envelope) {
         Ok(json) => println!("{json}"),
         Err(error) => eprintln!("error: failed to serialize agent failure: {error}"),
     }
+    let message = envelope.message;
+    eprintln!("{message}");
     VerifyCore::Early(ExitCode::from(code))
 }
 
@@ -482,10 +483,8 @@ fn run_agent_verify_core(
     };
     let check = semasm_contract::check_str(contract_text);
     if !check.ok() {
-        let diag = format_diagnostics_terminal(
-            &contract_path.display().to_string(),
-            &check.diagnostics,
-        );
+        let diag =
+            format_diagnostics_terminal(&contract_path.display().to_string(), &check.diagnostics);
         eprint!("{diag}");
         return early_failure(
             AgentFailureEnvelope::new(
