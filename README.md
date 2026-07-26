@@ -14,6 +14,8 @@ minimal target programs **without shipping a high-level language runtime**.
 > alias analysis or full contract verification), and named CI owner jobs are in tree.
 > Capability maturity is defined only by `capabilities.toml` — code present ≠
 > CI-proven support. Agent output remains **untrusted until verified**.
+> Controller fluency roadmap (admission export, authoring profiles): see
+> [`docs/fluent-agent-surface.md`](docs/fluent-agent-surface.md).
 
 ## Architecture (build-time only)
 
