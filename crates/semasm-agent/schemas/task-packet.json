@@ -532,6 +532,13 @@
             "type": "string"
           }
         },
+        "allowed_loop_idioms": {
+          "description": "Loop idioms allowed under Fb7–Fb9b (Fb9c arbitrary invariants stay locked).",
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
         "existing_source": {
           "description": "Existing source lines, if any, to extend or modify.",
           "type": [
@@ -545,6 +552,13 @@
         },
         "preserved_registers": {
           "description": "Registers the callee must preserve (callee-saved).",
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "supported_oracles": {
+          "description": "Builtin oracle catalog the agent may target (additive; empty in old packets).",
           "type": "array",
           "items": {
             "type": "string"
