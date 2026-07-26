@@ -213,7 +213,9 @@ fn known_incomplete_patterns_for(identity: &TargetIdentity) -> Vec<String> {
             patterns.push("AVX/SSE vectorized buffer loops".to_string());
             patterns.push("indirect call/jump CFI proofs".to_string());
             if identity.object_format == ObjectFormat::PeCoff {
-                patterns.push("Win64 varargs / floating-point home spills beyond integer ABI".to_string());
+                patterns.push(
+                    "Win64 varargs / floating-point home spills beyond integer ABI".to_string(),
+                );
             } else {
                 patterns.push("SysV red-zone use in non-leaf functions".to_string());
             }

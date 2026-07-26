@@ -272,8 +272,11 @@ impl CapabilityManifest {
                 .iter()
                 .map(|admission| admission.capability_id.as_str()),
         )?;
-        let known_targets: HashSet<&str> =
-            self.targets.iter().map(|target| target.id.as_str()).collect();
+        let known_targets: HashSet<&str> = self
+            .targets
+            .iter()
+            .map(|target| target.id.as_str())
+            .collect();
         for admission in &self.admissions {
             if admission.targets.is_empty() {
                 return Err(Error::Validation(format!(
@@ -481,10 +484,10 @@ impl CapabilityManifest {
                     "required_gates": entry.required_gates,
                 });
                 if let Some(leaf_names) = &entry.leaf_names {
-                    value.as_object_mut().expect("admission object").insert(
-                        "leaf_names".to_string(),
-                        serde_json::json!(leaf_names),
-                    );
+                    value
+                        .as_object_mut()
+                        .expect("admission object")
+                        .insert("leaf_names".to_string(), serde_json::json!(leaf_names));
                 }
                 value
             })
@@ -686,19 +689,26 @@ mod tests {
 
         let fixture = include_str!("../fixtures/capabilities-export.min.json");
         let expected: serde_json::Value = serde_json::from_str(fixture).unwrap();
-        for key in ["name", "capability_schema", "workspace_crates", "targets", "admission", "digest"]
-        {
+        for key in [
+            "name",
+            "capability_schema",
+            "workspace_crates",
+            "targets",
+            "admission",
+            "digest",
+        ] {
             assert!(
                 expected.get(key).is_some(),
                 "fixture missing required key `{key}`"
             );
-            assert!(json.get(key).is_some(), "export missing required key `{key}`");
+            assert!(
+                json.get(key).is_some(),
+                "export missing required key `{key}`"
+            );
         }
-        assert!(
-            expected["digest"]
-                .as_str()
-                .is_some_and(|d| d.starts_with("sha256:") && d.len() == 7 + 64)
-        );
+        assert!(expected["digest"]
+            .as_str()
+            .is_some_and(|d| d.starts_with("sha256:") && d.len() == 7 + 64));
     }
 
     #[test]
