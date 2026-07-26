@@ -59,6 +59,10 @@ pub enum OpKind {
     Binary,
     /// Comparison producing a condition.
     Compare,
+    /// Conditional select / move (e.g. x86 `cmov*`) — destination may keep its
+    /// prior value or take the source, depending on flags. Distinct from
+    /// [`Self::Store`] (always writes) and [`Self::Branch`] (changes control).
+    Select,
     /// Conditional or unconditional branch.
     Branch,
     /// Direct or indirect call.

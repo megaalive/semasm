@@ -8,6 +8,14 @@ follow [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Added
 
+- **x86 `cmov*` semantic lowering** — Capstone `cmovCC` mnemonics lower to a
+  new ASIR [`OpKind::Select`] with signedness mirroring the matching `jCC`
+  family (unsigned `a`/`b`, signed `g`/`l`, `None` for equality/parity/sign/
+  overflow). Abstract analysis over-approximates the destination as Conflict
+  without invalidating the rest of the state (unlike `Unknown`). Closes the
+  VAA corpus gap where `max_i64` via `cmovg` failed `require_complete_lowering`.
+  Fixtures: `fixtures/asm/max_i64_cmov{,_win64,_wrong_win64}.asm`; e2e tests
+  `agent_verify_max_i64_cmov{,_win64}`.
 - **`decode` / `cfg` / `analyze` `--target`** — raw-blob inspect commands
   accept a known target triple to select the ISA decoder (default remains
   `x86_64-unknown-linux-gnu`, preserving historical behaviour). `decode` and

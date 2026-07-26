@@ -288,6 +288,24 @@ fn infer_width(operands: &[Operand]) -> Width {
     Width::B64
 }
 
+/// Map an x86 `cmovCC` mnemonic to `(OpKind::Select, signedness)`.
+///
+/// Signedness mirrors the corresponding `jCC` family: unsigned (`a`/`b`/…),
+/// signed (`g`/`l`/…), or `None` for equality / parity / sign / overflow.
+fn classify_cmov(mnemonic: &str) -> Option<(OpKind, Option<bool>)> {
+    let cc = mnemonic.strip_prefix("cmov")?;
+    let signed = match cc {
+        // Unsigned
+        "a" | "nbe" | "ae" | "nb" | "nc" | "b" | "c" | "nae" | "be" | "na" => Some(false),
+        // Signed
+        "g" | "nle" | "ge" | "nl" | "l" | "nge" | "le" | "ng" => Some(true),
+        // Equality / parity / sign / overflow — no signedness context
+        "e" | "z" | "ne" | "nz" | "s" | "ns" | "o" | "no" | "p" | "pe" | "np" | "po" => None,
+        _ => return None,
+    };
+    Some((OpKind::Select, signed))
+}
+
 /// Lower one decoded instruction.
 #[must_use]
 pub fn lower(instr: &PhysicalInstruction) -> Lowering {
@@ -308,11 +326,14 @@ pub fn lower(instr: &PhysicalInstruction) -> Lowering {
         "call" => (OpKind::Call, None),
         "ret" | "retn" | "retf" => (OpKind::Return, None),
         "syscall" => (OpKind::Unknown, None),
-        _ => {
-            return Lowering::Unsupported {
-                mnemonic: instr.mnemonic.clone(),
+        other => match classify_cmov(other) {
+            Some(mapped) => mapped,
+            None => {
+                return Lowering::Unsupported {
+                    mnemonic: instr.mnemonic.clone(),
+                }
             }
-        }
+        },
     };
 
     // Parse operands, carrying any `SIZE ptr` width into memory operands.
@@ -442,6 +463,48 @@ mod tests {
     }
 
     #[test]
+    fn cmov_lowers_as_select_with_signedness() {
+        let g = lower(&ins("cmovg", &["rax", "rdx"]));
+        let g = lowered(&g);
+        assert_eq!(g.kind, OpKind::Select);
+        assert_eq!(g.signed, Some(true));
+        assert_eq!(g.operands.len(), 2);
+
+        let a = lower(&ins("cmova", &["rax", "rdx"]));
+        let a = lowered(&a);
+        assert_eq!(a.kind, OpKind::Select);
+        assert_eq!(a.signed, Some(false));
+
+        let e = lower(&ins("cmove", &["rax", "rdx"]));
+        let e = lowered(&e);
+        assert_eq!(e.kind, OpKind::Select);
+        assert_eq!(e.signed, None);
+
+        // Intel aliases Capstone may emit
+        let nle = lower(&ins("cmovnle", &["rax", "rdx"]));
+        assert_eq!(lowered(&nle).signed, Some(true));
+        let nbe = lower(&ins("cmovnbe", &["rax", "rdx"]));
+        assert_eq!(lowered(&nbe).signed, Some(false));
+    }
+
+    #[test]
+    fn cmov_with_memory_source_normalises() {
+        let l = lower(&ins("cmovl", &["rax", "qword ptr [rcx + 0x8]"]));
+        let l = lowered(&l);
+        assert_eq!(l.kind, OpKind::Select);
+        assert!(matches!(l.operands[0], Operand::Reg(_)));
+        assert!(matches!(l.operands[1], Operand::Mem(_)));
+    }
+
+    #[test]
+    fn unknown_cmov_suffix_stays_unsupported() {
+        assert!(matches!(
+            lower(&ins("cmovxyz", &["rax", "rdx"])),
+            Lowering::Unsupported { .. }
+        ));
+    }
+
+    #[test]
     fn memory_operand_normalised() {
         let l = lower(&ins("mov", &["qword ptr [rax + rbx*4 + 0x10]", "rcx"]));
         let l = lowered(&l);
@@ -492,7 +555,7 @@ mod tests {
         for m in [
             "mov", "lea", "xor", "add", "sub", "inc", "dec", "cmp", "test", "jmp", "je", "jne",
             "ja", "jae", "jb", "jbe", "jg", "jge", "jl", "jle", "call", "ret", "syscall", "push",
-            "pop",
+            "pop", "cmovg", "cmova", "cmove", "cmovne", "cmovl", "cmovae",
         ] {
             assert!(
                 matches!(lower(&ins(m, &["rax"])), Lowering::Lowered(_)),

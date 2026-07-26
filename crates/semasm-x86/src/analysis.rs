@@ -405,6 +405,22 @@ fn transfer(ins: &LoweredInstr, state: &mut BlockState) {
                 Some(false) | None => CmpContext::Unsigned,
             };
         }
+        OpKind::Select => {
+            // Conditional move: destination may keep its prior value or take
+            // the source. Over-approximate as Conflict without invalidating
+            // the rest of the state (unlike Unknown).
+            if let Some(Operand::Reg(dst)) = ins.operands.first() {
+                if let Storage::Gp(g) = dst.storage {
+                    state.regs.insert(
+                        g,
+                        RegAbs {
+                            value: AbsVal::Conflict,
+                            width: dst.width,
+                        },
+                    );
+                }
+            }
+        }
         OpKind::Call => {
             // A call clobbers all volatile (caller-saved) registers; the
             // destination's prior value is lost. RSP gains 8 for the return
@@ -871,6 +887,35 @@ mod tests {
         let out = &r.block_out[0];
         // The signed comparison is recorded in the block's cmp context.
         assert_eq!(out.cmp, CmpContext::Signed);
+    }
+
+    #[test]
+    fn cmov_select_does_not_invalidate_whole_state() {
+        // mov rax, 7; cmp; cmovg rax, rbx — Select overwrites dest as Conflict
+        // but must preserve cmp context and rsp_known (unlike Unknown).
+        let body = vec![
+            ins("mov", Kind::Store, vec![reg(Gp::Rax), imm(7)]),
+            ins_signed(
+                "cmp",
+                Kind::Compare,
+                Some(true),
+                vec![reg(Gp::Rax), reg(Gp::Rbx)],
+            ),
+            ins_signed(
+                "cmovg",
+                Kind::Select,
+                Some(true),
+                vec![reg(Gp::Rax), reg(Gp::Rbx)],
+            ),
+        ];
+        let report = analyze_linear(&body);
+        let out = &report.block_out[0];
+        assert_eq!(out.regs.get(&Gp::Rax).unwrap().value, AbsVal::Conflict);
+        assert_eq!(out.cmp, CmpContext::Signed);
+        assert!(out.rsp_known);
+        assert_eq!(report.status, AnalysisStatus::Verified);
+        assert_eq!(report.coverage.unknown, 0);
+        assert!(!report.notes.iter().any(|n| n.code == "ANALYSIS_INCOMPLETE"));
     }
 
     #[test]
