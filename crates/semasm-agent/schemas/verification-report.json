@@ -57,17 +57,10 @@
       "$ref": "#/$defs/ExecutableGate"
     },
     "findings": {
-      "description": "Structured lint/ABI findings (RIP_INDEX, CALLER_SAVED, STACK_ALIGN_CALL, …). Never a seal claim.",
+      "description": "Structured lint / ABI findings (`RIP_INDEX`, `STACK_ALIGN_CALL`, …).\n\nAdditive for schema 0.5 consumers. Never a seal claim by itself.",
       "type": "array",
       "items": {
-        "type": "object",
-        "required": ["code", "severity", "message"],
-        "properties": {
-          "code": { "type": "string" },
-          "severity": { "type": "string" },
-          "message": { "type": "string" },
-          "at": { "type": ["integer", "null"] }
-        }
+        "$ref": "#/$defs/ReportFinding"
       }
     },
     "isolation": {
@@ -816,6 +809,38 @@
           "type": "string",
           "const": "not_evaluated"
         }
+      ]
+    },
+    "ReportFinding": {
+      "description": "One machine-readable finding attached to a verification report.",
+      "type": "object",
+      "properties": {
+        "at": {
+          "description": "Optional instruction index in the analysed body.",
+          "type": [
+            "integer",
+            "null"
+          ],
+          "format": "uint",
+          "minimum": 0
+        },
+        "code": {
+          "description": "Stable code (`RIP_INDEX`, `CALLER_SAVED`, `STACK_ALIGN_CALL`, …).",
+          "type": "string"
+        },
+        "message": {
+          "description": "Human-readable explanation.",
+          "type": "string"
+        },
+        "severity": {
+          "description": "`error` | `warning` | `info`.",
+          "type": "string"
+        }
+      },
+      "required": [
+        "code",
+        "severity",
+        "message"
       ]
     },
     "SemanticGates": {
