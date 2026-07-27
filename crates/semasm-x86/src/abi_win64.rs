@@ -112,13 +112,13 @@ pub struct AbiReport {
 }
 
 impl AbiReport {
-    /// Whether the analysis is fully clean (no error/warning findings).
+    /// Whether the analysis has no **error** findings (warnings do not fail the gate).
     #[must_use]
     pub fn is_clean(&self) -> bool {
         !self
             .findings
             .iter()
-            .any(|f| matches!(f.severity, Severity::Error | Severity::Warning))
+            .any(|f| matches!(f.severity, Severity::Error))
     }
 }
 
@@ -442,6 +442,28 @@ pub fn analyze(instrs: &[LoweredInstr]) -> AbiReport {
 
     // Callee-saved registers that are written must be saved + restored.
     check_callee_saved(instrs, &mut findings);
+
+    for (i, ins) in instrs.iter().enumerate() {
+        for op in &ins.operands {
+            if let Operand::Mem(m) = op {
+                let rip_base = matches!(
+                    m.base,
+                    Some(r) if matches!(r.storage, Storage::Rip)
+                );
+                if rip_base && m.index.is_some() {
+                    findings.push(AbiFinding {
+                        code: "RIP_INDEX",
+                        severity: Severity::Error,
+                        message: format!(
+                            "memory operand at index {i} uses RIP base with an index \
+                             register (NASM cannot encode RIP-relative+index; typical AV)"
+                        ),
+                        at: Some(i),
+                    });
+                }
+            }
+        }
+    }
 
     // Windows has no red zone: any access below RSP is an error.
     if max_below_rsp_disp < 0 {

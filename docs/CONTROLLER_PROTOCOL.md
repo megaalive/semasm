@@ -91,6 +91,35 @@ analysis under declared caller obligations — **not** unconditional proof.
 | `ASSEMBLE_FAILED` / `ASSEMBLE_ERROR` / `ASSEMBLE_HARNESS_*` | assemble | never / tooling |
 | `LINK_FAILED` / `LINK_ERROR` | link | never / tooling |
 
+### Lint / ABI finding codes (stable; not seals)
+
+These appear in `VerificationReport.findings[]` and/or `semasm abi` /
+`win64-abi` JSON. They are **heuristic or ABI-gate diagnostics**. They must
+**never** be promoted to `verified` / hosted seal claims.
+
+| `code` | Typical meaning | Severity |
+|---|---|---|
+| `STACK_ALIGN_CALL` | RSP not 16-byte aligned at `call` | error (ABI gate) |
+| `STACK_BALANCE_RET` | RSP delta ≠ 0 at `ret` | error (ABI gate) |
+| `SHADOW_SPACE_MISSING` | Win64 call without ≥32-byte home space | error (ABI gate) |
+| `CALLEE_SAVED_*` | nonvolatile not preserved/restored | error (ABI gate) |
+| `RIP_INDEX` | memory op uses RIP base with index/scale (NASM AV class) | error (lint) |
+| `CALLER_SAVED` | SysV volatile (e.g. RSI/RDI) read after `call`/`syscall` clobber without redefine | warning (lint) |
+
+### Hosted / VAA-only codes (not SemASM seals)
+
+Emitted by VAA hosted tooling (`hosted-check`, build). Always `seal_claim: false`.
+
+| `code` | Typical meaning | Agent action |
+|---|---|---|
+| `HOSTED_SMOKE_FAILED` | session stdin→stdout check failed | fix I/O / exit / expectations |
+| `OUTPUT_LOCKED` | PE/output path locked on Windows | use stamped `run_path` / close process |
+| `DISPATCH_FALLTHROUGH` | (reserved) command dispatch miss | fix exact-match chain; smoke each cmd |
+| `MULTI_LINE_READ` | (reserved) pipe multi-line stdin bug class | line-split buffer |
+
+Policy: **do not admit REPL / `mainCRTStartup`** as a leaf. `UNSUPPORTED_SHAPE`
+for unrecognized hosted entry points remains correct.
+
 ## Follow-up in the VAA repo (not SemASM)
 
 1. Parse stdout only: `VerificationReport` (≥0.4,<0.6) **or** `agent_failure` 0.1.

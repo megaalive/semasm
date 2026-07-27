@@ -368,6 +368,44 @@ pub struct VerificationReport {
     /// expression was attempted (all `not_evaluated`).
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub contract_expressions: Option<semasm_contract::ContractExprReport>,
+    /// Structured lint / ABI findings (`RIP_INDEX`, `STACK_ALIGN_CALL`, …).
+    ///
+    /// Additive for schema 0.5 consumers. Never a seal claim by itself.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub findings: Vec<ReportFinding>,
+}
+
+/// One machine-readable finding attached to a verification report.
+#[derive(Serialize, Deserialize, Clone, Debug, PartialEq, Eq)]
+#[cfg_attr(feature = "schema", derive(schemars::JsonSchema))]
+pub struct ReportFinding {
+    /// Stable code (`RIP_INDEX`, `CALLER_SAVED`, `STACK_ALIGN_CALL`, …).
+    pub code: String,
+    /// `error` | `warning` | `info`.
+    pub severity: String,
+    /// Human-readable explanation.
+    pub message: String,
+    /// Optional instruction index in the analysed body.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub at: Option<usize>,
+}
+
+impl ReportFinding {
+    /// Construct a finding from ABI analyzer fields.
+    #[must_use]
+    pub fn new(
+        code: impl Into<String>,
+        severity: impl Into<String>,
+        message: impl Into<String>,
+        at: Option<usize>,
+    ) -> Self {
+        Self {
+            code: code.into(),
+            severity: severity.into(),
+            message: message.into(),
+            at,
+        }
+    }
 }
 
 /// Named deterministic behavioral oracle attached to a verification report.
@@ -479,7 +517,15 @@ impl VerificationReport {
             alias_analysis: None,
             region_access: None,
             contract_expressions: None,
+            findings: Vec::new(),
         }
+    }
+
+    /// Attach structured findings (fluent).
+    #[must_use]
+    pub fn with_findings(mut self, findings: Vec<ReportFinding>) -> Self {
+        self.findings = findings;
+        self
     }
 
     /// Attach contract and source content digests for controller consumers.
@@ -596,6 +642,8 @@ pub struct SemanticGateError {
     pub decode: Option<Coverage>,
     /// Partial lowering coverage when available at the failure point.
     pub lowering: Option<Coverage>,
+    /// Structured findings when the ABI/lint stage produced them.
+    pub findings: Vec<ReportFinding>,
 }
 
 impl SemanticGateError {
@@ -607,6 +655,7 @@ impl SemanticGateError {
             message: message.into(),
             decode: None,
             lowering: None,
+            findings: Vec::new(),
         }
     }
 }
@@ -801,6 +850,7 @@ mod tests {
                 modeled: 2,
                 unknown: 2,
             }),
+                    findings: Vec::new(),
         };
         let gates = SemanticGates::from_error(&error, 64);
         assert_eq!(gates.object_policy, GateStatus::Passed);
@@ -819,6 +869,7 @@ mod tests {
             message: "stack misaligned".into(),
             decode: Some(Coverage::complete(3)),
             lowering: Some(Coverage::complete(3)),
+                    findings: Vec::new(),
         };
         let gates = SemanticGates::from_error(&error, 16);
         assert_eq!(gates.abi, GateStatus::Failed);

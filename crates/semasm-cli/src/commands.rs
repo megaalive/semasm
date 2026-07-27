@@ -13,8 +13,8 @@ use semasm_agent::{
     failure::{AgentFailureEnvelope, FailureStage, Retryability},
     harness,
     verify::{
-        sha256_digest_prefixed, ExecutableGate, ExecutionIsolation, GateStatus, SemanticGateError,
-        SemanticGates, VerificationReport, VerificationStatus,
+        sha256_digest_prefixed, ExecutableGate, ExecutionIsolation, GateStatus, ReportFinding,
+        SemanticGateError, SemanticGates, VerificationReport, VerificationStatus,
     },
     ContextBundle, TargetToolchain, TaskPacket,
 };
@@ -674,7 +674,7 @@ fn run_agent_verify_core(
 
     let object_bytes = std::fs::metadata(&routine_object).map_or(0, |meta| meta.len());
 
-    let (semantic, alias_analysis, region_access) =
+    let (semantic, alias_analysis, region_access, lint_findings) =
         match verify_candidate_semantics(&routine_object, &identity, &routine_symbol, &checked) {
             Ok(result) => result,
             Err(error) => {
@@ -687,7 +687,8 @@ fn run_agent_verify_core(
                         ExecutableGate::skipped(),
                         None,
                         ExecutionIsolation::StaticOnly,
-                    ),
+                    )
+                    .with_findings(error.findings.clone()),
                     None,
                     None,
                     None,
@@ -715,7 +716,8 @@ fn run_agent_verify_core(
                         ExecutableGate::skipped(),
                         None,
                         ExecutionIsolation::StaticOnly,
-                    ),
+                    )
+                    .with_findings(lint_findings.clone()),
                     None,
                     alias_analysis.clone(),
                     region_access.clone(),
@@ -840,7 +842,8 @@ fn run_agent_verify_core(
                 executable_gate,
                 None,
                 ExecutionIsolation::StaticOnly,
-            ),
+            )
+            .with_findings(lint_findings.clone()),
             None,
             alias_analysis.clone(),
             region_access.clone(),
@@ -863,7 +866,8 @@ fn run_agent_verify_core(
                 executable_gate,
                 None,
                 ExecutionIsolation::StaticOnly,
-            ),
+            )
+            .with_findings(lint_findings.clone()),
             None,
             alias_analysis.clone(),
             region_access.clone(),
@@ -927,6 +931,7 @@ fn run_agent_verify_core(
     if let Some(region_access) = region_access {
         report = report.with_region_access(region_access);
     }
+    report = report.with_findings(lint_findings);
 
     let exit = match report.status {
         VerificationStatus::Verified | VerificationStatus::VerifiedUnderPreconditions => {
@@ -1085,6 +1090,7 @@ fn verify_candidate_semantics(
         SemanticGates,
         Option<AliasAnalysisReport>,
         Option<RegionAccessReport>,
+        Vec<ReportFinding>,
     ),
     SemanticGateError,
 > {
@@ -1099,7 +1105,8 @@ fn verify_candidate_semantics(
             let decode_coverage = Coverage::complete(physical.len());
             let lowered = lower_x86_instructions(&physical, decode_coverage)?;
             let lowering_coverage = Coverage::complete(lowered.len());
-            check_x86_abi_capability(&lowered, identity.abi, decode_coverage, lowering_coverage)?;
+            let findings =
+                check_x86_abi_capability(&lowered, identity.abi, decode_coverage, lowering_coverage)?;
             check_cfg_leaf(&physical, decode_coverage, lowering_coverage)?;
             check_x86_read_only_buffer_leaf(
                 &lowered,
@@ -1113,6 +1120,7 @@ fn verify_candidate_semantics(
                 semantic_gates_passed(code_bytes, decode_coverage, lowering_coverage),
                 alias_analysis,
                 region_access,
+                findings,
             ))
         }
         (Isa::AArch64, Abi::Aapcs64, ObjectFormat::Elf) => {
@@ -1135,6 +1143,7 @@ fn verify_candidate_semantics(
                 semantic_gates_passed(code_bytes, decode_coverage, lowering_coverage),
                 alias_analysis,
                 region_access,
+                Vec::new(),
             ))
         }
         (Isa::Riscv64, Abi::Riscv, ObjectFormat::Elf) => {
@@ -1157,6 +1166,7 @@ fn verify_candidate_semantics(
                 semantic_gates_passed(code_bytes, decode_coverage, lowering_coverage),
                 alias_analysis,
                 region_access,
+                Vec::new(),
             ))
         }
         _ => Err(SemanticGateError::new(
@@ -1344,6 +1354,7 @@ fn decode_candidate_code(
             ),
             decode: None,
             lowering: None,
+                    findings: Vec::new(),
         });
     }
     Ok((physical, code_bytes))
@@ -1373,7 +1384,8 @@ fn lower_x86_instructions(
                         modeled,
                         unknown: total - modeled,
                     }),
-                });
+                            findings: Vec::new(),
+        });
             }
         }
     }
@@ -1404,7 +1416,8 @@ fn lower_aarch64_instructions(
                         modeled,
                         unknown: total - modeled,
                     }),
-                });
+                            findings: Vec::new(),
+        });
             }
         }
     }
@@ -1435,7 +1448,8 @@ fn lower_riscv_instructions(
                         modeled,
                         unknown: total - modeled,
                     }),
-                });
+                            findings: Vec::new(),
+        });
             }
         }
     }
@@ -1448,23 +1462,34 @@ fn check_x86_abi_capability(
     abi: Abi,
     decode_coverage: Coverage,
     lowering_coverage: Coverage,
-) -> Result<(), SemanticGateError> {
+) -> Result<Vec<ReportFinding>, SemanticGateError> {
+    let map_findings = |report_findings: &[semasm_x86::abi::AbiFinding]| {
+        report_findings
+            .iter()
+            .map(|f| {
+                ReportFinding::new(f.code, f.severity_str(), f.message.clone(), f.at)
+            })
+            .collect::<Vec<_>>()
+    };
     match abi {
         Abi::SysVAmd64 => {
             let report = semasm_x86::abi::analyze(lowered);
+            let findings = map_findings(&report.findings);
             if !report.is_clean() {
-                let findings = report
+                let joined = report
                     .findings
                     .iter()
+                    .filter(|f| matches!(f.severity, semasm_x86::abi::Severity::Error))
                     .map(|finding| format!("{}: {}", finding.code, finding.message))
                     .collect::<Vec<_>>()
                     .join("; ");
                 return Err(SemanticGateError {
                     stage: "abi",
-                    message: format!("System V ABI verification failed: {findings}"),
+                    message: format!("System V ABI verification failed: {joined}"),
                     decode: Some(decode_coverage),
                     lowering: Some(lowering_coverage),
-                });
+                    findings,
+        });
             }
             if report.has_syscall {
                 return Err(SemanticGateError {
@@ -1472,24 +1497,33 @@ fn check_x86_abi_capability(
                     message: "candidate requests the forbidden syscall capability".into(),
                     decode: Some(decode_coverage),
                     lowering: Some(lowering_coverage),
-                });
+                    findings,
+        });
             }
+            Ok(findings)
         }
         Abi::WindowsX64 => {
             let report = semasm_x86::abi_win64::analyze(lowered);
+            let findings = report
+                .findings
+                .iter()
+                .map(|f| ReportFinding::new(f.code, f.severity_str(), f.message.clone(), f.at))
+                .collect::<Vec<_>>();
             if !report.is_clean() {
-                let findings = report
+                let joined = report
                     .findings
                     .iter()
+                    .filter(|f| matches!(f.severity, semasm_x86::abi_win64::Severity::Error))
                     .map(|finding| format!("{}: {}", finding.code, finding.message))
                     .collect::<Vec<_>>()
                     .join("; ");
                 return Err(SemanticGateError {
                     stage: "abi",
-                    message: format!("Microsoft x64 ABI verification failed: {findings}"),
+                    message: format!("Microsoft x64 ABI verification failed: {joined}"),
                     decode: Some(decode_coverage),
                     lowering: Some(lowering_coverage),
-                });
+                    findings,
+        });
             }
             if lowered.iter().any(|ins| ins.mnemonic == "syscall") {
                 return Err(SemanticGateError {
@@ -1497,17 +1531,16 @@ fn check_x86_abi_capability(
                     message: "candidate requests the forbidden syscall capability".into(),
                     decode: Some(decode_coverage),
                     lowering: Some(lowering_coverage),
-                });
+                    findings,
+        });
             }
+            Ok(findings)
         }
-        _ => {
-            return Err(SemanticGateError::new(
-                "abi",
-                format!("unexpected x86 ABI `{abi}`"),
-            ));
-        }
+        _ => Err(SemanticGateError::new(
+            "abi",
+            format!("unexpected x86 ABI `{abi}`"),
+        )),
     }
-    Ok(())
 }
 
 #[cfg(feature = "capstone")]
@@ -1529,7 +1562,8 @@ fn check_cfg_leaf(
                     ),
                     decode: Some(decode_coverage),
                     lowering: Some(lowering_coverage),
-                });
+                            findings: Vec::new(),
+        });
             }
             BlockEnd::Unknown => {
                 return Err(SemanticGateError {
@@ -1540,7 +1574,8 @@ fn check_cfg_leaf(
                     ),
                     decode: Some(decode_coverage),
                     lowering: Some(lowering_coverage),
-                });
+                            findings: Vec::new(),
+        });
             }
             BlockEnd::Call { address: None, .. } => {
                 return Err(SemanticGateError {
@@ -1551,7 +1586,8 @@ fn check_cfg_leaf(
                     ),
                     decode: Some(decode_coverage),
                     lowering: Some(lowering_coverage),
-                });
+                            findings: Vec::new(),
+        });
             }
             _ => {}
         }
@@ -1562,7 +1598,8 @@ fn check_cfg_leaf(
         message: format!("CFG build failed: {error}"),
         decode: Some(decode_coverage),
         lowering: Some(lowering_coverage),
-    })?;
+                findings: Vec::new(),
+        })?;
 
     for block in &cfg.blocks {
         match &block.end {
@@ -1582,7 +1619,8 @@ fn check_cfg_leaf(
                         ),
                         decode: Some(decode_coverage),
                         lowering: Some(lowering_coverage),
-                    });
+                                findings: Vec::new(),
+        });
                 }
             }
             BlockEnd::ConditionalBranch {
@@ -1599,7 +1637,8 @@ fn check_cfg_leaf(
                         ),
                         decode: Some(decode_coverage),
                         lowering: Some(lowering_coverage),
-                    });
+                                findings: Vec::new(),
+        });
                 }
             }
             BlockEnd::Indirect | BlockEnd::Unknown => {
@@ -1611,7 +1650,8 @@ fn check_cfg_leaf(
                     ),
                     decode: Some(decode_coverage),
                     lowering: Some(lowering_coverage),
-                });
+                            findings: Vec::new(),
+        });
             }
             _ => {}
         }
@@ -1639,7 +1679,8 @@ fn check_x86_read_only_buffer_leaf(
                 ),
                 decode: Some(decode_coverage),
                 lowering: Some(lowering_coverage),
-            });
+                        findings: Vec::new(),
+        });
         }
     }
     Ok(())
@@ -1711,7 +1752,8 @@ fn check_aarch64_read_only_buffer_leaf(
                 ),
                 decode: Some(decode_coverage),
                 lowering: Some(lowering_coverage),
-            });
+                        findings: Vec::new(),
+        });
         }
     }
     Ok(())
@@ -1770,7 +1812,8 @@ fn check_riscv_read_only_buffer_leaf(
                 ),
                 decode: Some(decode_coverage),
                 lowering: Some(lowering_coverage),
-            });
+                        findings: Vec::new(),
+        });
         }
     }
     Ok(())
@@ -1825,6 +1868,7 @@ fn check_aarch64_abi_capability(
             message: format!("AAPCS64 ABI verification failed: {findings}"),
             decode: Some(decode_coverage),
             lowering: Some(lowering_coverage),
+                    findings: Vec::new(),
         });
     }
     if lowered
@@ -1836,6 +1880,7 @@ fn check_aarch64_abi_capability(
             message: "candidate requests a forbidden AArch64 privilege/syscall capability".into(),
             decode: Some(decode_coverage),
             lowering: Some(lowering_coverage),
+                    findings: Vec::new(),
         });
     }
     Ok(())
@@ -1860,6 +1905,7 @@ fn check_riscv_abi_capability(
             message: format!("RISC-V LP64 ABI verification failed: {findings}"),
             decode: Some(decode_coverage),
             lowering: Some(lowering_coverage),
+                    findings: Vec::new(),
         });
     }
     if lowered.iter().any(|ins| {
@@ -1871,6 +1917,7 @@ fn check_riscv_abi_capability(
             message: "candidate requests a forbidden RISC-V privilege/CSR capability".into(),
             decode: Some(decode_coverage),
             lowering: Some(lowering_coverage),
+                    findings: Vec::new(),
         });
     }
     Ok(())
@@ -1887,6 +1934,7 @@ fn verify_candidate_semantics(
         SemanticGates,
         Option<AliasAnalysisReport>,
         Option<RegionAccessReport>,
+        Vec<ReportFinding>,
     ),
     SemanticGateError,
 > {

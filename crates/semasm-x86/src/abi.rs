@@ -111,13 +111,24 @@ pub struct AbiReport {
 }
 
 impl AbiReport {
-    /// Whether the analysis is fully clean (no error/warning findings).
+    /// Whether the analysis has no **error** findings.
+    ///
+    /// Warnings (e.g. `CALLER_SAVED`) are reported in [`Self::findings`] but do
+    /// not fail the ABI gate — they are lint signals for controllers.
     #[must_use]
     pub fn is_clean(&self) -> bool {
         !self
             .findings
             .iter()
-            .any(|f| matches!(f.severity, Severity::Error | Severity::Warning))
+            .any(|f| matches!(f.severity, Severity::Error))
+    }
+
+    /// Whether any warning-severity findings are present.
+    #[must_use]
+    pub fn has_warnings(&self) -> bool {
+        self.findings
+            .iter()
+            .any(|f| matches!(f.severity, Severity::Warning))
     }
 }
 
@@ -336,6 +347,167 @@ fn step(ins: &LoweredInstr) -> Step {
     s
 }
 
+/// Emit `RIP_INDEX` when a memory operand uses RIP as base with an index.
+fn check_rip_index(instrs: &[LoweredInstr], findings: &mut Vec<AbiFinding>) {
+    for (i, ins) in instrs.iter().enumerate() {
+        for op in &ins.operands {
+            if let Operand::Mem(m) = op {
+                let rip_base = matches!(
+                    m.base,
+                    Some(r) if matches!(r.storage, Storage::Rip)
+                );
+                if rip_base && m.index.is_some() {
+                    findings.push(AbiFinding {
+                        code: "RIP_INDEX",
+                        severity: Severity::Error,
+                        message: format!(
+                            "memory operand at index {i} uses RIP base with an index \
+                             register (NASM cannot encode RIP-relative+index; typical AV)"
+                        ),
+                        at: Some(i),
+                    });
+                }
+            }
+        }
+    }
+}
+
+/// SysV volatiles watched for live-across-call/syscall misuse (excludes RAX return).
+const CALLER_SAVED_WATCH: &[Gp] = &[Gp::Rdi, Gp::Rsi, Gp::Rdx, Gp::Rcx, Gp::R8, Gp::R9];
+
+fn gp_from_reg(r: Register) -> Option<Gp> {
+    match r.storage {
+        Storage::Gp(g) => Some(g),
+        _ => None,
+    }
+}
+
+fn collect_reg_ops(ins: &LoweredInstr) -> (Vec<Gp>, Vec<Gp>) {
+    // Intel syntax: first register operand is typically the destination write
+    // for ALU/mov/lea; others (and mem base/index) are reads.
+    let mut writes = Vec::new();
+    let mut reads = Vec::new();
+    let mn = ins.mnemonic.as_str();
+    if matches!(mn, "push" | "cmp" | "test" | "call" | "jmp" | "ret" | "retn") {
+        for op in &ins.operands {
+            match op {
+                Operand::Reg(r) => {
+                    if let Some(g) = gp_from_reg(*r) {
+                        reads.push(g);
+                    }
+                }
+                Operand::Mem(m) => {
+                    if let Some(b) = m.base {
+                        if let Some(g) = gp_from_reg(b) {
+                            reads.push(g);
+                        }
+                    }
+                    if let Some(ix) = m.index {
+                        if let Some(g) = gp_from_reg(ix) {
+                            reads.push(g);
+                        }
+                    }
+                }
+                Operand::Imm(_) => {}
+            }
+        }
+        return (writes, reads);
+    }
+    if matches!(mn, "pop") {
+        if let Some(Operand::Reg(r)) = ins.operands.first() {
+            if let Some(g) = gp_from_reg(*r) {
+                writes.push(g);
+            }
+        }
+        return (writes, reads);
+    }
+    // Read-modify-write: destination is also a read.
+    if matches!(mn, "inc" | "dec" | "neg" | "not") {
+        if let Some(Operand::Reg(r)) = ins.operands.first() {
+            if let Some(g) = gp_from_reg(*r) {
+                reads.push(g);
+                writes.push(g);
+            }
+        }
+        return (writes, reads);
+    }
+    // Default: first Reg = write; remaining + mem bases = reads.
+    let mut first_reg_done = false;
+    for op in &ins.operands {
+        match op {
+            Operand::Reg(r) => {
+                if let Some(g) = gp_from_reg(*r) {
+                    if !first_reg_done {
+                        writes.push(g);
+                        first_reg_done = true;
+                    } else {
+                        reads.push(g);
+                    }
+                }
+            }
+            Operand::Mem(m) => {
+                if let Some(b) = m.base {
+                    if let Some(g) = gp_from_reg(b) {
+                        reads.push(g);
+                    }
+                }
+                if let Some(ix) = m.index {
+                    if let Some(g) = gp_from_reg(ix) {
+                        reads.push(g);
+                    }
+                }
+            }
+            Operand::Imm(_) => {}
+        }
+    }
+    (writes, reads)
+}
+
+/// Warn when a watched SysV volatile is read after `call`/`syscall` without redefine.
+fn check_caller_saved(instrs: &[LoweredInstr], findings: &mut Vec<AbiFinding>) {
+    use std::collections::HashSet;
+    let mut live: HashSet<Gp> = HashSet::new();
+    // Entry args are live under SysV.
+    for &g in &[Gp::Rdi, Gp::Rsi, Gp::Rdx, Gp::Rcx, Gp::R8, Gp::R9] {
+        live.insert(g);
+    }
+    let mut poisoned: HashSet<Gp> = HashSet::new();
+
+    for (i, ins) in instrs.iter().enumerate() {
+        let mn = ins.mnemonic.as_str();
+        if matches!(mn, "call" | "syscall") {
+            for &g in CALLER_SAVED_WATCH {
+                if live.contains(&g) {
+                    poisoned.insert(g);
+                }
+                live.remove(&g);
+            }
+            continue;
+        }
+        let (writes, reads) = collect_reg_ops(ins);
+        for g in &reads {
+            if CALLER_SAVED_WATCH.contains(g) && poisoned.contains(g) {
+                findings.push(AbiFinding {
+                    code: "CALLER_SAVED",
+                    severity: Severity::Warning,
+                    message: format!(
+                        "register {g:?} read at index {i} after call/syscall clobber \
+                         without redefine (SysV volatile; prefer RBX/R12+ for live counters)"
+                    ),
+                    at: Some(i),
+                });
+                poisoned.remove(g);
+            }
+        }
+        for g in &writes {
+            if CALLER_SAVED_WATCH.contains(g) {
+                poisoned.remove(g);
+                live.insert(*g);
+            }
+        }
+    }
+}
+
 /// Emit findings for any nonvolatile register written without being saved in
 /// the prologue and restored in the epilogue.
 fn check_callee_saved(instrs: &[LoweredInstr], findings: &mut Vec<AbiFinding>) {
@@ -442,6 +614,8 @@ pub fn analyze(instrs: &[LoweredInstr]) -> AbiReport {
 
     // Callee-saved registers that are written must be saved + restored.
     check_callee_saved(instrs, &mut findings);
+    check_rip_index(instrs, &mut findings);
+    check_caller_saved(instrs, &mut findings);
 
     // Red-zone policy: a non-leaf function must not rely on the red zone.
     if !is_leaf && max_red_zone_disp < 0 {
@@ -690,5 +864,56 @@ mod tests {
         let body = vec![ins("syscall", Kind::Unknown, vec![])];
         let r = analyze(&body);
         assert!(r.has_syscall);
+    }
+
+    #[test]
+    fn rip_index_is_error() {
+        let body = vec![
+            ins(
+                "mov",
+                Kind::Load,
+                vec![
+                    reg(Gp::Rax),
+                    Operand::Mem(MemOperand {
+                        base: Some(Register::rip()),
+                        index: Some(Gp::Rbx.full()),
+                        scale: 1,
+                        disp: 0,
+                        width: Width::B64,
+                    }),
+                ],
+            ),
+            ins("ret", Kind::Return, vec![]),
+        ];
+        let r = analyze(&body);
+        let f = r
+            .findings
+            .iter()
+            .find(|f| f.code == "RIP_INDEX")
+            .expect("expected RIP_INDEX");
+        assert_eq!(f.severity, Severity::Error);
+        assert!(!r.is_clean());
+    }
+
+    #[test]
+    fn caller_saved_warns_after_call() {
+        // mov esi, 8; call; dec esi  — classic SysV clobber of live counter.
+        let body = vec![
+            ins("sub", Kind::Binary, vec![reg(Gp::Rsp), imm(8)]),
+            ins("mov", Kind::Binary, vec![reg(Gp::Rsi), imm(8)]),
+            ins("call", Kind::Call, vec![imm(0x1000)]),
+            ins("dec", Kind::Binary, vec![reg(Gp::Rsi)]),
+            ins("add", Kind::Binary, vec![reg(Gp::Rsp), imm(8)]),
+            ins("ret", Kind::Return, vec![]),
+        ];
+        let r = analyze(&body);
+        let f = r
+            .findings
+            .iter()
+            .find(|f| f.code == "CALLER_SAVED")
+            .expect("expected CALLER_SAVED");
+        assert_eq!(f.severity, Severity::Warning);
+        // Warnings do not fail the ABI gate.
+        assert!(r.is_clean(), "warnings must not fail is_clean: {:?}", r.findings);
     }
 }

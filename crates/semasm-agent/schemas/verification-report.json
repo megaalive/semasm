@@ -56,6 +56,20 @@
       "description": "Post-link executable gate result.",
       "$ref": "#/$defs/ExecutableGate"
     },
+    "findings": {
+      "description": "Structured lint/ABI findings (RIP_INDEX, CALLER_SAVED, STACK_ALIGN_CALL, …). Never a seal claim.",
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["code", "severity", "message"],
+        "properties": {
+          "code": { "type": "string" },
+          "severity": { "type": "string" },
+          "message": { "type": "string" },
+          "at": { "type": ["integer", "null"] }
+        }
+      }
+    },
     "isolation": {
       "description": "How execution was isolated (or that only static gates ran).",
       "$ref": "#/$defs/ExecutionIsolation"
