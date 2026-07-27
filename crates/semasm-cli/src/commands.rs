@@ -688,7 +688,7 @@ fn run_agent_verify_core(
                         None,
                         ExecutionIsolation::StaticOnly,
                     )
-                    .with_findings(error.findings.clone()),
+                    .with_findings(error.findings.to_vec()),
                     None,
                     None,
                     None,
@@ -1080,20 +1080,20 @@ fn semantic_gates_passed(code_bytes: usize, decode: Coverage, lowering: Coverage
 }
 
 #[cfg(feature = "capstone")]
+type CandidateSemantics = (
+    SemanticGates,
+    Option<AliasAnalysisReport>,
+    Option<RegionAccessReport>,
+    Vec<ReportFinding>,
+);
+
+#[cfg(feature = "capstone")]
 fn verify_candidate_semantics(
     object_path: &Path,
     identity: &TargetIdentity,
     routine_symbol: &str,
     contract: &semasm_contract::CheckedContract,
-) -> Result<
-    (
-        SemanticGates,
-        Option<AliasAnalysisReport>,
-        Option<RegionAccessReport>,
-        Vec<ReportFinding>,
-    ),
-    SemanticGateError,
-> {
+) -> Result<CandidateSemantics, SemanticGateError> {
     require_semantic_target(identity)?;
     check_candidate_object_policy(object_path, identity, routine_symbol)?;
 
@@ -1105,8 +1105,12 @@ fn verify_candidate_semantics(
             let decode_coverage = Coverage::complete(physical.len());
             let lowered = lower_x86_instructions(&physical, decode_coverage)?;
             let lowering_coverage = Coverage::complete(lowered.len());
-            let findings =
-                check_x86_abi_capability(&lowered, identity.abi, decode_coverage, lowering_coverage)?;
+            let findings = check_x86_abi_capability(
+                &lowered,
+                identity.abi,
+                decode_coverage,
+                lowering_coverage,
+            )?;
             check_cfg_leaf(&physical, decode_coverage, lowering_coverage)?;
             check_x86_read_only_buffer_leaf(
                 &lowered,
@@ -1354,7 +1358,7 @@ fn decode_candidate_code(
             ),
             decode: None,
             lowering: None,
-                    findings: Vec::new(),
+                    findings: Box::from([]),
         });
     }
     Ok((physical, code_bytes))
@@ -1384,8 +1388,8 @@ fn lower_x86_instructions(
                         modeled,
                         unknown: total - modeled,
                     }),
-                            findings: Vec::new(),
-        });
+                    findings: Box::from([]),
+                });
             }
         }
     }
@@ -1416,8 +1420,8 @@ fn lower_aarch64_instructions(
                         modeled,
                         unknown: total - modeled,
                     }),
-                            findings: Vec::new(),
-        });
+                    findings: Box::from([]),
+                });
             }
         }
     }
@@ -1448,8 +1452,8 @@ fn lower_riscv_instructions(
                         modeled,
                         unknown: total - modeled,
                     }),
-                            findings: Vec::new(),
-        });
+                    findings: Box::from([]),
+                });
             }
         }
     }
@@ -1466,9 +1470,7 @@ fn check_x86_abi_capability(
     let map_findings = |report_findings: &[semasm_x86::abi::AbiFinding]| {
         report_findings
             .iter()
-            .map(|f| {
-                ReportFinding::new(f.code, f.severity_str(), f.message.clone(), f.at)
-            })
+            .map(|f| ReportFinding::new(f.code, f.severity_str(), f.message.clone(), f.at))
             .collect::<Vec<_>>()
     };
     match abi {
@@ -1488,8 +1490,8 @@ fn check_x86_abi_capability(
                     message: format!("System V ABI verification failed: {joined}"),
                     decode: Some(decode_coverage),
                     lowering: Some(lowering_coverage),
-                    findings,
-        });
+                    findings: findings.clone().into(),
+                });
             }
             if report.has_syscall {
                 return Err(SemanticGateError {
@@ -1497,8 +1499,8 @@ fn check_x86_abi_capability(
                     message: "candidate requests the forbidden syscall capability".into(),
                     decode: Some(decode_coverage),
                     lowering: Some(lowering_coverage),
-                    findings,
-        });
+                    findings: findings.clone().into(),
+                });
             }
             Ok(findings)
         }
@@ -1522,8 +1524,8 @@ fn check_x86_abi_capability(
                     message: format!("Microsoft x64 ABI verification failed: {joined}"),
                     decode: Some(decode_coverage),
                     lowering: Some(lowering_coverage),
-                    findings,
-        });
+                    findings: findings.clone().into(),
+                });
             }
             if lowered.iter().any(|ins| ins.mnemonic == "syscall") {
                 return Err(SemanticGateError {
@@ -1531,8 +1533,8 @@ fn check_x86_abi_capability(
                     message: "candidate requests the forbidden syscall capability".into(),
                     decode: Some(decode_coverage),
                     lowering: Some(lowering_coverage),
-                    findings,
-        });
+                    findings: findings.clone().into(),
+                });
             }
             Ok(findings)
         }
@@ -1544,6 +1546,7 @@ fn check_x86_abi_capability(
 }
 
 #[cfg(feature = "capstone")]
+#[allow(clippy::too_many_lines)]
 fn check_cfg_leaf(
     physical: &[semasm_decode::PhysicalInstruction],
     decode_coverage: Coverage,
@@ -1562,8 +1565,8 @@ fn check_cfg_leaf(
                     ),
                     decode: Some(decode_coverage),
                     lowering: Some(lowering_coverage),
-                            findings: Vec::new(),
-        });
+                    findings: Box::from([]),
+                });
             }
             BlockEnd::Unknown => {
                 return Err(SemanticGateError {
@@ -1574,8 +1577,8 @@ fn check_cfg_leaf(
                     ),
                     decode: Some(decode_coverage),
                     lowering: Some(lowering_coverage),
-                            findings: Vec::new(),
-        });
+                    findings: Box::from([]),
+                });
             }
             BlockEnd::Call { address: None, .. } => {
                 return Err(SemanticGateError {
@@ -1586,8 +1589,8 @@ fn check_cfg_leaf(
                     ),
                     decode: Some(decode_coverage),
                     lowering: Some(lowering_coverage),
-                            findings: Vec::new(),
-        });
+                    findings: Box::from([]),
+                });
             }
             _ => {}
         }
@@ -1598,8 +1601,8 @@ fn check_cfg_leaf(
         message: format!("CFG build failed: {error}"),
         decode: Some(decode_coverage),
         lowering: Some(lowering_coverage),
-                findings: Vec::new(),
-        })?;
+        findings: Box::from([]),
+    })?;
 
     for block in &cfg.blocks {
         match &block.end {
@@ -1619,8 +1622,8 @@ fn check_cfg_leaf(
                         ),
                         decode: Some(decode_coverage),
                         lowering: Some(lowering_coverage),
-                                findings: Vec::new(),
-        });
+                        findings: Box::from([]),
+                    });
                 }
             }
             BlockEnd::ConditionalBranch {
@@ -1637,7 +1640,7 @@ fn check_cfg_leaf(
                         ),
                         decode: Some(decode_coverage),
                         lowering: Some(lowering_coverage),
-                                findings: Vec::new(),
+                                findings: Box::from([]),
         });
                 }
             }
@@ -1650,8 +1653,8 @@ fn check_cfg_leaf(
                     ),
                     decode: Some(decode_coverage),
                     lowering: Some(lowering_coverage),
-                            findings: Vec::new(),
-        });
+                    findings: Box::from([]),
+                });
             }
             _ => {}
         }
@@ -1679,8 +1682,8 @@ fn check_x86_read_only_buffer_leaf(
                 ),
                 decode: Some(decode_coverage),
                 lowering: Some(lowering_coverage),
-                        findings: Vec::new(),
-        });
+                findings: Box::from([]),
+            });
         }
     }
     Ok(())
@@ -1752,8 +1755,8 @@ fn check_aarch64_read_only_buffer_leaf(
                 ),
                 decode: Some(decode_coverage),
                 lowering: Some(lowering_coverage),
-                        findings: Vec::new(),
-        });
+                findings: Box::from([]),
+            });
         }
     }
     Ok(())
@@ -1812,8 +1815,8 @@ fn check_riscv_read_only_buffer_leaf(
                 ),
                 decode: Some(decode_coverage),
                 lowering: Some(lowering_coverage),
-                        findings: Vec::new(),
-        });
+                findings: Box::from([]),
+            });
         }
     }
     Ok(())
@@ -1868,7 +1871,7 @@ fn check_aarch64_abi_capability(
             message: format!("AAPCS64 ABI verification failed: {findings}"),
             decode: Some(decode_coverage),
             lowering: Some(lowering_coverage),
-                    findings: Vec::new(),
+            findings: Box::from([]),
         });
     }
     if lowered
@@ -1880,7 +1883,7 @@ fn check_aarch64_abi_capability(
             message: "candidate requests a forbidden AArch64 privilege/syscall capability".into(),
             decode: Some(decode_coverage),
             lowering: Some(lowering_coverage),
-                    findings: Vec::new(),
+            findings: Box::from([]),
         });
     }
     Ok(())
@@ -1905,7 +1908,7 @@ fn check_riscv_abi_capability(
             message: format!("RISC-V LP64 ABI verification failed: {findings}"),
             decode: Some(decode_coverage),
             lowering: Some(lowering_coverage),
-                    findings: Vec::new(),
+            findings: Box::from([]),
         });
     }
     if lowered.iter().any(|ins| {
@@ -1917,7 +1920,7 @@ fn check_riscv_abi_capability(
             message: "candidate requests a forbidden RISC-V privilege/CSR capability".into(),
             decode: Some(decode_coverage),
             lowering: Some(lowering_coverage),
-                    findings: Vec::new(),
+            findings: Box::from([]),
         });
     }
     Ok(())
@@ -1981,7 +1984,7 @@ mod semantic_gate_tests {
         );
         let target = TargetIdentity::parse_known("x86_64-unknown-linux-gnu").unwrap();
         let contract = load_count_byte_contract(&workspace);
-        let (gates, _alias, _region_access) =
+        let (gates, _alias, _region_access, _findings) =
             verify_candidate_semantics(&object, &target, "count_byte", &contract).unwrap();
         assert!(gates.all_passed());
         assert_eq!(gates.lowering.unknown, 0);
@@ -2016,7 +2019,7 @@ mod semantic_gate_tests {
         );
         let target = TargetIdentity::parse_known("x86_64-pc-windows-msvc").unwrap();
         let contract = load_count_byte_contract(&workspace);
-        let (gates, _alias, _region_access) =
+        let (gates, _alias, _region_access, _findings) =
             verify_candidate_semantics(&object, &target, "count_byte", &contract).unwrap();
         assert!(gates.all_passed());
         assert_eq!(gates.lowering.unknown, 0);
@@ -2231,7 +2234,7 @@ mod semantic_gate_tests {
         );
         let target = TargetIdentity::parse_known("aarch64-unknown-linux-gnu").unwrap();
         let contract = load_count_byte_contract(&workspace);
-        let (gates, _alias, _region_access) =
+        let (gates, _alias, _region_access, _findings) =
             verify_candidate_semantics(&object, &target, "count_byte", &contract).unwrap();
         assert!(gates.all_passed());
         assert_eq!(gates.abi, GateStatus::Passed);
@@ -2271,7 +2274,7 @@ mod semantic_gate_tests {
         );
         let target = TargetIdentity::parse_known("riscv64gc-unknown-linux-gnu").unwrap();
         let contract = load_count_byte_contract(&workspace);
-        let (gates, _alias, _region_access) =
+        let (gates, _alias, _region_access, _findings) =
             verify_candidate_semantics(&object, &target, "count_byte", &contract).unwrap();
         assert!(gates.all_passed());
         assert_eq!(gates.abi, GateStatus::Passed);

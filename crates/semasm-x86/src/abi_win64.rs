@@ -366,6 +366,7 @@ fn check_callee_saved(instrs: &[LoweredInstr], findings: &mut Vec<AbiFinding>) {
 /// (prologue through epilogue). The walk derives the stack state and emits a
 /// finding for every rule violation it can statically determine.
 #[must_use]
+#[allow(clippy::too_many_lines)]
 pub fn analyze(instrs: &[LoweredInstr]) -> AbiReport {
     let mut findings: Vec<AbiFinding> = Vec::new();
     let mut rsp_delta: i64 = 0;

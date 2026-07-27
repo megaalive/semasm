@@ -643,7 +643,9 @@ pub struct SemanticGateError {
     /// Partial lowering coverage when available at the failure point.
     pub lowering: Option<Coverage>,
     /// Structured findings when the ABI/lint stage produced them.
-    pub findings: Vec<ReportFinding>,
+    ///
+    /// Boxed so [`Result`]`<(), Self>` stays under Clippy's `result_large_err` threshold.
+    pub findings: Box<[ReportFinding]>,
 }
 
 impl SemanticGateError {
@@ -655,7 +657,7 @@ impl SemanticGateError {
             message: message.into(),
             decode: None,
             lowering: None,
-            findings: Vec::new(),
+            findings: Box::from([]),
         }
     }
 }
@@ -850,7 +852,7 @@ mod tests {
                 modeled: 2,
                 unknown: 2,
             }),
-                    findings: Vec::new(),
+            findings: Box::from([]),
         };
         let gates = SemanticGates::from_error(&error, 64);
         assert_eq!(gates.object_policy, GateStatus::Passed);
@@ -869,7 +871,7 @@ mod tests {
             message: "stack misaligned".into(),
             decode: Some(Coverage::complete(3)),
             lowering: Some(Coverage::complete(3)),
-                    findings: Vec::new(),
+            findings: Box::from([]),
         };
         let gates = SemanticGates::from_error(&error, 16);
         assert_eq!(gates.abi, GateStatus::Failed);

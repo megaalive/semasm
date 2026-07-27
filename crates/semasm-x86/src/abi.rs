@@ -388,7 +388,10 @@ fn collect_reg_ops(ins: &LoweredInstr) -> (Vec<Gp>, Vec<Gp>) {
     let mut writes = Vec::new();
     let mut reads = Vec::new();
     let mn = ins.mnemonic.as_str();
-    if matches!(mn, "push" | "cmp" | "test" | "call" | "jmp" | "ret" | "retn") {
+    if matches!(
+        mn,
+        "push" | "cmp" | "test" | "call" | "jmp" | "ret" | "retn"
+    ) {
         for op in &ins.operands {
             match op {
                 Operand::Reg(r) => {
@@ -437,11 +440,11 @@ fn collect_reg_ops(ins: &LoweredInstr) -> (Vec<Gp>, Vec<Gp>) {
         match op {
             Operand::Reg(r) => {
                 if let Some(g) = gp_from_reg(*r) {
-                    if !first_reg_done {
+                    if first_reg_done {
+                        reads.push(g);
+                    } else {
                         writes.push(g);
                         first_reg_done = true;
-                    } else {
-                        reads.push(g);
                     }
                 }
             }
@@ -914,6 +917,10 @@ mod tests {
             .expect("expected CALLER_SAVED");
         assert_eq!(f.severity, Severity::Warning);
         // Warnings do not fail the ABI gate.
-        assert!(r.is_clean(), "warnings must not fail is_clean: {:?}", r.findings);
+        assert!(
+            r.is_clean(),
+            "warnings must not fail is_clean: {:?}",
+            r.findings
+        );
     }
 }
