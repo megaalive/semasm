@@ -24,8 +24,11 @@ Candidate-specific audit and gate results:
 - [ ] Linux and Windows x86-64 end-to-end jobs pass.
 - [ ] AArch64 and RV64 structural/QEMU evidence jobs pass.
 - [ ] Canonical evidence hashes match across independent output roots.
+- [ ] Target-owner conformance artifacts exist with outcome `passed`.
 - [ ] Negative corpus tests pass.
 - [ ] Every fuzz target compiles; the latest bounded fuzz workflow is green.
+- [ ] Fuzz summaries and crash/corpus artifacts are retained.
+- [ ] Reliability stress and performance-ceiling jobs pass.
 
 ## Packaging
 

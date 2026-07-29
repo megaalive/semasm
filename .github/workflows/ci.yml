@@ -113,6 +113,32 @@ jobs:
           second_hash="$(jq -er '.deterministic_evidence_sha256' "$second_root/report.json")"
           test "$first_hash" = "$second_hash"
 
+      - name: Record Linux conformance
+        shell: bash
+        run: |
+          mkdir -p target/conformance
+          version="$(sed -n 's/^version = "\([^"]*\)"/\1/p' Cargo.toml | head -n1)"
+          jq -n \
+            --arg version "$version" --arg commit "$GITHUB_SHA" \
+            --arg runner "$RUNNER_OS/$RUNNER_ARCH" \
+            '{
+              schema_version: "0.1", tool_version: $version, commit: $commit,
+              target: "x86_64-unknown-linux-gnu", runner: $runner,
+              outcome: "passed", reason: null,
+              evidence: [
+                "semasm-build ignored e2e suite",
+                "semasm-obj ignored negative/e2e suite",
+                "canonical evidence hash across independent roots"
+              ]
+            }' > target/conformance/x86_64-unknown-linux-gnu.json
+
+      - uses: actions/upload-artifact@v7
+        with:
+          name: conformance-x86_64-linux
+          path: target/conformance/*.json
+          if-no-files-found: error
+          retention-days: 30
+
   windows-e2e:
     name: e2e (x86-64 Windows)
     runs-on: windows-latest
@@ -155,6 +181,33 @@ jobs:
           cargo test -p semasm-cli --all-features --test agent_verify_memcpy_win64 -- --ignored --nocapture
           cargo test -p semasm-cli --all-features --test agent_verify_sum_i64_win64 -- --ignored --nocapture
           cargo test -p semasm-cli --all-features --test agent_verify_adversarial _win64_ -- --ignored --nocapture
+
+      - name: Record Windows conformance
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force target/conformance | Out-Null
+          $version = (Select-String Cargo.toml '^version = "([^"]+)"$').Matches[0].Groups[1].Value
+          [ordered]@{
+            schema_version = "0.1"
+            tool_version = $version
+            commit = $env:GITHUB_SHA
+            target = "x86_64-pc-windows-msvc"
+            runner = "$env:RUNNER_OS/$env:RUNNER_ARCH"
+            outcome = "passed"
+            reason = $null
+            evidence = @(
+              "Windows PE build/inspect/native execution"
+              "Win64 static semantic gates"
+              "Win64 behavioral and adversarial corpus"
+            )
+          } | ConvertTo-Json -Depth 4 | Set-Content -Encoding utf8 target/conformance/x86_64-pc-windows-msvc.json
+
+      - uses: actions/upload-artifact@v7
+        with:
+          name: conformance-x86_64-windows
+          path: target/conformance/*.json
+          if-no-files-found: error
+          retention-days: 30
 
   cross-target-e2e:
     name: e2e (${{ matrix.name }})
@@ -232,6 +285,33 @@ jobs:
             cargo test -p semasm-cli --all-features --test agent_verify_cross_target agent_verify_find_last_byte_riscv64 -- --ignored --nocapture
             cargo test -p semasm-cli --all-features --test agent_verify_adversarial _riscv64_ -- --ignored --nocapture
           fi
+
+      - name: Record cross-target conformance
+        shell: bash
+        run: |
+          mkdir -p target/conformance
+          version="$(sed -n 's/^version = "\([^"]*\)"/\1/p' Cargo.toml | head -n1)"
+          safe_target="$(printf '%s' '${{ matrix.target }}' | tr -c 'A-Za-z0-9._-' '_')"
+          jq -n \
+            --arg version "$version" --arg commit "$GITHUB_SHA" \
+            --arg runner "$RUNNER_OS/$RUNNER_ARCH" \
+            --arg target "${{ matrix.target }}" \
+            '{
+              schema_version: "0.1", tool_version: $version, commit: $commit,
+              target: $target, runner: $runner, outcome: "passed", reason: null,
+              evidence: [
+                "cross assemble/link/object inspection/QEMU execution",
+                "target static semantic gate",
+                "target behavioral and adversarial corpus"
+              ]
+            }' > "target/conformance/${safe_target}.json"
+
+      - uses: actions/upload-artifact@v7
+        with:
+          name: conformance-${{ matrix.name }}
+          path: target/conformance/*.json
+          if-no-files-found: error
+          retention-days: 30
 
   decode:
     name: decode (capstone)
@@ -325,3 +405,59 @@ jobs:
         with:
           command: check
           arguments: --all-features
+
+  reliability:
+    name: reliability stress
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+    steps:
+      - uses: actions/checkout@v7
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+      - name: Process timeout and bounded-capture regression suite
+        run: |
+          cargo test -p semasm-build exec::tests::timeout_ -- --nocapture
+          cargo test -p semasm-build exec::tests::large_flood_is_drained_but_bounded -- --exact --nocapture
+          cargo test -p semasm-build exec::tests::simultaneous_stream_floods_are_independently_bounded -- --exact --nocapture
+          cargo test -p semasm-build exec::tests::invalid_utf8_capture_remains_binary_safe -- --exact --nocapture
+
+  performance:
+    name: performance baseline
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+      - name: Measure release CLI
+        shell: bash
+        run: |
+          set -euo pipefail
+          cargo build --locked --release -p semasm-cli
+          target/release/semasm status >/dev/null
+          start_ns="$(date +%s%N)"
+          target/release/semasm status >/dev/null
+          end_ns="$(date +%s%N)"
+          elapsed_ms="$(( (end_ns - start_ns) / 1000000 ))"
+          binary_bytes="$(stat -c %s target/release/semasm)"
+          test "$elapsed_ms" -le 5000
+          test "$binary_bytes" -le 15000000
+          mkdir -p target/performance
+          jq -n \
+            --arg commit "$GITHUB_SHA" \
+            --argjson elapsed_ms "$elapsed_ms" \
+            --argjson binary_bytes "$binary_bytes" \
+            '{
+              schema_version: "0.1", commit: $commit,
+              command: "semasm status", warmed_elapsed_ms: $elapsed_ms,
+              release_binary_bytes: $binary_bytes,
+              ceilings: {warmed_elapsed_ms: 5000, release_binary_bytes: 15000000}
+            }' > target/performance/baseline.json
+      - uses: actions/upload-artifact@v7
+        with:
+          name: performance-baseline
+          path: target/performance/baseline.json
+          if-no-files-found: error
+          retention-days: 30

@@ -32,6 +32,27 @@ jobs:
         run: cargo install cargo-fuzz --locked
 
       - name: Run bounded fuzz campaign
-        run: >-
-          cargo +nightly fuzz run ${{ matrix.target }}
-          -- -max_total_time=30 -rss_limit_mb=2048 -timeout=10
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p "target/fuzz-artifacts/${{ matrix.target }}"
+          cargo +nightly fuzz run ${{ matrix.target }} -- \
+            -max_total_time=30 -rss_limit_mb=2048 -timeout=10 \
+            -artifact_prefix="target/fuzz-artifacts/${{ matrix.target }}/"
+          jq -n \
+            --arg commit "$GITHUB_SHA" --arg target "${{ matrix.target }}" \
+            '{
+              schema_version: "0.1", commit: $commit, target: $target,
+              outcome: "passed", max_total_time_seconds: 30,
+              rss_limit_mb: 2048, timeout_seconds: 10
+            }' > "target/fuzz-artifacts/${{ matrix.target }}/summary.json"
+
+      - uses: actions/upload-artifact@v7
+        if: always()
+        with:
+          name: fuzz-evidence-${{ matrix.target }}
+          path: |
+            target/fuzz-artifacts/${{ matrix.target }}/
+            fuzz/corpus/${{ matrix.target }}/
+          if-no-files-found: error
+          retention-days: 30

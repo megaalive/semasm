@@ -6,7 +6,22 @@ follow [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
-No changes yet.
+### Added
+
+- **Auditable conformance evidence** — target-owner CI jobs emit retained JSON
+  records with explicit `passed`, `failed`, `skipped`, `unavailable`, and
+  `not_applicable` outcomes under a checked-in schema.
+- **Reliability and performance CI** — dedicated Linux/Windows subprocess
+  stress jobs plus a retained release-binary size and warmed CLI latency
+  baseline with conservative regression ceilings.
+- **Retained fuzz evidence** — every bounded fuzz target uploads its summary,
+  corpus, and any generated crash artifacts for 30 days.
+
+### Changed
+
+- GitHub artifact upload/download actions use the Node.js 24 generation
+  (`actions/*-artifact@v7`); Node.js remains CI infrastructure only and is not
+  a SemASM runtime or release dependency.
 
 ## [0.3.0] - 2026-07-29
 
