@@ -6,6 +6,16 @@ follow [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+No changes yet.
+
+## [0.3.0] - 2026-07-29
+
+Pre-1.0 developer release candidate consolidating the 66 commits after
+`v0.2.1`. The product version changes independently from document schemas:
+Verification Report remains `0.5`, Agent Failure remains `0.1`, Artifact
+Report remains `0.4`, and Capability/Contract remain `0.1`. Consumers must
+follow the compatibility policies and tolerate additive experimental fields.
+
 ### Added
 
 - **x86 `cmov*` semantic lowering** — Capstone `cmovCC` mnemonics lower to a
@@ -309,7 +319,8 @@ capabilities, behavioral oracles, and `VerificationReport` evidence. It is
   AArch64/RV64 `decode`/`lower` remain `partial`. See `semasm status` and
   `capabilities.toml`.
 
-[Unreleased]: https://github.com/megaalive/semasm/compare/v0.2.1...HEAD
+[Unreleased]: https://github.com/megaalive/semasm/compare/v0.3.0...HEAD
+[0.3.0]: https://github.com/megaalive/semasm/compare/v0.2.1...v0.3.0
 [0.2.1]: https://github.com/megaalive/semasm/releases/tag/v0.2.1
 [0.2.0]: https://github.com/megaalive/semasm/releases/tag/v0.2.0
 [0.1.0]: https://github.com/megaalive/semasm/releases/tag/v0.1.0

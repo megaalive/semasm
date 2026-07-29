@@ -31,6 +31,12 @@ Stabilization through Rel-0.2.1 is closed on `main`. Tip tag: **`v0.2.1`**
 (A64/RV `control`), Mm (A64/RV read-only `memory`), and VAA Gate pin (Vd) are
 **done**. Sample CI coverage != full-ISA / CFG/CFI / region-precise store proof.
 
+**Rel-0.3 candidate preparation:** workspace version, compatibility docs,
+roadmap, changelog, and release checklist are synchronized for `v0.3.0`.
+Tagging remains blocked until the Linux/Windows x86-64 and AArch64/RV64 owner
+jobs, bounded fuzz workflow, package/archive jobs, and checksum verification
+are green on the exact candidate commit.
+
 **Sei closed on SemASM side** (P0 + Ra0-Ra6); VAA Evidence Requirement Profiles
 (P1/P1b) already landed on VAA — pin tip after consumer waves. Formal Bounds
 chip Fb0-Fb9b done; **Fb9c** (arbitrary loop invariant) stays locked.

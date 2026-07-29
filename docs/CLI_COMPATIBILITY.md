@@ -1,8 +1,9 @@
 # CLI and JSON compatibility
 
-SemASM 0.2.x is a pre-1.0 developer line (latest tag: see `CHANGELOG.md` /
-GitHub Releases). Command names and documented exit classes remain supported
-while JSON shapes evolve only through their declared schema policies.
+SemASM 0.3.x is a pre-1.0 developer line (latest published tag: see
+`CHANGELOG.md` / GitHub Releases). Command names and documented exit classes
+remain supported while JSON shapes evolve only through their declared schema
+policies.
 
 ## Exit codes
 
@@ -158,7 +159,7 @@ comment in `capabilities.toml` and target descriptions for AArch64/RV64.
 - Capability/status JSON is generated from `capabilities.toml`. Its
   `schema_version` must be checked by consumers.
 - Analysis, ABI, object-inspection, doctor, and agent JSON are experimental in
-  0.1. Consumers must tolerate additive fields and must not infer complete
+  0.x. Consumers must tolerate additive fields and must not infer complete
   verification when coverage fields report unsupported or unknown input.
 
 Removing a field, changing its meaning, or changing an exit-code class requires

@@ -47,9 +47,9 @@
 //! Synthesis rules for the buffer-scan shape (contract schema 0.1):
 //!
 //! - **max length** from `requires` of the form `length <= N` / `length < N`
-//!   (clamped to [`MAX_FIXTURE_CAP`]); not from `bounded_stack_bytes`.
+//!   (clamped to `MAX_FIXTURE_CAP`); not from `bounded_stack_bytes`.
 //! - **needle** from `requires` `needle == K` / `K == needle`, else
-//!   [`DEFAULT_BUFFER_SCAN_NEEDLE`].
+//!   `DEFAULT_BUFFER_SCAN_NEEDLE`.
 //! - **null when empty** only when an effect `memory_read` names region
 //!   `{ptr}[0..{len}]` for the shape's pointer and length parameters.
 
@@ -617,7 +617,7 @@ pub fn validate_vectors_match_oracle(
 ///
 /// This is the single place that maps `(recognized oracle, detected vector
 /// layout)` to the [`HarnessShape`] used by [`generate_harness`] and
-/// [`evaluate`]. Detection from vectors alone (see [`detect_harness_shape`])
+/// [`evaluate`]. Detection from vectors alone (see `detect_harness_shape`)
 /// is layout-based and therefore ambiguous for write-shape oracles that
 /// intentionally reuse an existing read-only wire layout — for example
 /// `Memset` reuses the 3-field `BufferScan` layout (array/null buffer plus
@@ -673,7 +673,7 @@ fn oracle_expected_shape(oracle_id: &str) -> Result<HarnessShape, String> {
 
 /// Resolved calling shape for the harness generator.
 ///
-/// Note that [`detect_harness_shape`] infers this from raw vector layout and
+/// Note that `detect_harness_shape` infers this from raw vector layout and
 /// cannot distinguish shapes that share a wire layout (e.g. `Memset` vs.
 /// `BufferScan`); use [`resolve_harness_shape`] when a `CheckedContract` is
 /// available so the oracle can disambiguate.

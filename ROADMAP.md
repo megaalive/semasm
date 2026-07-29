@@ -21,7 +21,8 @@ CI-proven support.
 | Tw | A64/RV adversarial twins (write-shape / MemCmp / min) | **done** (`c0655f1`) |
 | Ff | A64/RV `find_first_byte` / `find_last_byte` packs | **done** (`3876277`) |
 | Ab | `abi_analysis` → `verified_in_ci` (primary four) | **done** (`0e35029`) |
-| Sei | Semantic Evidence Integrity (alias/obligation → VAA policy → region access) | **in progress** (P0 + Ra0–Ra6 done; VAA P1 next) |
+| Sei | Semantic Evidence Integrity (alias/obligation → VAA policy → region access) | **done** (SemASM Ra0–Ra6 and VAA P1/P1b) |
+| Rel-0.3 | Version/docs/schema compatibility audit + release gates | **candidate preparation** |
 
 ## Declared target identities
 
@@ -46,8 +47,8 @@ conformance evidence are proven.
 - Keep CI owner jobs green with `SEMASM_REQUIRE_TOOLCHAIN=1`.
 - Prefer fail-closed adversarial fixtures over broader mnemonic coverage.
 - Do **not** add new ISAs until landed paths stay deep and honest.
-- **In progress:** **Sei** — VAA Evidence Requirement Profiles next (SemASM
-  Region Access Ra0–Ra6 done). Horizon cliffs stay locked.
+- **Done:** **Sei** — SemASM Region Access Ra0–Ra6 and VAA Evidence
+  Requirement Profiles P1/P1b. Horizon cliffs stay locked.
 - **Done (Sei Ra):** Region Access Evidence v1 — ADR 0011; x86 corpus
   `region_access_evidence_v1`; A64/RV observational
   (`docs/REGION_ACCESS_EVIDENCE_V1_PLAN.md`).
@@ -69,6 +70,9 @@ conformance evidence are proven.
 - **Done (Mm):** A64/RV `memory` leaf — `docs/A64_RV_MEMORY_LEAF_PLAN.md`
   (CI green at `e991182`; sample ≠ region-precise proof).
 - **Done (Rel-0.2.1):** tag `v0.2.1` @ `22d1543` — Co+Mm patch.
+- **Candidate (Rel-0.3):** synchronize the 66 post-`v0.2.1` commits, run the
+  complete release checklist, then tag only after all four target-owner CI
+  jobs and packaging evidence are green.
 - **Done (hygiene):** `actions/checkout@v7` on workflows; Dependabot disabled
   (removed `.github/dependabot.yml` — no auto dependency PRs).
 

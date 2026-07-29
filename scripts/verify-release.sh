@@ -1,10 +1,10 @@
 #!/usr/bin/env bash
-# Verify the SemASM 0.2 source tree before tagging a release.
+# Verify the SemASM 0.3 source tree before tagging a release.
 set -euo pipefail
 
 repo_root="$(cd "$(dirname "$0")/.." && pwd)"
 cd "$repo_root"
-expected_version="${1:-0.2.1}"
+expected_version="${1:-0.3.0}"
 manifest_version="$(sed -n 's/^version = "\([^"]*\)"/\1/p' Cargo.toml | head -n1)"
 test "$manifest_version" = "$expected_version"
 
