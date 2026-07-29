@@ -24,8 +24,8 @@ CI-proven support.
 | Sei | Semantic Evidence Integrity (alias/obligation → VAA policy → region access) | **done** (SemASM Ra0–Ra6 and VAA P1/P1b) |
 | Rel-0.3 | Version/docs/schema compatibility audit + release gates | **done** |
 | P1 Reliability | Auditable conformance, stress/perf gates, retained fuzz evidence | **done** ([CI](https://github.com/megaalive/semasm/actions/runs/30430552892), [fuzz](https://github.com/megaalive/semasm/actions/runs/30430553633)) |
-| P2 Product Surface | One-command onboarding, consumer CI, schema compatibility, task tutorials | **implementation complete; CI validation pending** |
-| Rel-0.4 | Publish immutable consumer workflow + P1/P2 product surface | **candidate preparation** |
+| P2 Product Surface | One-command onboarding, consumer CI, schema compatibility, task tutorials | **done** ([CI](https://github.com/megaalive/semasm/actions/runs/30431751225), [fuzz](https://github.com/megaalive/semasm/actions/runs/30431757501)) |
+| Rel-0.4 | Publish immutable consumer workflow + P1/P2 product surface | **all pre-tag gates green; tagging pending** |
 
 ## Declared target identities
 
