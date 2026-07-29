@@ -23,7 +23,7 @@ CI-proven support.
 | Ab | `abi_analysis` → `verified_in_ci` (primary four) | **done** (`0e35029`) |
 | Sei | Semantic Evidence Integrity (alias/obligation → VAA policy → region access) | **done** (SemASM Ra0–Ra6 and VAA P1/P1b) |
 | Rel-0.3 | Version/docs/schema compatibility audit + release gates | **candidate preparation** |
-| P1 Reliability | Auditable conformance, stress/perf gates, retained fuzz evidence | **implementation complete; CI validation pending** |
+| P1 Reliability | Auditable conformance, stress/perf gates, retained fuzz evidence | **done** ([CI](https://github.com/megaalive/semasm/actions/runs/30430552892), [fuzz](https://github.com/megaalive/semasm/actions/runs/30430553633)) |
 
 ## Declared target identities
 
