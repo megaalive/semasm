@@ -458,6 +458,83 @@ impl ProofBasis {
 /// Current experimental schema version for [`VerificationReport`] JSON.
 pub const VERIFICATION_REPORT_SCHEMA_VERSION: &str = "0.5";
 
+/// Compatibility classification for a verification-report schema.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum VerificationSchemaCompatibility {
+    /// Document uses the exact current schema.
+    Current,
+    /// Document uses an older minor from the same experimental major.
+    CompatibleOlder,
+    /// Document uses a newer minor accepted only through explicit opt-in.
+    ForwardOptIn,
+}
+
+/// Reader policy for verification-report schema checks.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub struct VerificationReadOptions {
+    /// Permit a newer minor from the same major for preserving/inspection.
+    pub allow_newer_minor: bool,
+}
+
+/// Check a verification-report document using the strict default policy.
+pub fn check_verification_schema_compatibility(
+    json: &str,
+) -> Result<VerificationSchemaCompatibility, String> {
+    check_verification_schema_compatibility_with_options(json, VerificationReadOptions::default())
+}
+
+/// Check verification-report compatibility with explicit forward-read policy.
+pub fn check_verification_schema_compatibility_with_options(
+    json: &str,
+    options: VerificationReadOptions,
+) -> Result<VerificationSchemaCompatibility, String> {
+    let document: serde_json::Value = serde_json::from_str(json)
+        .map_err(|error| format!("invalid verification JSON: {error}"))?;
+    let version = document
+        .get("schema_version")
+        .and_then(serde_json::Value::as_str)
+        .ok_or_else(|| {
+            "verification report is missing string field 'schema_version'".to_string()
+        })?;
+    let actual = parse_verification_schema_version(version)?;
+    let supported = parse_verification_schema_version(VERIFICATION_REPORT_SCHEMA_VERSION)?;
+
+    if actual.0 != supported.0 {
+        return Err(format!(
+            "unsupported verification-report schema '{version}'; reader supports '{VERIFICATION_REPORT_SCHEMA_VERSION}'"
+        ));
+    }
+    if actual.1 == supported.1 {
+        Ok(VerificationSchemaCompatibility::Current)
+    } else if actual.1 < supported.1 {
+        Ok(VerificationSchemaCompatibility::CompatibleOlder)
+    } else if options.allow_newer_minor {
+        Ok(VerificationSchemaCompatibility::ForwardOptIn)
+    } else {
+        Err(format!(
+            "unsupported verification-report schema '{version}'; reader supports '{VERIFICATION_REPORT_SCHEMA_VERSION}'"
+        ))
+    }
+}
+
+fn parse_verification_schema_version(version: &str) -> Result<(u64, u64), String> {
+    let mut parts = version.split('.');
+    let major = parts
+        .next()
+        .and_then(|part| part.parse::<u64>().ok())
+        .ok_or_else(|| format!("invalid schema version '{version}'; expected MAJOR.MINOR"))?;
+    let minor = parts
+        .next()
+        .and_then(|part| part.parse::<u64>().ok())
+        .ok_or_else(|| format!("invalid schema version '{version}'; expected MAJOR.MINOR"))?;
+    if parts.next().is_some() {
+        return Err(format!(
+            "invalid schema version '{version}'; expected MAJOR.MINOR"
+        ));
+    }
+    Ok((major, minor))
+}
+
 /// Prefixed SHA-256 digest for controller provenance (`sha256:` + lowercase hex).
 #[must_use]
 pub fn sha256_digest_prefixed(bytes: &[u8]) -> String {
@@ -673,6 +750,44 @@ impl std::error::Error for SemanticGateError {}
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    const SCHEMA_0_4: &str = include_str!("../schemas/fixtures/verification-schema-0.4.json");
+    const SCHEMA_0_5: &str = include_str!("../schemas/fixtures/verification-schema-0.5.json");
+    const SCHEMA_0_6: &str = include_str!("../schemas/fixtures/verification-schema-0.6.json");
+
+    #[test]
+    fn verification_schema_fixtures_lock_cross_version_policy() {
+        assert_eq!(
+            check_verification_schema_compatibility(SCHEMA_0_4),
+            Ok(VerificationSchemaCompatibility::CompatibleOlder)
+        );
+        assert_eq!(
+            check_verification_schema_compatibility(SCHEMA_0_5),
+            Ok(VerificationSchemaCompatibility::Current)
+        );
+        assert!(check_verification_schema_compatibility(SCHEMA_0_6).is_err());
+        assert_eq!(
+            check_verification_schema_compatibility_with_options(
+                SCHEMA_0_6,
+                VerificationReadOptions {
+                    allow_newer_minor: true,
+                },
+            ),
+            Ok(VerificationSchemaCompatibility::ForwardOptIn)
+        );
+    }
+
+    #[test]
+    fn verification_schema_rejects_major_missing_and_malformed_versions() {
+        for json in [
+            r#"{"schema_version":"1.0"}"#,
+            r"{}",
+            r#"{"schema_version":"0.5.0"}"#,
+            r#"{"schema_version":"latest"}"#,
+        ] {
+            assert!(check_verification_schema_compatibility(json).is_err());
+        }
+    }
     use crate::harness::{HarnessReport, VectorResult};
 
     fn passed_semantic() -> SemanticGates {

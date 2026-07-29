@@ -41,10 +41,8 @@ jobs:
         run: cargo doc --workspace --no-deps
 
       - name: Contributor quickstart
-        run: |
-          cargo run -q -p semasm-cli -- --version
-          cargo run -q -p semasm-cli -- status
-          cargo run -q -p semasm-cli -- contract check fixtures/contracts/write_all.sem.toml
+        shell: bash
+        run: bash scripts/quickstart.sh
 
       - name: Prepare source packages
         if: matrix.os == 'ubuntu-latest'

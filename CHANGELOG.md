@@ -6,8 +6,18 @@ follow [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+No changes yet.
+
+## [0.4.0] - 2026-07-29
+
 ### Added
 
+- **P2 product surface** — one-command honest onboarding scripts, three
+  task-oriented tutorials, and an x86-64 Linux reusable consumer workflow that
+  authenticates the published CLI archive against `SHA256SUMS` before
+  verification.
+- **Verification schema reader policy** — strict and forward-opt-in library
+  checks backed by 0.4/0.5/0.6 cross-version fixtures.
 - **Auditable conformance evidence** — target-owner CI jobs emit retained JSON
   records with explicit `passed`, `failed`, `skipped`, `unavailable`, and
   `not_applicable` outcomes under a checked-in schema.
@@ -19,6 +29,8 @@ follow [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Changed
 
+- Contributor quickstart CI now exercises the same one-command onboarding path
+  documented for users.
 - GitHub artifact upload/download actions use the Node.js 24 generation
   (`actions/*-artifact@v7`); Node.js remains CI infrastructure only and is not
   a SemASM runtime or release dependency.
@@ -334,7 +346,8 @@ capabilities, behavioral oracles, and `VerificationReport` evidence. It is
   AArch64/RV64 `decode`/`lower` remain `partial`. See `semasm status` and
   `capabilities.toml`.
 
-[Unreleased]: https://github.com/megaalive/semasm/compare/v0.3.0...HEAD
+[Unreleased]: https://github.com/megaalive/semasm/compare/v0.4.0...HEAD
+[0.4.0]: https://github.com/megaalive/semasm/compare/v0.3.0...v0.4.0
 [0.3.0]: https://github.com/megaalive/semasm/compare/v0.2.1...v0.3.0
 [0.2.1]: https://github.com/megaalive/semasm/releases/tag/v0.2.1
 [0.2.0]: https://github.com/megaalive/semasm/releases/tag/v0.2.0

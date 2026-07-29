@@ -1,16 +1,22 @@
 # Quickstart
 
-Install the Rust toolchain described by `rust-toolchain.toml`, then run this
-five-minute path from the repository root:
+Install the Rust toolchain described by `rust-toolchain.toml`, then run the
+one-command onboarding path from the repository root:
 
-```bash
-cargo run -q -p semasm-cli -- --version
-cargo run -q -p semasm-cli -- status
-cargo run -q -p semasm-cli -- contract check fixtures/contracts/write_all.sem.toml
+```powershell
+./scripts/quickstart.ps1
 ```
 
-The final command exits zero and reports a valid contract. It proves contract
-parsing and validation on the current host, not assembly execution.
+```bash
+./scripts/quickstart.sh
+```
+
+The command distinguishes `core_ready,target_ready` from
+`core_ready,target_unavailable`. Core readiness proves the CLI, capability
+manifest, and contract validator on the current host; it does not claim
+assembly execution. Use `-StrictToolchain` (PowerShell) or
+`--strict-toolchain` as the second shell argument when missing external tools
+must fail the command.
 
 ## Linux end-to-end exploration
 

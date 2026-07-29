@@ -26,6 +26,11 @@ Controller stream and status-mapping rules live in `CONTROLLER_PROTOCOL.md`.
 - Readers should reject a different major; older minors of the same major may
   be accepted with a compatibility warning.
 
+The library functions
+`verify::check_verification_schema_compatibility` and
+`verify::check_verification_schema_compatibility_with_options` implement this
+policy. Checked-in 0.4/0.5/0.6 fixtures lock older/current/forward behavior.
+
 ## Regenerating schemas
 
 Schemas are produced with the `schema` feature of `semasm-agent` (schemars):

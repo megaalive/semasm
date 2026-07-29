@@ -5,7 +5,7 @@ directly in assembly. It supplies portable semantic contracts, target kits,
 analysis (ASIR), and verification so humans and AI agents can produce and check
 minimal target programs **without shipping a high-level language runtime**.
 
-> **Status:** pre-1.0 developer tooling (0.3 line). Thirteen workspace crates,
+> **Status:** pre-1.0 developer tooling (0.4 line). Thirteen workspace crates,
 > multi-target agent verify (SysV / Win64 / AArch64 / RV64), structured
 > `VerificationReport` evidence (including optional Region/Alias Evidence v1
 > `region-affine-v1`, Region Access Evidence v1 `region-access-affine-v1`, and
@@ -99,6 +99,18 @@ powershell -ExecutionPolicy Bypass -File scripts/golden-demo.ps1
 ```
 
 ## Quick start (tooling)
+
+One-command onboarding:
+
+```bash
+bash scripts/quickstart.sh
+```
+
+```powershell
+powershell -ExecutionPolicy Bypass -File scripts/quickstart.ps1
+```
+
+Equivalent individual commands:
 
 ```bash
 cargo build -p semasm-cli
@@ -205,7 +217,7 @@ the golden demo, not adding new ISAs.
 
 Release compatibility and gates are documented in
 [docs/CLI_COMPATIBILITY.md](docs/CLI_COMPATIBILITY.md) and
-[docs/RELEASE_CHECKLIST.md](docs/RELEASE_CHECKLIST.md). The current `v0.3.0`
+[docs/RELEASE_CHECKLIST.md](docs/RELEASE_CHECKLIST.md). The current `v0.4.0`
 candidate continues to distribute CLI archives + `SHA256SUMS` (no crates.io
 publish yet).
 Pre-1.0 APIs may still evolve.

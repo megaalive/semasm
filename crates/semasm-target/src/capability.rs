@@ -675,9 +675,9 @@ mod tests {
             !manifest.admissions.is_empty(),
             "repository manifest must seed VAA allowlist admissions"
         );
-        let json = manifest.capabilities_json("0.3.0");
+        let json = manifest.capabilities_json("0.4.0");
         assert_eq!(json["name"], "semasm");
-        assert_eq!(json["version"], "0.3.0");
+        assert_eq!(json["version"], "0.4.0");
         assert_eq!(json["capability_schema"], "0.1");
         assert!(json["targets"].is_array());
         assert!(json["admission"].is_array());

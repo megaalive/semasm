@@ -22,8 +22,10 @@ CI-proven support.
 | Ff | A64/RV `find_first_byte` / `find_last_byte` packs | **done** (`3876277`) |
 | Ab | `abi_analysis` → `verified_in_ci` (primary four) | **done** (`0e35029`) |
 | Sei | Semantic Evidence Integrity (alias/obligation → VAA policy → region access) | **done** (SemASM Ra0–Ra6 and VAA P1/P1b) |
-| Rel-0.3 | Version/docs/schema compatibility audit + release gates | **candidate preparation** |
+| Rel-0.3 | Version/docs/schema compatibility audit + release gates | **done** |
 | P1 Reliability | Auditable conformance, stress/perf gates, retained fuzz evidence | **done** ([CI](https://github.com/megaalive/semasm/actions/runs/30430552892), [fuzz](https://github.com/megaalive/semasm/actions/runs/30430553633)) |
+| P2 Product Surface | One-command onboarding, consumer CI, schema compatibility, task tutorials | **implementation complete; CI validation pending** |
+| Rel-0.4 | Publish immutable consumer workflow + P1/P2 product surface | **candidate preparation** |
 
 ## Declared target identities
 

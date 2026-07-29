@@ -1,6 +1,6 @@
 # CLI and JSON compatibility
 
-SemASM 0.3.x is a pre-1.0 developer line (latest published tag: see
+SemASM 0.4.x is a pre-1.0 developer line (latest published tag: see
 `CHANGELOG.md` / GitHub Releases). Command names and documented exit classes
 remain supported while JSON shapes evolve only through their declared schema
 policies.

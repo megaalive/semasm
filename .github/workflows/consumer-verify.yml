@@ -1,0 +1,79 @@
+name: Reusable SemASM consumer verify
+
+on:
+  workflow_call:
+    inputs:
+      source:
+        description: Assembly source path in the caller repository
+        required: true
+        type: string
+      contract:
+        description: SemASM contract path in the caller repository
+        required: true
+        type: string
+      symbol:
+        description: Routine symbol declared by the contract
+        required: true
+        type: string
+      semasm-version:
+        description: Published SemASM version, without the v prefix
+        required: false
+        default: "0.4.0"
+        type: string
+
+permissions:
+  contents: read
+
+jobs:
+  verify:
+    name: SemASM verify (x86-64 Linux)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Install external target tools
+        run: sudo apt-get update && sudo apt-get install -y nasm binutils qemu-user
+
+      - name: Download and authenticate SemASM
+        shell: bash
+        env:
+          SEMASM_VERSION: ${{ inputs.semasm-version }}
+        run: |
+          set -euo pipefail
+          base="https://github.com/megaalive/semasm/releases/download/v${SEMASM_VERSION}"
+          curl --fail --location --retry 3 \
+            --output semasm.tar.gz "$base/semasm-linux-x86_64.tar.gz"
+          curl --fail --location --retry 3 \
+            --output SHA256SUMS "$base/SHA256SUMS"
+          grep 'semasm-linux-x86_64.tar.gz$' SHA256SUMS | sha256sum --check
+          mkdir -p "$RUNNER_TEMP/semasm"
+          tar -xzf semasm.tar.gz -C "$RUNNER_TEMP/semasm"
+          echo "$RUNNER_TEMP/semasm" >> "$GITHUB_PATH"
+
+      - name: Verify candidate
+        shell: bash
+        env:
+          SOURCE: ${{ inputs.source }}
+          CONTRACT: ${{ inputs.contract }}
+          SYMBOL: ${{ inputs.symbol }}
+        run: |
+          set -euo pipefail
+          test -f "$SOURCE"
+          test -f "$CONTRACT"
+          semasm contract check "$CONTRACT"
+          semasm agent verify "$SOURCE" "$CONTRACT" \
+            --target x86_64-unknown-linux-gnu \
+            --allow-execution --format json \
+            --card semasm-evidence-card.md > semasm-verification-report.json
+          jq -e --arg symbol "$SYMBOL" \
+            '.status == "verified" and .routine_symbol == $symbol' \
+            semasm-verification-report.json
+
+      - uses: actions/upload-artifact@v7
+        with:
+          name: semasm-verification-evidence
+          path: |
+            semasm-verification-report.json
+            semasm-evidence-card.md
+          if-no-files-found: error
+          retention-days: 30
