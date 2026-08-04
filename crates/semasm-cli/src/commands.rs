@@ -10,6 +10,10 @@ use semasm_agent::{
         compare_reports, render_compare_markdown, render_evidence_card_json,
         render_evidence_card_markdown, EvidenceCardContext,
     },
+    external_vectors::{
+        canonical_document_digest, ExternalVectorDocument, VectorCaseBinding, VectorOrigin,
+        VectorSetEvidence, EXTERNAL_VECTOR_SCHEMA_VERSION,
+    },
     failure::{AgentFailureEnvelope, FailureStage, Retryability},
     harness,
     verify::{
@@ -210,10 +214,17 @@ pub(crate) fn do_agent_verify(
     target_str: &str,
     format: OutputFormat,
     allow_execution: bool,
+    vectors_file: Option<&Path>,
     card: Option<&Path>,
     card_json: bool,
 ) -> ExitCode {
-    match run_agent_verify_core(source, contract_path, target_str, allow_execution) {
+    match run_agent_verify_core(
+        source,
+        contract_path,
+        target_str,
+        allow_execution,
+        vectors_file,
+    ) {
         VerifyCore::Early(code) => code,
         VerifyCore::Done {
             report,
@@ -229,6 +240,7 @@ pub(crate) fn do_agent_verify(
                 source_path: source,
                 object_bytes,
                 allow_execution,
+                vectors_file,
                 target: target_str,
             };
             if !emit_verification_with_card(report.as_ref(), format, &card_opts) {
@@ -247,11 +259,13 @@ pub(crate) fn do_agent_compare(
     format: OutputFormat,
     allow_execution: bool,
 ) -> ExitCode {
-    let a = match run_agent_verify_core(source_a, contract_path, target_str, allow_execution) {
+    let a = match run_agent_verify_core(source_a, contract_path, target_str, allow_execution, None)
+    {
         VerifyCore::Early(code) => return code,
         VerifyCore::Done { report, exit, .. } => (report, exit),
     };
-    let b = match run_agent_verify_core(source_b, contract_path, target_str, allow_execution) {
+    let b = match run_agent_verify_core(source_b, contract_path, target_str, allow_execution, None)
+    {
         VerifyCore::Early(code) => return code,
         VerifyCore::Done { report, exit, .. } => (report, exit),
     };
@@ -300,6 +314,7 @@ struct CardOptions<'a> {
     source_path: &'a Path,
     object_bytes: u64,
     allow_execution: bool,
+    vectors_file: Option<&'a Path>,
     target: &'a str,
 }
 
@@ -329,6 +344,7 @@ fn reproduce_verify_cmd(
     contract: &Path,
     target: &str,
     allow_execution: bool,
+    vectors_file: Option<&Path>,
 ) -> String {
     let mut cmd = format!(
         "semasm agent verify {} {}",
@@ -341,6 +357,10 @@ fn reproduce_verify_cmd(
     }
     if allow_execution {
         cmd.push_str(" --allow-execution");
+    }
+    if let Some(vectors_file) = vectors_file {
+        cmd.push_str(" --vectors-file ");
+        cmd.push_str(&vectors_file.display().to_string());
     }
     cmd
 }
@@ -371,6 +391,7 @@ fn write_evidence_card_if_requested(report: &VerificationReport, card: &CardOpti
             card.contract_path,
             card.target,
             card.allow_execution,
+            card.vectors_file,
         ),
     };
     let body = if card.as_json {
@@ -401,6 +422,7 @@ fn run_agent_verify_core(
     contract_path: &Path,
     target_str: &str,
     allow_execution: bool,
+    vectors_file: Option<&Path>,
 ) -> VerifyCore {
     let identity = match TargetIdentity::parse_known(target_str) {
         Ok(identity) => identity,
@@ -501,7 +523,7 @@ fn run_agent_verify_core(
     }
     let checked = check.contract.expect("ok() implies Some");
 
-    let vectors = harness::synthesize_vectors(&checked);
+    let mut vectors = harness::synthesize_vectors(&checked);
     if vectors.is_empty() {
         let hint = harness::unsupported_shape_hint(&checked);
         return early_failure(
@@ -521,6 +543,132 @@ fn run_agent_verify_core(
             1,
         );
     }
+    let builtin_case_count = vectors.len();
+    let mut case_bindings = vectors
+        .iter()
+        .map(|vector| VectorCaseBinding {
+            name: vector.name.clone(),
+            origin: VectorOrigin::Builtin,
+            external_case_id: None,
+        })
+        .collect::<Vec<_>>();
+    let mut external_document_digest = None;
+    if let Some(path) = vectors_file {
+        let bytes = match std::fs::read(path) {
+            Ok(bytes) => bytes,
+            Err(error) => {
+                return early_failure(
+                    AgentFailureEnvelope::new(
+                        "VECTORS_IO",
+                        FailureStage::Io,
+                        format!("{}: error: {error}", path.display()),
+                        Retryability::Tooling,
+                    )
+                    .with_target(target_str)
+                    .with_routine(&checked.name)
+                    .with_digests(Some(contract_digest.clone()), Some(source_digest.clone())),
+                    1,
+                );
+            }
+        };
+        let document: ExternalVectorDocument = match serde_json::from_slice(&bytes) {
+            Ok(document) => document,
+            Err(error) => {
+                return early_failure(
+                    AgentFailureEnvelope::new(
+                        "VECTORS_INVALID",
+                        FailureStage::Contract,
+                        format!(
+                            "{}: invalid external vector document: {error}",
+                            path.display()
+                        ),
+                        Retryability::Never,
+                    )
+                    .with_target(target_str)
+                    .with_routine(&checked.name)
+                    .with_digests(Some(contract_digest.clone()), Some(source_digest.clone())),
+                    1,
+                );
+            }
+        };
+        let binding_error = if document.schema_version != EXTERNAL_VECTOR_SCHEMA_VERSION {
+            Some(format!(
+                "unsupported external vector schema '{}'; expected '{EXTERNAL_VECTOR_SCHEMA_VERSION}'",
+                document.schema_version
+            ))
+        } else if document.contract_digest != contract_digest {
+            Some("external vector contract_digest does not match the verified contract".into())
+        } else if document.target != target_str {
+            Some("external vector target does not match --target".into())
+        } else if document.routine_symbol != checked.name {
+            Some("external vector routine_symbol does not match the contract".into())
+        } else if document.cases.is_empty() {
+            Some("external vector document must contain at least one case".into())
+        } else {
+            None
+        };
+        if let Some(message) = binding_error {
+            return early_failure(
+                AgentFailureEnvelope::new(
+                    "VECTORS_BINDING_MISMATCH",
+                    FailureStage::Contract,
+                    format!("error: {message}"),
+                    Retryability::Never,
+                )
+                .with_target(target_str)
+                .with_routine(&checked.name)
+                .with_digests(Some(contract_digest.clone()), Some(source_digest.clone())),
+                1,
+            );
+        }
+        let mut ids = std::collections::BTreeSet::new();
+        for case in &document.cases {
+            if !ids.insert(case.id.clone()) {
+                return early_failure(
+                    AgentFailureEnvelope::new(
+                        "VECTORS_INVALID",
+                        FailureStage::Contract,
+                        format!("error: duplicate external case id '{}'", case.id),
+                        Retryability::Never,
+                    )
+                    .with_target(target_str)
+                    .with_routine(&checked.name)
+                    .with_digests(Some(contract_digest.clone()), Some(source_digest.clone())),
+                    1,
+                );
+            }
+            let vector = match harness::derive_external_vector(&checked, case) {
+                Ok(vector) => vector,
+                Err(message) => {
+                    return early_failure(
+                        AgentFailureEnvelope::new(
+                            "VECTORS_INVALID",
+                            FailureStage::Contract,
+                            format!("error: {message}"),
+                            Retryability::Never,
+                        )
+                        .with_target(target_str)
+                        .with_routine(&checked.name)
+                        .with_digests(Some(contract_digest.clone()), Some(source_digest.clone())),
+                        1,
+                    );
+                }
+            };
+            case_bindings.push(VectorCaseBinding {
+                name: vector.name.clone(),
+                origin: VectorOrigin::External,
+                external_case_id: Some(case.id.clone()),
+            });
+            vectors.push(vector);
+        }
+        external_document_digest = Some(canonical_document_digest(&document));
+    }
+    let vector_set = VectorSetEvidence {
+        external_document_digest,
+        builtin_case_count,
+        external_case_count: vectors.len() - builtin_case_count,
+        cases: case_bindings,
+    };
     let harness_shape = match harness::resolve_harness_shape(&checked, &vectors) {
         Ok(shape) => shape,
         Err(message) => {
@@ -573,7 +721,9 @@ fn run_agent_verify_core(
         if let Some(exprs) = expr_report {
             report = report.with_contract_expressions(exprs);
         }
-        report.with_digests(contract_digest.clone(), source_digest.clone())
+        report
+            .with_vector_set(vector_set.clone())
+            .with_digests(contract_digest.clone(), source_digest.clone())
     };
 
     let directory = std::env::temp_dir().join(format!(
@@ -912,6 +1062,7 @@ fn run_agent_verify_core(
         Some(behavior),
         run_isolation,
     )
+    .with_vector_set(vector_set)
     .with_digests(contract_digest, source_digest);
     if let Some(oracle) = oracle {
         report = report.with_behavior_oracle(oracle);

@@ -286,6 +286,10 @@ enum AgentCmd {
         /// Explicitly permit candidate execution after all static gates pass.
         #[arg(long)]
         allow_execution: bool,
+        /// Add untrusted named inputs whose expected values SemASM derives
+        /// from the recognized builtin oracle.
+        #[arg(long)]
+        vectors_file: Option<PathBuf>,
         /// Write a one-page evidence card (Markdown by default) to this path.
         #[arg(long)]
         card: Option<PathBuf>,
@@ -448,6 +452,7 @@ fn main() -> ExitCode {
                 target,
                 format,
                 allow_execution,
+                vectors_file,
                 card,
                 card_json,
             } => {
@@ -461,6 +466,7 @@ fn main() -> ExitCode {
                         &target,
                         format,
                         allow_execution,
+                        vectors_file.as_deref(),
                         card.as_deref(),
                         card_json,
                     )
@@ -773,6 +779,7 @@ type = "usize"
             "x86_64-unknown-linux-gnu",
             OutputFormat::Terminal,
             false,
+            None,
             None,
             false,
         );

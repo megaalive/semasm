@@ -59,6 +59,7 @@ use semasm_contract::{BinOp, CheckedContract, Expr, SemType};
 use semasm_target::Abi;
 use serde::{Deserialize, Serialize};
 
+use crate::external_vectors::ExternalVectorCase;
 use crate::TestVector;
 
 // ---------------------------------------------------------------------------
@@ -129,6 +130,90 @@ pub fn synthesize_vectors(contract: &CheckedContract) -> Vec<TestVector> {
         return synthesize_cell_store_vectors();
     }
     Vec::new()
+}
+
+/// Derive a trusted vector from untrusted named inputs using a builtin oracle.
+///
+/// This deliberately supports only scalar integer profiles. Other shapes fail
+/// closed until their pointer/region preconditions can be represented without
+/// trusting caller-provided expected memory state.
+pub fn derive_external_vector(
+    contract: &CheckedContract,
+    case: &ExternalVectorCase,
+) -> Result<TestVector, String> {
+    if case.id.trim().is_empty() {
+        return Err("external case id must not be empty".into());
+    }
+    if case.inputs.len() != contract.parameters.len()
+        || contract
+            .parameters
+            .iter()
+            .any(|parameter| !case.inputs.contains_key(&parameter.name))
+    {
+        let expected = contract
+            .parameters
+            .iter()
+            .map(|parameter| parameter.name.as_str())
+            .collect::<Vec<_>>()
+            .join(", ");
+        return Err(format!(
+            "external case '{}' must provide exactly these inputs: {expected}",
+            case.id
+        ));
+    }
+
+    let ordered = contract
+        .parameters
+        .iter()
+        .map(|parameter| case.inputs[&parameter.name].clone())
+        .collect::<Vec<_>>();
+    let expected = if let Some(op) = pure_int_shape(contract) {
+        let a = external_u64(&case.id, &contract.parameters[0].name, &ordered[0])?;
+        let b = external_u64(&case.id, &contract.parameters[1].name, &ordered[1])?;
+        serde_json::json!(op.reduce(a, b))
+    } else if let Some(op) = pure_int_i64_shape(contract) {
+        let a = external_i64(&case.id, &contract.parameters[0].name, &ordered[0])?;
+        let b = external_i64(&case.id, &contract.parameters[1].name, &ordered[1])?;
+        serde_json::json!(op.reduce(a, b))
+    } else if let Some(op) = pure_int_unary_i64_shape(contract) {
+        let x = external_i64(&case.id, &contract.parameters[0].name, &ordered[0])?;
+        if op == PureIntUnaryI64Op::SumRange && x < 0 {
+            return Err(format!(
+                "external case '{}' violates sum_range precondition: input must be non-negative",
+                case.id
+            ));
+        }
+        if op == PureIntUnaryI64Op::Countdown && x.unsigned_abs() > MAX_FIXTURE_CAP as u64 {
+            return Err(format!(
+                "external case '{}' exceeds the bounded countdown fixture limit ({MAX_FIXTURE_CAP})",
+                case.id
+            ));
+        }
+        serde_json::json!(op.reduce(x))
+    } else {
+        return Err(
+            "external vectors are currently admitted only for recognized scalar integer oracles"
+                .into(),
+        );
+    };
+
+    Ok(TestVector {
+        name: format!("external:{}", case.id),
+        inputs: ordered,
+        expected,
+    })
+}
+
+fn external_i64(case_id: &str, parameter: &str, value: &serde_json::Value) -> Result<i64, String> {
+    value.as_i64().ok_or_else(|| {
+        format!("external case '{case_id}' input '{parameter}' must be an i64 JSON integer")
+    })
+}
+
+fn external_u64(case_id: &str, parameter: &str, value: &serde_json::Value) -> Result<u64, String> {
+    value.as_u64().ok_or_else(|| {
+        format!("external case '{case_id}' input '{parameter}' must be a non-negative JSON integer")
+    })
 }
 
 /// Builtin oracle id for buffer-scan count-equal-u8 (`count_byte` shape).
@@ -5610,6 +5695,58 @@ type = "i64"
             vectors[0].expected.as_i64(),
             Some(op.reduce(vectors[0].inputs[0].as_i64().expect("i64 input")))
         );
+    }
+
+    #[test]
+    fn external_sum_range_expected_is_oracle_derived() {
+        use std::collections::BTreeMap;
+
+        let contract = check_contract(
+            r#"
+contract_version = "0.1"
+[function]
+name = "sum_range"
+[[function.parameters]]
+name = "n"
+type = "i64"
+[[function.returns]]
+name = "result"
+type = "i64"
+"#,
+        );
+        let case = ExternalVectorCase {
+            id: "four".into(),
+            inputs: BTreeMap::from([("n".into(), serde_json::json!(4))]),
+        };
+        let vector = derive_external_vector(&contract, &case).unwrap();
+        assert_eq!(vector.name, "external:four");
+        assert_eq!(vector.expected, serde_json::json!(10));
+    }
+
+    #[test]
+    fn external_sum_range_rejects_negative_input() {
+        use std::collections::BTreeMap;
+
+        let contract = check_contract(
+            r#"
+contract_version = "0.1"
+[function]
+name = "sum_range"
+[[function.parameters]]
+name = "n"
+type = "i64"
+[[function.returns]]
+name = "result"
+type = "i64"
+"#,
+        );
+        let case = ExternalVectorCase {
+            id: "negative".into(),
+            inputs: BTreeMap::from([("n".into(), serde_json::json!(-1))]),
+        };
+        assert!(derive_external_vector(&contract, &case)
+            .unwrap_err()
+            .contains("non-negative"));
     }
 
     #[test]

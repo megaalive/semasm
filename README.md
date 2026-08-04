@@ -59,6 +59,15 @@ cargo run -p semasm-cli --features capstone -- agent verify \
   --format json \
   --card /tmp/count_byte-card.md
 
+# Add caller-selected scalar inputs. The file cannot provide expected values;
+# SemASM derives them from its recognized builtin oracle and retains builtins.
+cargo run -p semasm-cli --features capstone -- agent verify \
+  fixtures/asm/sum_range_win64.asm \
+  fixtures/contracts/sum_range.sem.toml \
+  --target x86_64-pc-windows-msvc \
+  --vectors-file /tmp/sum-range-vectors.json \
+  --allow-execution --format json
+
 # Deliberate wrong implementation → behavior_failed (never silent success)
 cargo run -p semasm-cli --features capstone -- agent verify \
   fixtures/asm/count_byte_wrong.asm \

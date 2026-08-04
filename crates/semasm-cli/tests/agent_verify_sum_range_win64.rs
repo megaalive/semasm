@@ -19,7 +19,11 @@ fn skip_if_incomplete(stderr: &str) -> bool {
     true
 }
 
-fn run_agent_verify(source: &Path, allow_execution: bool) -> std::process::Output {
+fn run_agent_verify(
+    source: &Path,
+    allow_execution: bool,
+    vectors_file: Option<&Path>,
+) -> std::process::Output {
     let workspace = workspace_root();
     let contract = workspace.join("fixtures/contracts/sum_range.sem.toml");
     let binary = env!("CARGO_BIN_EXE_semasm");
@@ -36,6 +40,10 @@ fn run_agent_verify(source: &Path, allow_execution: bool) -> std::process::Outpu
     if allow_execution {
         args.push("--allow-execution");
     }
+    if let Some(vectors_file) = vectors_file {
+        args.push("--vectors-file");
+        args.push(vectors_file.to_str().expect("utf-8 vector path"));
+    }
     Command::new(binary)
         .args(args)
         .output()
@@ -46,7 +54,7 @@ fn run_agent_verify(source: &Path, allow_execution: bool) -> std::process::Outpu
 #[ignore = "requires nasm, lld-link, and native Windows host"]
 fn agent_verify_sum_range_win64_allow_execution_is_verified() {
     let source = workspace_root().join("fixtures/asm/sum_range_win64.asm");
-    let output = run_agent_verify(&source, true);
+    let output = run_agent_verify(&source, true, None);
     let stderr = String::from_utf8_lossy(&output.stderr);
     if skip_if_incomplete(&stderr) {
         return;
@@ -70,7 +78,7 @@ fn agent_verify_sum_range_win64_allow_execution_is_verified() {
 #[ignore = "requires nasm, lld-link, and native Windows host"]
 fn agent_verify_sum_range_win64_execution_denied_keeps_oracle() {
     let source = workspace_root().join("fixtures/asm/sum_range_win64.asm");
-    let output = run_agent_verify(&source, false);
+    let output = run_agent_verify(&source, false, None);
     let stderr = String::from_utf8_lossy(&output.stderr);
     if skip_if_incomplete(&stderr) {
         return;
@@ -88,7 +96,7 @@ fn agent_verify_sum_range_win64_execution_denied_keeps_oracle() {
 #[ignore = "requires nasm, lld-link, and native Windows host"]
 fn agent_verify_sum_range_win64_wrong_emits_behavior_failed() {
     let source = workspace_root().join("fixtures/asm/sum_range_wrong_win64.asm");
-    let output = run_agent_verify(&source, true);
+    let output = run_agent_verify(&source, true, None);
     let stderr = String::from_utf8_lossy(&output.stderr);
     if skip_if_incomplete(&stderr) {
         return;
@@ -104,4 +112,30 @@ fn agent_verify_sum_range_win64_wrong_emits_behavior_failed() {
     });
     assert_eq!(value["status"], "behavior_failed");
     assert_eq!(value["behavior"]["all_passed"], false);
+}
+
+#[test]
+#[ignore = "requires nasm, lld-link, and native Windows host"]
+fn agent_verify_sum_range_win64_adds_oracle_derived_external_vectors() {
+    let workspace = workspace_root();
+    let source = workspace.join("fixtures/asm/sum_range_win64.asm");
+    let vectors = workspace.join("fixtures/vectors/sum_range_win64.json");
+    let output = run_agent_verify(&source, true, Some(&vectors));
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    if skip_if_incomplete(&stderr) {
+        return;
+    }
+
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    assert!(output.status.success(), "stderr={stderr}; stdout={stdout}");
+    let value: serde_json::Value = serde_json::from_str(&stdout).unwrap();
+    assert_eq!(value["status"], "verified");
+    assert_eq!(value["vector_set"]["builtin_case_count"], 5);
+    assert_eq!(value["vector_set"]["external_case_count"], 2);
+    assert!(value["vector_set"]["external_document_digest"]
+        .as_str()
+        .is_some_and(|digest| digest.starts_with("sha256:")));
+    assert_eq!(value["behavior"]["cases"][5]["name"], "external:four");
+    assert_eq!(value["behavior"]["cases"][5]["expected"], "10");
+    assert_eq!(value["behavior"]["cases"][6]["expected"], "66");
 }

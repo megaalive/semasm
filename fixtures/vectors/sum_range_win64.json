@@ -1,0 +1,20 @@
+{
+  "schema_version": "0.1",
+  "contract_digest": "sha256:0a2a695c5792ed4d4e8861a955ffefba7c9f60cb7f4b90a17a3e1920018ebf21",
+  "target": "x86_64-pc-windows-msvc",
+  "routine_symbol": "sum_range",
+  "cases": [
+    {
+      "id": "four",
+      "inputs": {
+        "n": 4
+      }
+    },
+    {
+      "id": "eleven",
+      "inputs": {
+        "n": 11
+      }
+    }
+  ]
+}

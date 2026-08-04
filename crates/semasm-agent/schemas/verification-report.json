@@ -105,6 +105,17 @@
     "tool_version": {
       "description": "Tool identity string (`semasm MAJOR.MINOR.PATCH`).",
       "type": "string"
+    },
+    "vector_set": {
+      "description": "Integrity and origin binding for every behavioral vector.",
+      "anyOf": [
+        {
+          "$ref": "#/$defs/VectorSetEvidence"
+        },
+        {
+          "type": "null"
+        }
+      ]
     }
   },
   "required": [
@@ -893,6 +904,46 @@
         "capability"
       ]
     },
+    "VectorCaseBinding": {
+      "description": "Per-case binding recorded in a verification report.",
+      "type": "object",
+      "properties": {
+        "external_case_id": {
+          "description": "Caller case id for external cases.",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "name": {
+          "description": "Case name as shown in behavioral results.",
+          "type": "string"
+        },
+        "origin": {
+          "description": "Trusted origin of the case.",
+          "$ref": "#/$defs/VectorOrigin"
+        }
+      },
+      "required": [
+        "name",
+        "origin"
+      ]
+    },
+    "VectorOrigin": {
+      "description": "Origin of a case in the merged vector set.",
+      "oneOf": [
+        {
+          "description": "Deterministic vector synthesized by SemASM.",
+          "type": "string",
+          "const": "builtin"
+        },
+        {
+          "description": "Input loaded from an external vector document.",
+          "type": "string",
+          "const": "external"
+        }
+      ]
+    },
     "VectorResult": {
       "description": "Outcome of running the harness against a routine.",
       "type": "object",
@@ -919,6 +970,43 @@
         "passed",
         "expected",
         "observed"
+      ]
+    },
+    "VectorSetEvidence": {
+      "description": "Integrity binding for the complete vector set used by verification.",
+      "type": "object",
+      "properties": {
+        "builtin_case_count": {
+          "description": "Number of always-retained builtin cases.",
+          "type": "integer",
+          "format": "uint",
+          "minimum": 0
+        },
+        "cases": {
+          "description": "Ordered binding matching the behavioral result order.",
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/VectorCaseBinding"
+          }
+        },
+        "external_case_count": {
+          "description": "Number of additive external cases.",
+          "type": "integer",
+          "format": "uint",
+          "minimum": 0
+        },
+        "external_document_digest": {
+          "description": "Canonical SHA-256 of the external document, when supplied.",
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      },
+      "required": [
+        "builtin_case_count",
+        "external_case_count",
+        "cases"
       ]
     },
     "VerificationObligation": {

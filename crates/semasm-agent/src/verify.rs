@@ -356,6 +356,9 @@ pub struct VerificationReport {
     /// oracle plus vectors — not by weak contract `ensures` alone.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub behavior_oracle: Option<BehaviorOracle>,
+    /// Integrity and origin binding for every behavioral vector.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub vector_set: Option<crate::external_vectors::VectorSetEvidence>,
     /// Region/Alias Evidence v1 (ADR 0006). Absent when the contract has no
     /// `[function.memory]` block or the target cannot collect effects.
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -456,7 +459,7 @@ impl ProofBasis {
 }
 
 /// Current experimental schema version for [`VerificationReport`] JSON.
-pub const VERIFICATION_REPORT_SCHEMA_VERSION: &str = "0.5";
+pub const VERIFICATION_REPORT_SCHEMA_VERSION: &str = "0.6";
 
 /// Compatibility classification for a verification-report schema.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -591,6 +594,7 @@ impl VerificationReport {
             executable,
             behavior,
             behavior_oracle: None,
+            vector_set: None,
             alias_analysis: None,
             region_access: None,
             contract_expressions: None,
@@ -617,6 +621,16 @@ impl VerificationReport {
     #[must_use]
     pub fn with_behavior_oracle(mut self, oracle: BehaviorOracle) -> Self {
         self.behavior_oracle = Some(oracle);
+        self
+    }
+
+    /// Attach the exact builtin/external vector-set binding.
+    #[must_use]
+    pub fn with_vector_set(
+        mut self,
+        vector_set: crate::external_vectors::VectorSetEvidence,
+    ) -> Self {
+        self.vector_set = Some(vector_set);
         self
     }
 
@@ -754,6 +768,7 @@ mod tests {
     const SCHEMA_0_4: &str = include_str!("../schemas/fixtures/verification-schema-0.4.json");
     const SCHEMA_0_5: &str = include_str!("../schemas/fixtures/verification-schema-0.5.json");
     const SCHEMA_0_6: &str = include_str!("../schemas/fixtures/verification-schema-0.6.json");
+    const SCHEMA_0_7: &str = include_str!("../schemas/fixtures/verification-schema-0.7.json");
 
     #[test]
     fn verification_schema_fixtures_lock_cross_version_policy() {
@@ -763,12 +778,16 @@ mod tests {
         );
         assert_eq!(
             check_verification_schema_compatibility(SCHEMA_0_5),
+            Ok(VerificationSchemaCompatibility::CompatibleOlder)
+        );
+        assert_eq!(
+            check_verification_schema_compatibility(SCHEMA_0_6),
             Ok(VerificationSchemaCompatibility::Current)
         );
-        assert!(check_verification_schema_compatibility(SCHEMA_0_6).is_err());
+        assert!(check_verification_schema_compatibility(SCHEMA_0_7).is_err());
         assert_eq!(
             check_verification_schema_compatibility_with_options(
-                SCHEMA_0_6,
+                SCHEMA_0_7,
                 VerificationReadOptions {
                     allow_newer_minor: true,
                 },

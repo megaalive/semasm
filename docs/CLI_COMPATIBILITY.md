@@ -89,7 +89,7 @@ Otherwise exit `1` and still emit a structured JSON document on stdout:
 JSON document type for gate results is `VerificationReport` from `semasm-agent::verify`.
 Early failures use `AgentFailureEnvelope` (`crates/semasm-agent/schemas/agent-failure.json`).
 
-- `schema_version` — experimental agent schema (`0.5`); see
+- `schema_version` — experimental agent schema (`0.6`); see
   `AGENT_SCHEMA_POLICY.md` and
   `crates/semasm-agent/schemas/verification-report.json`
 - `tool_version` — `semasm {SEMASM_VERSION}`
@@ -107,6 +107,9 @@ Early failures use `AgentFailureEnvelope` (`crates/semasm-agent/schemas/agent-fa
   `contract_ensures` (raw contract postconditions, often weaker) and
   `proof_basis: oracle_and_vectors` — equality is not proven by the contract
   alone.
+- `vector_set` — ordered builtin/external case origins and the canonical
+  external-document digest. External documents add cases; they never replace
+  builtin vectors or supply trusted expected values.
 - `alias_analysis` / `region_access` / `contract_expressions` — optional
   semantic evidence slices when `[function.memory]` is present (models
   `region-affine-v1`, `region-access-affine-v1`, `contract-expr-v1`).

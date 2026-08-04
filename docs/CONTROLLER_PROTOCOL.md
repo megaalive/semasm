@@ -26,7 +26,8 @@ with this protocol; do not market SemASM as a general-purpose assembly prover.
 
 ```text
 semasm agent verify <source.asm> <contract.sem.toml> --format json \
-  [--target <identity>] [--allow-execution] [--card <path.md>] [--card-json <path.json>]
+  [--target <identity>] [--allow-execution] [--vectors-file <vectors.json>] \
+  [--card <path.md>] [--card-json <path.json>]
 ```
 
 Exit `0` when `status` is `verified` or `verified_under_preconditions`.
@@ -48,10 +49,10 @@ agent-verify snapshot.
 
 | Stream | Content |
 |---|---|
-| **stdout** | Exactly one JSON document (pretty-printed). Controllers **must** parse stdout alone. Discriminate by fields: a [`VerificationReport`](../crates/semasm-agent/schemas/verification-report.json) has `status` + `schema_version` (≥0.4,<0.6); an early [`AgentFailureEnvelope`](../crates/semasm-agent/schemas/agent-failure.json) has `kind: "agent_failure"` + `code` / `stage` / `retryability`. |
+| **stdout** | Exactly one JSON document (pretty-printed). Controllers **must** parse stdout alone. Discriminate by fields: a [`VerificationReport`](../crates/semasm-agent/schemas/verification-report.json) has `status` + `schema_version` (≥0.4,<0.7); an early [`AgentFailureEnvelope`](../crates/semasm-agent/schemas/agent-failure.json) has `kind: "agent_failure"` + `code` / `stage` / `retryability`. |
 | **stderr** | Human-readable progress and errors. Never concatenate with stdout before JSON parse. |
 
-## Report provenance (schema `0.5`)
+## Report provenance (schema `0.6`)
 
 Additive controller fields on every emitted report:
 
@@ -60,6 +61,16 @@ Additive controller fields on every emitted report:
 | `tool_version` | Stable string `semasm {SEMASM_VERSION}` |
 | `contract_digest` | `sha256:` + full lowercase hex of contract file bytes |
 | `source_digest` | `sha256:` + full lowercase hex of candidate source bytes |
+| `vector_set` | Ordered origin binding for every case plus the canonical external document digest |
+
+## External vectors
+
+`--vectors-file` accepts schema `0.1` JSON with `contract_digest`, `target`,
+`routine_symbol`, and `cases[]` containing only `id` plus named `inputs`.
+Unknown fields (including `expected`) are rejected. SemASM retains all builtin
+vectors, validates the binding and scalar input types, then computes expected
+outputs with the recognized builtin oracle. Unsupported pointer/region shapes
+fail closed with an `agent_failure` document.
 
 `behavior_oracle` (when present) names the builtin profile and
 `proof_basis: oracle_and_vectors`. Controllers must not claim that weak

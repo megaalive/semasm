@@ -9,6 +9,7 @@
 
 pub mod context;
 pub mod evidence;
+pub mod external_vectors;
 pub mod failure;
 pub mod harness;
 pub mod verify;
