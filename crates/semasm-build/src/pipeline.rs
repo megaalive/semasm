@@ -4,7 +4,9 @@
 //! [`crate::exec::exec`].  Tools are resolved via
 //! [`semasm_target::tools::doctor`] by default, or can be overridden.
 
-use std::path::{Path, PathBuf};
+use std::path::Path;
+#[cfg(any(windows, test))]
+use std::path::PathBuf;
 
 use semasm_target::tools;
 use semasm_target::{Dialect, ObjectFormat, TargetIdentity};
