@@ -7,7 +7,7 @@ pub const SEMASM_VERSION: &str = env!("CARGO_PKG_VERSION");
 pub const SEMASM_VERSION_MAJOR: u32 = 0;
 
 /// Minor version component.
-pub const SEMASM_VERSION_MINOR: u32 = 4;
+pub const SEMASM_VERSION_MINOR: u32 = 5;
 
 /// Patch version component.
 pub const SEMASM_VERSION_PATCH: u32 = 0;
