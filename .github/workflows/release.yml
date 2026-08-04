@@ -66,6 +66,11 @@ jobs:
 
       - uses: Swatinem/rust-cache@v2
 
+      - name: Install Win64 verification toolchain
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: choco install nasm llvm -y --no-progress
+
       - name: Build release CLI
         run: cargo build --locked --release -p semasm-cli
 
@@ -84,6 +89,35 @@ jobs:
           New-Item -ItemType Directory -Force -Path $stage | Out-Null
           Copy-Item target/release/semasm.exe,README.md,CHANGELOG.md,LICENSE-APACHE,LICENSE-MIT -Destination $stage
           Compress-Archive -Path "$stage/*" -DestinationPath "${{ matrix.archive }}"
+
+      - name: Smoke packaged Linux archive
+        if: runner.os == 'Linux'
+        shell: bash
+        run: |
+          set -euo pipefail
+          stage="$RUNNER_TEMP/semasm-packaged"
+          mkdir -p "$stage"
+          tar -xzf "${{ matrix.archive }}" -C "$stage"
+          "$stage/semasm" --version
+          "$stage/semasm" status --format json >/dev/null
+          "$stage/semasm" contract check fixtures/contracts/write_all.sem.toml --format json >/dev/null
+
+      - name: Smoke packaged Win64 archive with oracle execution
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          $stage = Join-Path $env:RUNNER_TEMP "semasm-packaged"
+          Expand-Archive -LiteralPath "${{ matrix.archive }}" -DestinationPath $stage
+          $binary = Join-Path $stage "semasm.exe"
+          & $binary --version
+          if ($LASTEXITCODE -ne 0) { throw "packaged version probe failed" }
+          & $binary status --format json | ConvertFrom-Json | Out-Null
+          if ($LASTEXITCODE -ne 0) { throw "packaged status probe failed" }
+          $raw = & $binary agent verify fixtures/asm/sum_range_win64.asm fixtures/contracts/sum_range.sem.toml --target x86_64-pc-windows-msvc --allow-execution --format json
+          if ($LASTEXITCODE -ne 0) { throw "packaged Win64 oracle verify failed: $raw" }
+          $report = $raw | ConvertFrom-Json
+          if ($report.status -ne "verified") { throw "unexpected packaged status: $($report.status)" }
+          if ($report.behavior_oracle.id -ne "builtin.pure_int.unary_i64") { throw "unexpected packaged oracle" }
 
       - uses: actions/upload-artifact@v7
         with:

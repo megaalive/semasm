@@ -1,10 +1,10 @@
-# SemASM 0.4 release checklist
+# SemASM 0.5 release checklist
 
 Run from a clean checkout of the candidate tag. A failed or skipped required
 gate blocks release.
 
 Candidate-specific audit and gate results:
-[`RELEASE_READINESS_0.4.0.md`](RELEASE_READINESS_0.4.0.md).
+[`RELEASE_READINESS_0.5.0.md`](RELEASE_READINESS_0.5.0.md).
 
 ## Source and compatibility
 
@@ -36,7 +36,7 @@ Candidate-specific audit and gate results:
 - [ ] `cargo package --workspace --no-verify --allow-dirty` succeeds before
       tagging (omit `--allow-dirty` on the clean release checkout). Registry
       verification is deferred until workspace crates are published in
-      dependency order; the 0.4 release continues to distribute CLI archives.
+      dependency order; the 0.5 release continues to distribute CLI archives.
 - [ ] Linux and Windows CLI archives are produced from the tag.
 - [ ] `SHA256SUMS` contains every archive and verifies successfully.
 - [ ] Release notes state partial architecture coverage and pre-1.0 API status.

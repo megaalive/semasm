@@ -18,7 +18,7 @@ on:
       semasm-version:
         description: Published SemASM version, without the v prefix
         required: false
-        default: "0.4.0"
+        default: "0.5.0"
         type: string
 
 permissions:

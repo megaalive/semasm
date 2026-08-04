@@ -8,6 +8,30 @@ follow [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 No changes yet.
 
+## [0.5.0] - 2026-08-04
+
+### Added
+
+- Input-only external vector documents for `agent verify --vectors-file`.
+  Documents are bound to the contract digest, target, and routine; SemASM
+  retains builtin vectors and derives expected scalar results from its builtin
+  oracle.
+- Verification Report schema 0.6 `vector_set` evidence with a canonical
+  external-document digest and ordered per-case origins.
+- Win64 `sum_range` correct/wrong fixtures and owner E2E coverage.
+- Post-package release smoke tests. The Windows archive is extracted and used
+  for a real Win64 oracle execution before GitHub publication.
+
+### Fixed
+
+- Win64 linking now discovers installed Windows SDK `kernel32.lib` versions
+  instead of relying on obsolete hard-coded SDK paths.
+
+### Changed
+
+- External vector profiles fail closed outside recognized scalar integer
+  oracles; caller-provided `expected` fields and unknown fields are rejected.
+
 ## [0.4.0] - 2026-07-29
 
 ### Added
@@ -346,7 +370,8 @@ capabilities, behavioral oracles, and `VerificationReport` evidence. It is
   AArch64/RV64 `decode`/`lower` remain `partial`. See `semasm status` and
   `capabilities.toml`.
 
-[Unreleased]: https://github.com/megaalive/semasm/compare/v0.4.0...HEAD
+[Unreleased]: https://github.com/megaalive/semasm/compare/v0.5.0...HEAD
+[0.5.0]: https://github.com/megaalive/semasm/compare/v0.4.0...v0.5.0
 [0.4.0]: https://github.com/megaalive/semasm/compare/v0.3.0...v0.4.0
 [0.3.0]: https://github.com/megaalive/semasm/compare/v0.2.1...v0.3.0
 [0.2.1]: https://github.com/megaalive/semasm/releases/tag/v0.2.1

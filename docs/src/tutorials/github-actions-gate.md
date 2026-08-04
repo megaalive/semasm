@@ -16,12 +16,12 @@ on:
 
 jobs:
   verify-count-byte:
-    uses: megaalive/semasm/.github/workflows/consumer-verify.yml@v0.4.0
+    uses: megaalive/semasm/.github/workflows/consumer-verify.yml@v0.5.0
     with:
       source: asm/count_byte.asm
       contract: contracts/count_byte.sem.toml
       symbol: count_byte
-      semasm-version: 0.4.0
+      semasm-version: 0.5.0
 ```
 
 Pin both the reusable workflow ref and `semasm-version`. Updating either is an

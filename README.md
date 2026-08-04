@@ -226,7 +226,7 @@ the golden demo, not adding new ISAs.
 
 Release compatibility and gates are documented in
 [docs/CLI_COMPATIBILITY.md](docs/CLI_COMPATIBILITY.md) and
-[docs/RELEASE_CHECKLIST.md](docs/RELEASE_CHECKLIST.md). The current `v0.4.0`
+[docs/RELEASE_CHECKLIST.md](docs/RELEASE_CHECKLIST.md). The current `v0.5.0`
 candidate continues to distribute CLI archives + `SHA256SUMS` (no crates.io
 publish yet).
 Pre-1.0 APIs may still evolve.
