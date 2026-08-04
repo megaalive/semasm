@@ -70,6 +70,7 @@ pub struct Pipeline {
 ///
 /// Numeric ordering is required because lexical ordering would place
 /// `10.0.9500.0` after `10.0.26100.0`.
+#[cfg(any(windows, test))]
 fn windows_sdk_version(name: &str) -> Option<Vec<u32>> {
     let parts = name
         .trim_end_matches(['\\', '/'])
@@ -80,6 +81,7 @@ fn windows_sdk_version(name: &str) -> Option<Vec<u32>> {
     (parts.len() >= 2).then_some(parts)
 }
 
+#[cfg(any(windows, test))]
 fn kernel32_for_version(lib_root: &Path, version: &str) -> PathBuf {
     lib_root
         .join(version.trim_end_matches(['\\', '/']))
@@ -92,6 +94,7 @@ fn kernel32_for_version(lib_root: &Path, version: &str) -> PathBuf {
 ///
 /// The resolver is environment-independent so tests can exercise it against
 /// synthetic SDK trees on every host.
+#[cfg(any(windows, test))]
 fn find_latest_kernel32_lib(lib_roots: &[PathBuf]) -> Option<PathBuf> {
     let mut candidates = Vec::new();
     for root in lib_roots {
