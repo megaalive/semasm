@@ -4,7 +4,7 @@
 //! [`crate::exec::exec`].  Tools are resolved via
 //! [`semasm_target::tools::doctor`] by default, or can be overridden.
 
-use std::path::Path;
+use std::path::{Path, PathBuf};
 
 use semasm_target::tools;
 use semasm_target::{Dialect, ObjectFormat, TargetIdentity};
@@ -66,32 +66,103 @@ pub struct Pipeline {
     pub toolchain: Toolchain,
 }
 
+/// Parse a Windows SDK directory name into numeric components.
+///
+/// Numeric ordering is required because lexical ordering would place
+/// `10.0.9500.0` after `10.0.26100.0`.
+fn windows_sdk_version(name: &str) -> Option<Vec<u32>> {
+    let parts = name
+        .trim_end_matches(['\\', '/'])
+        .split('.')
+        .map(str::parse::<u32>)
+        .collect::<Result<Vec<_>, _>>()
+        .ok()?;
+    (parts.len() >= 2).then_some(parts)
+}
+
+fn kernel32_for_version(lib_root: &Path, version: &str) -> PathBuf {
+    lib_root
+        .join(version.trim_end_matches(['\\', '/']))
+        .join("um")
+        .join("x64")
+        .join("kernel32.lib")
+}
+
+/// Select the newest installed x64 Windows SDK import library.
+///
+/// The resolver is environment-independent so tests can exercise it against
+/// synthetic SDK trees on every host.
+fn find_latest_kernel32_lib(lib_roots: &[PathBuf]) -> Option<PathBuf> {
+    let mut candidates = Vec::new();
+    for root in lib_roots {
+        let Ok(entries) = std::fs::read_dir(root) else {
+            continue;
+        };
+        for entry in entries.flatten() {
+            let name = entry.file_name();
+            let Some(name) = name.to_str() else {
+                continue;
+            };
+            let Some(version) = windows_sdk_version(name) else {
+                continue;
+            };
+            let path = kernel32_for_version(root, name);
+            if path.is_file() {
+                candidates.push((version, path));
+            }
+        }
+    }
+    candidates
+        .into_iter()
+        .max_by(|(left, _), (right, _)| left.cmp(right))
+        .map(|(_, path)| path)
+}
+
 impl Pipeline {
     /// Locate `kernel32.lib` for the x64 Windows Kit so PE linking can
     /// resolve the Win32 base imports without pulling in the C runtime.
     ///
-    /// Returns the first existing path among the common Windows Kit / SDK
-    /// lib directories. When nothing is found `None` is returned and the
-    /// caller falls back to a `/DEFAULTLIB` hint.
+    /// Honors the standard SDK directory/version hints first, then scans all
+    /// installed SDK versions under both Program Files roots and chooses the
+    /// newest numeric version. When nothing is found `None` is returned and
+    /// the caller falls back to a `/DEFAULTLIB` hint.
     #[cfg(windows)]
     #[must_use]
     fn find_kernel32_lib() -> Option<std::path::PathBuf> {
-        let program_files = std::env::var_os("ProgramFiles(x86)")
-            .or_else(|| std::env::var_os("ProgramFiles"))
-            .unwrap_or_else(|| "C:\\Program Files (x86)".into());
-        let base = std::path::Path::new(&program_files);
-        let candidates = [
-            "Windows Kits\\10\\Lib\\10.0.26100.0\\um\\x64\\kernel32.lib",
-            "Windows Kits\\10\\Lib\\10.0.22000.0\\um\\x64\\kernel32.lib",
-            "Windows Kits\\10\\Lib\\10.0.19041.0\\um\\x64\\kernel32.lib",
-        ];
-        for rel in candidates {
-            let p = base.join(rel);
-            if p.exists() {
-                return Some(p);
+        let mut roots = Vec::new();
+        if let Some(sdk_dir) = std::env::var_os("WindowsSdkDir") {
+            let lib_root = PathBuf::from(sdk_dir).join("Lib");
+            if let Some(version) = std::env::var_os("WindowsSDKVersion") {
+                if let Some(version) = version.to_str() {
+                    let hinted = kernel32_for_version(&lib_root, version);
+                    if hinted.is_file() {
+                        return Some(hinted);
+                    }
+                }
+            }
+            roots.push(lib_root);
+        }
+
+        for variable in ["ProgramFiles(x86)", "ProgramFiles"] {
+            if let Some(program_files) = std::env::var_os(variable) {
+                let root = PathBuf::from(program_files)
+                    .join("Windows Kits")
+                    .join("10")
+                    .join("Lib");
+                if !roots.contains(&root) {
+                    roots.push(root);
+                }
             }
         }
-        None
+        if roots.is_empty() {
+            roots.push(
+                PathBuf::from("C:\\Program Files (x86)")
+                    .join("Windows Kits")
+                    .join("10")
+                    .join("Lib"),
+            );
+        }
+        find_latest_kernel32_lib(&roots)
     }
 
     #[cfg(not(windows))]
@@ -645,6 +716,63 @@ mod tests {
         Path::new(env!("CARGO_MANIFEST_DIR"))
             .join("../..")
             .join(relative)
+    }
+
+    fn sdk_fixture_root() -> PathBuf {
+        std::env::temp_dir().join(format!(
+            "semasm-sdk-resolver-{}-{}",
+            std::process::id(),
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .expect("clock after unix epoch")
+                .as_nanos()
+        ))
+    }
+
+    fn create_kernel32(lib_root: &Path, version: &str) -> PathBuf {
+        let path = kernel32_for_version(lib_root, version);
+        std::fs::create_dir_all(path.parent().expect("kernel32 parent"))
+            .expect("create fake SDK tree");
+        std::fs::write(&path, b"fake import library").expect("write fake kernel32.lib");
+        path
+    }
+
+    #[test]
+    fn sdk_versions_sort_numerically() {
+        assert!(windows_sdk_version("10.0.26100.0") > windows_sdk_version("10.0.9500.0"));
+        assert_eq!(windows_sdk_version("preview"), None);
+        assert_eq!(
+            windows_sdk_version("10.0.22621.0\\"),
+            Some(vec![10, 0, 22621, 0])
+        );
+    }
+
+    #[test]
+    fn kernel32_resolver_selects_newest_installed_sdk_across_roots() {
+        let base = sdk_fixture_root();
+        let first = base.join("first");
+        let second = base.join("second");
+        create_kernel32(&first, "10.0.19041.0");
+        let expected = create_kernel32(&second, "10.0.26100.0");
+        create_kernel32(&first, "10.0.22621.0");
+        std::fs::create_dir_all(second.join("preview")).expect("create malformed version");
+
+        assert_eq!(find_latest_kernel32_lib(&[first, second]), Some(expected));
+        let _ = std::fs::remove_dir_all(base);
+    }
+
+    #[test]
+    fn kernel32_resolver_ignores_versions_without_the_import_library() {
+        let base = sdk_fixture_root();
+        std::fs::create_dir_all(base.join("10.0.99999.0").join("um").join("x64"))
+            .expect("create incomplete SDK tree");
+        let expected = create_kernel32(&base, "10.0.22621.0");
+
+        assert_eq!(
+            find_latest_kernel32_lib(std::slice::from_ref(&base)),
+            Some(expected)
+        );
+        let _ = std::fs::remove_dir_all(base);
     }
 
     #[test]
