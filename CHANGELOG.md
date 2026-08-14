@@ -6,7 +6,9 @@ follow [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
-No changes yet.
+- Docs: VAA HlaX64 compiler dogfood does not unlock Formal Bounds **Fb9c**,
+  Glue-0 program ABI lint, or new oracles. Pack pin on VAA may track `v0.5.0`
+  while Gate `SEMASM_TIP_SHA` lags until a VAA tip-bump workflow.
 
 ## [0.5.0] - 2026-08-04
 

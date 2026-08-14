@@ -44,8 +44,9 @@ honesty-bound leaves; non-compare ABI live repair (Win64+SysV
 stack-balance / callee-saved — VAA Gates 7k–7n).
 **Next:** Fb9c stays locked; no rushed product-claim expansions
 (`void`/hosted-program harness / Windows cross-assembler) until a new
-narrow SemASM chip exists. VAA Gate `SEMASM_TIP_SHA` still trails tag
-`v0.5.0` (pin bump is a VAA CI ceremony, not a SemASM chip).
+narrow SemASM chip exists. VAA compiler dogfood (HlaX64 pack Gate) does not
+unlock Fb9c, Glue-0, or new oracles. VAA Gate `SEMASM_TIP_SHA` still trails
+tag `v0.5.0` (pin bump is a VAA CI ceremony, not a SemASM chip).
 **Done (Sei Ra0-Ra6):** Region Access Evidence v1 (ADR 0011;
 [REGION_ACCESS_EVIDENCE_V1_PLAN.md](REGION_ACCESS_EVIDENCE_V1_PLAN.md)); x86
 corpus green; A64/RV observational. **Done (Sei P0):** ADR 0010 +

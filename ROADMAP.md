@@ -79,11 +79,12 @@ conformance evidence are proven.
   Tip on `main` is `v0.5.0` (`5888b3a`). Unreleased is empty.
 - **Done (hygiene):** `actions/checkout@v7` on workflows; Dependabot disabled
   (removed `.github/dependabot.yml` — no auto dependency PRs).
-- **Next (locked):** Fb9c (arbitrary loop invariant) stays locked. Do not
-  expand product claims (`void` / hosted-program harness / Windows
-  cross-assembler) until a new narrow SemASM chip exists. VAA fluent surface
-  A–D is delivered; Gate CI still pins an older SemASM SHA than tag `v0.5.0`
-  (see VAA `docs/progress.md` and `.github/workflows/ci.yml` `SEMASM_TIP_SHA`).
+- **Next (locked):** Fb9c (arbitrary loop invariant) stays locked. VAA compiler
+  dogfood (HlaX64 pack Gate + generator-repair skill) does **not** unlock a
+  SemASM chip. Do not expand product claims (`void` / hosted-program harness /
+  Windows cross-assembler) until a new narrow SemASM chip exists. VAA fluent
+  surface A–D is delivered; Gate CI still pins an older SemASM SHA than tag
+  `v0.5.0` (bump via VAA `semasm-tip-bump.yml` only).
 
 Consumer pin / Gate smoke: see VAA `docs/progress.md`. Shared progress:
 `docs/STABILIZATION_PROGRESS.md`.
