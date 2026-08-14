@@ -26,6 +26,8 @@ CI-proven support.
 | P1 Reliability | Auditable conformance, stress/perf gates, retained fuzz evidence | **done** ([CI](https://github.com/megaalive/semasm/actions/runs/30430552892), [fuzz](https://github.com/megaalive/semasm/actions/runs/30430553633)) |
 | P2 Product Surface | One-command onboarding, consumer CI, schema compatibility, task tutorials | **done** ([CI](https://github.com/megaalive/semasm/actions/runs/30431975320), [fuzz](https://github.com/megaalive/semasm/actions/runs/30431986704)) |
 | Rel-0.4 | Publish immutable consumer workflow + P1/P2 product surface | **done** ([release](https://github.com/megaalive/semasm/releases/tag/v0.4.0)) |
+| Rel-0.5 | External oracle vectors + report schema 0.6 + Win64 SDK link repair | **done** ([release](https://github.com/megaalive/semasm/releases/tag/v0.5.0)) |
+| Companion | VAA fluent surface A–D + packaged SemASM `v0.5.0` smoke | **done** (VAA [`v0.2.0`](https://github.com/megaalive/vaa/releases/tag/v0.2.0)) |
 
 ## Declared target identities
 
@@ -45,7 +47,7 @@ x86-32, ARMv7, Windows ARM64, UEFI, WebAssembly, AVR, many MCU boards,
 kernel modules, eBPF, and GPU ISAs are deferred until target-kit contracts and
 conformance evidence are proven.
 
-## Near-term criteria (post-`v0.2.0` / Co / Vd)
+## Near-term criteria (post-`v0.5.0`)
 
 - Keep CI owner jobs green with `SEMASM_REQUIRE_TOOLCHAIN=1`.
 - Prefer fail-closed adversarial fixtures over broader mnemonic coverage.
@@ -65,19 +67,23 @@ conformance evidence are proven.
 - Still deferred (Horizon-locked): full memory alias / symbolic proof; formal
   `ensures`; CryptOpt; hardware HSM; live-model Gate; optional offline C size
   comparison (not a CI gate).
-- **Done:** GitHub Release tags `v0.1.0`, `v0.2.0`, and `v0.2.1`
-  (checklist-gated; CLI archives only; no crates.io).
+- **Done:** GitHub Release tags `v0.1.0`, `v0.2.0`, `v0.2.1`, `v0.3.0`,
+  `v0.4.0`, and `v0.5.0` (checklist-gated; CLI archives only; no crates.io).
 - **Done (Co):** A64/RV `control` gate — `docs/A64_RV_CONTROL_GATE_PLAN.md`.
 - **Done (Vd):** VAA Gate pin + write-shape `vaa run` smokes —
   `docs/V0_2_CONTROLLER_DEPTH_PLAN.md`.
 - **Done (Mm):** A64/RV `memory` leaf — `docs/A64_RV_MEMORY_LEAF_PLAN.md`
   (CI green at `e991182`; sample ≠ region-precise proof).
 - **Done (Rel-0.2.1):** tag `v0.2.1` @ `22d1543` — Co+Mm patch.
-- **Candidate (Rel-0.3):** synchronize the 66 post-`v0.2.1` commits, run the
-  complete release checklist, then tag only after all four target-owner CI
-  jobs and packaging evidence are green.
+- **Done (Rel-0.3 / Rel-0.4 / Rel-0.5):** tags `v0.3.0`, `v0.4.0`, `v0.5.0`.
+  Tip on `main` is `v0.5.0` (`5888b3a`). Unreleased is empty.
 - **Done (hygiene):** `actions/checkout@v7` on workflows; Dependabot disabled
   (removed `.github/dependabot.yml` — no auto dependency PRs).
+- **Next (locked):** Fb9c (arbitrary loop invariant) stays locked. Do not
+  expand product claims (`void` / hosted-program harness / Windows
+  cross-assembler) until a new narrow SemASM chip exists. VAA fluent surface
+  A–D is delivered; Gate CI still pins an older SemASM SHA than tag `v0.5.0`
+  (see VAA `docs/progress.md` and `.github/workflows/ci.yml` `SEMASM_TIP_SHA`).
 
 Consumer pin / Gate smoke: see VAA `docs/progress.md`. Shared progress:
 `docs/STABILIZATION_PROGRESS.md`.

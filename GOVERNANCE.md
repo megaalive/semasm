@@ -2,7 +2,7 @@
 
 ## Status
 
-SemASM is in bootstrap. Governance is intentionally lightweight.
+SemASM is pre-1.0 developer tooling. Governance is intentionally lightweight.
 
 ## Maintainers
 
@@ -25,9 +25,10 @@ The product boundary in the project plan applies:
 ## Releases
 
 Pre-1.0 developer releases ship as annotated GitHub tags with CLI archives
-(`docs/RELEASE_CHECKLIST.md`). Latest: **`v0.2.1`**. Crate versions track the
-workspace (`0.2.x`); APIs remain unstable until 1.0. crates.io publish is
-deferred.
+(`docs/RELEASE_CHECKLIST.md`). Latest: **`v0.5.0`**. Crate versions track the
+workspace (`0.5.x`); APIs remain unstable until 1.0. crates.io publish is
+deferred. The companion controller VAA pins packaged SemASM `v0.5.0` for
+release smoke; Gate CI may lag `main` until a pin bump.
 
 ## Code of conduct
 

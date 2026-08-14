@@ -9,7 +9,12 @@ Canonical product roadmap (releases A–D, non-goals, honesty boundary):
 > See VAA [`docs/fluent-agent-surface.md`](https://github.com/megaalive/vaa/blob/main/docs/fluent-agent-surface.md)
 > and VAA [`docs/HONESTY.md`](https://github.com/megaalive/vaa/blob/main/docs/HONESTY.md).
 
-## SemASM deliverables for Release A
+## SemASM deliverables for Release A (**delivered**)
+
+VAA Releases A–D (capability admission, fluent repair session, authoring
+cases, correctness-preserving optimize) are delivered on VAA `v0.2.0`.
+SemASM still owns the technical surfaces below; VAA owns admission policy,
+seals, and session fluency.
 
 1. **Capability admission export** — `capabilities.toml` carries optional
    `[[admission]]` rows (contract shape / oracle / authoring_level /

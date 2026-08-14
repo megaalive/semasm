@@ -5,17 +5,19 @@ directly in assembly. It supplies portable semantic contracts, target kits,
 analysis (ASIR), and verification so humans and AI agents can produce and check
 minimal target programs **without shipping a high-level language runtime**.
 
-> **Status:** pre-1.0 developer tooling (0.4 line). Thirteen workspace crates,
-> multi-target agent verify (SysV / Win64 / AArch64 / RV64), structured
-> `VerificationReport` evidence (including optional Region/Alias Evidence v1
-> `region-affine-v1`, Region Access Evidence v1 `region-access-affine-v1`, and
-> Contract Expression Semantics v1 `contract-expr-v1` —
-> selected affine relations + documented expression subset, **not** general
-> alias analysis or full contract verification), and named CI owner jobs are in tree.
-> Capability maturity is defined only by `capabilities.toml` — code present ≠
-> CI-proven support. Agent output remains **untrusted until verified**.
-> Controller fluency roadmap (admission export, authoring profiles): see
-> [`docs/fluent-agent-surface.md`](docs/fluent-agent-surface.md).
+> **Status:** pre-1.0 developer tooling (**0.5 line**, tag `v0.5.0`).
+> Thirteen workspace crates, multi-target agent verify (SysV / Win64 /
+> AArch64 / RV64), structured `VerificationReport` evidence (schema 0.6,
+> including optional Region/Alias Evidence v1 `region-affine-v1`, Region
+> Access Evidence v1 `region-access-affine-v1`, Contract Expression
+> Semantics v1 `contract-expr-v1`, and input-only `--vectors-file` /
+> `vector_set` — selected affine relations + documented expression subset,
+> **not** general alias analysis or full contract verification), and named
+> CI owner jobs are in tree. Capability maturity is defined only by
+> `capabilities.toml` — code present ≠ CI-proven support. Agent output
+> remains **untrusted until verified**. The companion controller is VAA
+> `v0.2.0` (admission, seals, fluent agent surface). SemASM-side capability
+> export: see [`docs/fluent-agent-surface.md`](docs/fluent-agent-surface.md).
 
 ## Architecture (build-time only)
 
